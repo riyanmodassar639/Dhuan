@@ -22,7 +22,7 @@ export default function Dashboard() {
           
           {/* Left Side: Content */}
           <div className="space-y-6 max-w-2xl relative">
-            <div className="absolute -top-10 -left-10 w-24 h-24 bg-emerald-200 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob"></div>
+            <div className="absolute pointer-events-none -top-10 -left-10 w-24 h-24 bg-emerald-200 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob"></div>
             
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold shadow-sm">
               <span className="relative flex h-2 w-2">
@@ -73,7 +73,7 @@ export default function Dashboard() {
 
           {/* Right Side: Map Widget */}
           <div className="relative h-[380px] md:h-[450px] lg:h-[480px] w-full rounded-2xl p-1.5 bg-white/50 backdrop-blur-sm border border-slate-200 shadow-xl shadow-slate-200/50 group">
-             <div className="absolute -inset-2 bg-gradient-to-tr from-emerald-100 to-blue-50 rounded-[20px] blur-lg -z-10 opacity-50 group-hover:opacity-70 transition-opacity duration-500"></div>
+             <div className="absolute pointer-events-none -inset-2 bg-gradient-to-tr from-emerald-100 to-blue-50 rounded-[20px] blur-lg -z-10 opacity-50 group-hover:opacity-70 transition-opacity duration-500"></div>
              <MapWidget />
           </div>
         </section>
@@ -148,7 +148,7 @@ export default function Dashboard() {
             </div>
             
             <div className="lg:col-span-2 bg-white rounded-[2rem] p-5 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/40 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-rose-50 rounded-full mix-blend-multiply filter blur-2xl opacity-50 -z-10"></div>
+              <div className="absolute pointer-events-none top-0 right-0 w-48 h-48 bg-rose-50 rounded-full mix-blend-multiply filter blur-2xl opacity-50 -z-10"></div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3">
                 <h3 className="font-extrabold text-xl text-slate-900">Lahore AQI Forecast</h3>
                 <span className="inline-flex mt-2 sm:mt-0 text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Next 72 Hours</span>
@@ -161,8 +161,8 @@ export default function Dashboard() {
         {/* CTA Section */}
         <section className="py-16 text-center">
           <div className="bg-slate-900 rounded-[2.5rem] p-10 sm:p-16 relative overflow-hidden shadow-2xl border border-slate-800">
-            <div className="absolute top-0 right-0 w-56 h-56 bg-emerald-500/20 rounded-full filter blur-[80px] animate-pulse"></div>
-            <div className="absolute bottom-0 left-0 w-56 h-56 bg-blue-500/20 rounded-full filter blur-[80px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+            <div className="absolute pointer-events-none top-0 right-0 w-56 h-56 bg-emerald-500/20 rounded-full filter blur-[80px] animate-pulse"></div>
+            <div className="absolute pointer-events-none bottom-0 left-0 w-56 h-56 bg-blue-500/20 rounded-full filter blur-[80px] animate-pulse" style={{ animationDelay: '2s' }}></div>
             
             <div className="relative z-10 max-w-2xl mx-auto">
               <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-4 tracking-tight">Ready to breathe safer?</h2>

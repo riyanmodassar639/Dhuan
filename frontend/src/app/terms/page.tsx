@@ -17,8 +17,8 @@ export default function TermsPage() {
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
           
           <div className="bg-slate-900 px-8 py-12 sm:px-14 sm:py-16 text-center relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full filter blur-[100px] animate-pulse"></div>
-             <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/20 rounded-full filter blur-[100px] animate-pulse" style={{ animationDelay: '1.5s' }}></div>
+             <div className="absolute pointer-events-none top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full filter blur-[100px] animate-pulse"></div>
+             <div className="absolute pointer-events-none bottom-0 left-0 w-64 h-64 bg-emerald-500/20 rounded-full filter blur-[100px] animate-pulse" style={{ animationDelay: '1.5s' }}></div>
              <div className="flex justify-center mb-6 relative z-10">
                <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center border border-slate-700 shadow-lg">
                  <Shield className="w-8 h-8 text-emerald-400" />

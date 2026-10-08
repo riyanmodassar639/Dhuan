@@ -78,7 +78,7 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-200 bg-white" id="mobile-menu">
+        <div className="md:hidden absolute top-16 left-0 w-full border-b border-slate-200 bg-white shadow-2xl z-[100]" id="mobile-menu">
           <div className="px-4 pt-4 pb-2 space-y-4">
              <Link href="/#features" onClick={() => setIsMobileMenuOpen(false)} className="block text-base font-semibold text-slate-600 hover:text-slate-900">
                 Features

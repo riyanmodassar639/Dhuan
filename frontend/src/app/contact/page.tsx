@@ -18,7 +18,7 @@ export default function ContactPage() {
             
             {/* Left Info Panel */}
             <div className="bg-slate-900 lg:col-span-2 p-10 sm:p-12 text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full filter blur-[80px]"></div>
+              <div className="absolute pointer-events-none top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full filter blur-[80px]"></div>
               
               <h2 className="text-3xl font-extrabold mb-4 relative z-10">Get in touch</h2>
               <p className="text-emerald-100/80 mb-12 relative z-10 font-medium">

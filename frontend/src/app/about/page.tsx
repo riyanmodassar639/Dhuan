@@ -15,8 +15,8 @@ export default function AboutPage() {
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
           
           <div className="bg-slate-900 px-8 py-16 sm:px-14 sm:py-20 text-center relative overflow-hidden">
-             <div className="absolute top-0 left-0 w-64 h-64 bg-emerald-500/20 rounded-full filter blur-[100px] animate-pulse"></div>
-             <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full filter blur-[100px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+             <div className="absolute pointer-events-none top-0 left-0 w-64 h-64 bg-emerald-500/20 rounded-full filter blur-[100px] animate-pulse"></div>
+             <div className="absolute pointer-events-none bottom-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full filter blur-[100px] animate-pulse" style={{ animationDelay: '2s' }}></div>
              <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-4 tracking-tight relative z-10">
                About DHUAN
              </h1>
