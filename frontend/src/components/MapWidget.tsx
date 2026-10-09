@@ -565,10 +565,16 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
              <Polyline 
                key={originalIdx} 
                positions={coords} 
-               color={isSelected ? '#2563eb' : '#64748b'} 
+               color={isSelected ? '#7c3aed' : '#64748b'} 
                weight={isSelected ? 6 : 4} 
                opacity={isSelected ? 1 : 0.6}
-               eventHandlers={{ click: () => setSelectedRouteIdx(originalIdx) }}
+               eventHandlers={{ click: () => {
+                  setSelectedRouteIdx(originalIdx);
+                  if (mapRef.current) {
+                     const bounds = L.latLngBounds(coords);
+                     mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
+                  }
+               }}}
                pathOptions={{ className: isSelected ? 'animate-pulse' : '' }}
              />
            );
@@ -659,8 +665,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   <div className="space-y-3 relative ml-2">
                      <div className="absolute left-3.5 top-5 bottom-5 w-0.5 bg-slate-200"></div>
                      <div className="flex items-start gap-4 relative">
-                       <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white mt-1">
-                          <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
+                       <div className="w-7 h-7 bg-purple-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white mt-1">
+                          <div className="w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
                        </div>
                        <div className="flex-1 flex gap-2 relative">
                          <div className="flex-1 relative">
@@ -669,7 +675,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                              value={originInput}
                              onChange={(e) => setOriginInput(e.target.value)}
                              onKeyDown={handleCustomOriginSubmit}
-                             className="w-full bg-white px-3 py-2.5 rounded-xl text-sm font-medium text-slate-900 border border-slate-200 shadow-inner focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
+                             className="w-full bg-white px-3 py-2.5 rounded-xl text-sm font-medium text-slate-900 border border-slate-200 shadow-inner focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all placeholder:text-slate-400"
                              placeholder="Enter starting point..."
                            />
                            
@@ -703,7 +709,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                          <button 
                            onClick={() => setIsSelectingOriginOnMap(true)}
                            title="Select on map"
-                           className={`p-2.5 rounded-xl border transition-colors shrink-0 ${isSelectingOriginOnMap ? 'bg-blue-100 border-blue-500 text-blue-700 animate-pulse' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+                           className={`p-2.5 rounded-xl border transition-colors shrink-0 ${isSelectingOriginOnMap ? 'bg-purple-100 border-purple-500 text-purple-700 animate-pulse' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
                          >
                            <MapPin className="w-4 h-4" />
                          </button>
@@ -731,7 +737,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                             mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
                          }
                       }}
-                      className={`p-4 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden ${idx === selectedRouteIdx ? 'border-blue-500 bg-blue-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-200'}`}
+                      className={`p-4 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden ${idx === selectedRouteIdx ? 'border-purple-500 bg-purple-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-purple-200'}`}
                     >
                       {route.aiStats?.isSafest && (
                         <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black uppercase px-2 py-1 rounded-bl-lg tracking-wider">
@@ -739,7 +745,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                         </div>
                       )}
                       <div className="flex justify-between items-center mb-1">
-                        <span className={`font-black text-lg ${idx === selectedRouteIdx ? 'text-blue-700' : 'text-slate-800'}`}>
+                        <span className={`font-black text-lg ${idx === selectedRouteIdx ? 'text-purple-700' : 'text-slate-800'}`}>
                           {Math.round(route.duration / 60)} min
                         </span>
                         <span className="text-sm font-bold text-slate-500">
@@ -771,7 +777,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                  <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
                     <button 
                       onClick={() => { setIsNavigating(true); setIsPanelCollapsed(true); }}
-                      className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
+                      className="w-full py-4 bg-purple-600 text-white rounded-xl font-bold text-lg hover:bg-purple-700 transition-colors flex justify-center items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
                     >
                       <Navigation className="w-5 h-5 fill-white" />
                       Start Navigation
@@ -806,10 +812,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               {/* Action Buttons */}
               <div className="flex items-center justify-around pb-2">
                 <div onClick={handleDirectionsClick} className="flex flex-col items-center gap-1.5 cursor-pointer group">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md group-hover:bg-blue-700 transition-colors">
+                  <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-md group-hover:bg-purple-700 transition-colors">
                     <Navigation className="w-5 h-5" />
                   </div>
-                  <span className="text-xs font-bold text-blue-700">Directions</span>
+                  <span className="text-xs font-bold text-purple-700">Directions</span>
                 </div>
                 <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
                   <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 group-hover:bg-slate-200 transition-colors">
@@ -889,7 +895,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       {selectedPlace && isPanelCollapsed && (
          <div className="absolute top-4 left-4 z-[2500] bg-white p-4 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col gap-3 animate-in fade-in zoom-in duration-300">
             <div className="font-bold text-slate-900 flex items-center gap-2">
-               <Navigation className="w-5 h-5 text-blue-600" />
+               <Navigation className="w-5 h-5 text-purple-600" />
                Navigating to {selectedPlace.name}
             </div>
             <div className="flex gap-2">
