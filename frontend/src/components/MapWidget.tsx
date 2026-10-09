@@ -97,19 +97,34 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     }
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
+  // Live Search with Debounce
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (query.trim().length > 2) {
+        setIsSearching(true);
+        // Append 'Lahore' to prioritize local results
+        const searchQuery = query.toLowerCase().includes('lahore') ? query : `${query} Lahore`;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`)
+          .then(res => res.json())
+          .then(data => {
+            setResults(data);
+            setIsSearching(false);
+          })
+          .catch(err => {
+            console.error("Search error:", err);
+            setIsSearching(false);
+          });
+      } else {
+        setResults([]);
+      }
+    }, 600); // 600ms debounce to respect Nominatim API rate limits
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [query]);
+
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    setIsSearching(true);
-    try {
-      // Nominatim search API (Free geocoding)
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
-      const data = await res.json();
-      setResults(data);
-    } catch (err) {
-      console.error("Search error:", err);
-    }
-    setIsSearching(false);
+    // Action already handled by live search, this just prevents page reload on Enter
   };
 
   const handleSelectPlace = (place: any) => {
@@ -219,7 +234,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             placeholder="Search Google Maps style..." 
             className="flex-1 bg-transparent outline-none text-slate-900 text-sm font-medium placeholder:text-slate-500"
           />
-          {query && (
+          {isSearching && (
+            <div className="w-4 h-4 ml-2 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          )}
+          {query && !isSearching && (
             <button type="button" onClick={() => { setQuery(''); setResults([]); setSelectedPlace(null); }} className="ml-2 p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
               <X className="w-4 h-4" />
             </button>
