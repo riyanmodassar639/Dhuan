@@ -101,10 +101,10 @@ export default function MapWidget() {
           style={{ height: '100%', width: '100%' }}
           ref={mapRef}
         >
-          {/* Standard OpenStreetMap Tiles (No API Key Required) */}
+          {/* Google Maps Style Tiles (English Labels) */}
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+            url="https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
+            attribution="&copy; Google Maps"
           />
 
         {/* Live User Location Marker */}
