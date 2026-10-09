@@ -55,8 +55,8 @@ export default function MethodologyPage() {
             {/* Section 2 */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
               <div className="md:col-span-1 flex justify-center md:justify-start">
-                <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center border border-purple-100">
-                  <Activity className="w-6 h-6 text-purple-600" />
+                <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center border border-indigo-100">
+                  <Activity className="w-6 h-6 text-indigo-600" />
                 </div>
               </div>
               <div className="md:col-span-11 space-y-4 text-slate-600">

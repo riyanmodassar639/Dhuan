@@ -122,7 +122,7 @@ export default function MapWidget() {
         {/* Simulated Air Quality / Smog Layer */}
         {/* Normal blend mode with 0.4 opacity keeps Google Maps colors intact while showing smog clouds */}
         <Pane name="smogLayer" style={{ filter: 'blur(35px)', opacity: 0.45, pointerEvents: 'none', zIndex: 400 }}>
-            {/* Hazardous Zone (Deep Red/Purple) */}
+            {/* Hazardous Zone (Deep Red) */}
             <Circle center={[31.4697, 74.2728]} pathOptions={{ stroke: false, fillColor: '#9f1239', fillOpacity: 0.8 }} radius={3500} />
             <Circle center={[31.4500, 74.2500]} pathOptions={{ stroke: false, fillColor: '#be123c', fillOpacity: 0.7 }} radius={4500} />
             <Circle center={[31.4200, 74.2800]} pathOptions={{ stroke: false, fillColor: '#e11d48', fillOpacity: 0.6 }} radius={5000} />

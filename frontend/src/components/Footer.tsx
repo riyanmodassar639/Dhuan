@@ -12,7 +12,6 @@ export default function Footer() {
             </div>
             <div className="flex flex-col text-left">
               <span className="font-extrabold text-2xl tracking-tight text-slate-900 leading-none">DHUAN</span>
-              <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mt-0.5">Lahore Smog AI</span>
             </div>
           </div>
           <p className="text-slate-500 text-sm max-w-sm mx-auto sm:mx-0 leading-relaxed font-medium">
@@ -44,8 +43,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="max-w-7xl mx-auto border-t border-slate-200/60 px-6 sm:px-8 pt-8 text-xs font-semibold text-slate-400 flex flex-col md:flex-row justify-between items-center w-full">
-        <p>&copy; 2026 DHUAN AI. All rights reserved.</p>
-        <p className="mt-2 md:mt-0 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200/60">Built for the 4th International AI Championship</p>
+        <p>&copy; 2026 DHUAN. All rights reserved.</p>
       </div>
     </footer>
   );

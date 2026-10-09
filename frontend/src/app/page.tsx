@@ -25,7 +25,7 @@ export default function Dashboard() {
           <div className="space-y-6 max-w-2xl relative">
             <div className="absolute pointer-events-none -top-10 -left-10 w-24 h-24 bg-emerald-200 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob"></div>
             
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold shadow-sm">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold shadow-sm">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -35,13 +35,13 @@ export default function Dashboard() {
             
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 leading-[1.15]">
-                Predict the Smog. <br/>
-                <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-blue-600">
-                  Protect the People.
+                Intelligent Air Quality <br/>
+                <span className="text-emerald-700">
+                  Navigation for Lahore.
                 </span>
               </h1>
               <p className="text-base sm:text-lg text-slate-600 font-medium leading-relaxed max-w-md">
-                Dhuan se pehle, hifazat ka plan. Area-wise air quality forecasts, personal health advisories, and the safest routes for you and your family.
+                Real-time PM2.5 mapping, 72-hour localized forecasting, and low-exposure route planning to navigate hazardous urban smog.
               </p>
             </div>
 
@@ -61,15 +61,6 @@ export default function Dashboard() {
                 My Health Risk
               </Link>
             </div>
-
-            <div className="flex items-center gap-3 pt-4 text-xs font-medium text-slate-500 border-t border-slate-100">
-               <div className="flex -space-x-2">
-                  <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 shadow-sm"></div>
-                  <div className="w-6 h-6 rounded-full border-2 border-white bg-emerald-200 shadow-sm"></div>
-                  <div className="w-6 h-6 rounded-full border-2 border-white bg-blue-200 shadow-sm"></div>
-               </div>
-               <p>Trusted by <span className="text-slate-800 font-bold">10,000+</span> Lahoris</p>
-            </div>
           </div>
 
           {/* Right Side: Map Widget */}
@@ -83,10 +74,10 @@ export default function Dashboard() {
         <section id="features" className="py-16 mt-8 border-t border-slate-100/50">
           <div className="text-center max-w-2xl mx-auto mb-12 relative">
             <h2 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
-              Intelligent Protection for Lahore
+              Platform Capabilities
             </h2>
             <p className="mt-4 text-base text-slate-500">
-              DHUAN leverages cutting-edge Machine Learning (Random Forest & LSTM) to provide real-time, actionable insights against urban air pollution.
+              DHUAN utilizes Random Forest and LSTM algorithms to process environmental data into actionable navigation parameters.
             </p>
           </div>
 
@@ -96,9 +87,9 @@ export default function Dashboard() {
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center mb-4 shadow-sm border border-blue-100">
                 <BrainCircuit className="w-6 h-6 text-blue-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">AI Smog Prediction</h3>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Predictive Modeling</h3>
               <p className="text-sm text-slate-500 leading-relaxed">
-                Our models analyze meteorological data and historical PM2.5 levels to forecast air quality up to 72 hours in advance with high accuracy.
+                Analyzing meteorological variables and historical PM2.5 concentrations to generate localized 72-hour air quality forecasts.
               </p>
             </div>
 
@@ -107,9 +98,9 @@ export default function Dashboard() {
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center mb-4 shadow-sm border border-emerald-100">
                 <Activity className="w-6 h-6 text-emerald-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">Health Advisories</h3>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Exposure Assessment</h3>
               <p className="text-sm text-slate-500 leading-relaxed">
-                Input your age and medical history to receive personalized AI recommendations. Know exactly when it's safe to exercise outdoors.
+                Correlating real-time AQI data with user health profiles to quantify personal risk and calculate optimal exposure limits.
               </p>
             </div>
 
@@ -118,9 +109,9 @@ export default function Dashboard() {
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center mb-4 shadow-sm border border-orange-100">
                 <MapPin className="w-6 h-6 text-orange-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">Smart Routing</h3>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Spatial Routing</h3>
               <p className="text-sm text-slate-500 leading-relaxed">
-                Why drive through hazardous smog? Our intelligent router calculates the safest path to your destination by avoiding high-pollution zones.
+                Pathfinding algorithms that prioritize environmental safety over standard transit time, avoiding active high-pollution sectors.
               </p>
             </div>
           </div>
@@ -130,16 +121,15 @@ export default function Dashboard() {
         <section className="py-16 border-t border-slate-100/50">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 items-center">
             <div className="lg:col-span-1 space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold shadow-sm">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold shadow-sm">
                 <BrainCircuit className="w-3.5 h-3.5" />
-                Machine Learning
+                Time-Series Analysis
               </div>
               <h2 className="text-2xl font-extrabold text-slate-900 sm:text-3xl leading-tight">
-                See the Invisible. <br/> 
-                <span className="text-slate-400">Before it arrives.</span>
+                72-Hour Data Projections
               </h2>
               <p className="text-base text-slate-600 leading-relaxed max-w-sm">
-                Our Random Forest model predicts AQI spikes days before they happen. Plan your outdoor activities with confidence using our 7-day smog forecast.
+                Access statistical models predicting AQI fluctuations across varying atmospheric conditions to schedule essential transit.
               </p>
               <div className="pt-2">
                  <Link href="/register" className="inline-flex items-center gap-1.5 text-emerald-600 text-sm font-bold hover:text-emerald-700 transition-colors group">
@@ -149,7 +139,7 @@ export default function Dashboard() {
             </div>
             
             <div className="lg:col-span-2 bg-white rounded-[2rem] p-5 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/40 relative overflow-hidden">
-              <div className="absolute pointer-events-none top-0 right-0 w-48 h-48 bg-rose-50 rounded-full mix-blend-multiply filter blur-2xl opacity-50 -z-10"></div>
+              <div className="absolute pointer-events-none top-0 right-0 w-48 h-48 bg-emerald-50 rounded-full mix-blend-multiply filter blur-2xl opacity-50 -z-10"></div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3">
                 <h3 className="font-extrabold text-xl text-slate-900">Lahore AQI Forecast</h3>
                 <span className="inline-flex mt-2 sm:mt-0 text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Next 72 Hours</span>
@@ -161,20 +151,20 @@ export default function Dashboard() {
 
         {/* CTA Section */}
         <section className="py-16 text-center">
-          <div className="bg-slate-900 rounded-[2.5rem] p-10 sm:p-16 relative overflow-hidden shadow-2xl border border-slate-800">
-            <div className="absolute pointer-events-none top-0 right-0 w-56 h-56 bg-emerald-500/20 rounded-full filter blur-[80px] animate-pulse"></div>
-            <div className="absolute pointer-events-none bottom-0 left-0 w-56 h-56 bg-blue-500/20 rounded-full filter blur-[80px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+          <div className="bg-slate-900 rounded-3xl p-10 sm:p-16 relative overflow-hidden shadow-2xl border border-slate-800">
+            <div className="absolute pointer-events-none top-0 right-0 w-56 h-56 bg-emerald-500/10 rounded-full filter blur-[80px]"></div>
+            <div className="absolute pointer-events-none bottom-0 left-0 w-56 h-56 bg-blue-500/10 rounded-full filter blur-[80px]"></div>
             
             <div className="relative z-10 max-w-2xl mx-auto">
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-4 tracking-tight">Ready to breathe safer?</h2>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-4 tracking-tight">Access Navigation Dashboard</h2>
               <p className="text-base sm:text-lg text-slate-300 mb-8 leading-relaxed font-light">
-                Join thousands of Lahoris who are using DHUAN to protect their families from hazardous smog and navigate the city safely.
+                Initialize your health profile and generate localized safe routes through the DHUAN platform.
               </p>
               <Link 
                 href="/register" 
-                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-extrabold text-base transition-all shadow-[0_0_30px_-10px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_-15px_rgba(16,185,129,0.7)]"
+                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-extrabold text-base transition-all shadow-[0_0_30px_-10px_rgba(16,185,129,0.5)] hover:-translate-y-0.5"
               >
-                Create Free Profile <ArrowRight className="w-4 h-4 ml-1" />
+                Create Account <ArrowRight className="w-4 h-4 ml-1" />
               </Link>
             </div>
           </div>
