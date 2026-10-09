@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-import Navbar from "@/components/Navbar";
+import ConditionalNavbar from "@/components/ConditionalNavbar";
 
 export const metadata: Metadata = {
   title: "DHUAN | AI Smog & Navigation Platform",
@@ -30,7 +30,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-white text-slate-900">
-        <Navbar />
+        <ConditionalNavbar />
         <main className="flex-1">
           {children}
         </main>
