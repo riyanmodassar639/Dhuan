@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2 } from 'lucide-react';
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft } from 'lucide-react';
 
 // Custom Blue Dot icon for Live Location
 const blueDotIcon = new L.DivIcon({
@@ -50,6 +50,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [routes, setRoutes] = useState<any[]>([]);
   const [selectedRouteIdx, setSelectedRouteIdx] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [userAddress, setUserAddress] = useState("Your Location");
 
   useEffect(() => {
     setMounted(true);
@@ -327,8 +329,20 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     const origin = userLocation || [31.5204, 74.3587];
     const dest = [selectedPlace.lat, selectedPlace.lon];
     
+    // Reverse geocode origin for display name
+    setUserAddress("Locating...");
+    fetch(`https://photon.komoot.io/reverse?lon=${origin[1]}&lat=${origin[0]}`)
+      .then(r => r.json())
+      .then(d => {
+         if (d.features && d.features.length > 0) {
+            setUserAddress(d.features[0].properties.name || d.features[0].properties.street || "Current Location");
+         } else {
+            setUserAddress("Current Location");
+         }
+      }).catch(() => setUserAddress("Current Location"));
+
     try {
-      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=true&overview=full`);
+      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=3&overview=full`);
       const data = await res.json();
       if (data.routes && data.routes.length > 0) {
         setRoutes(data.routes);
@@ -474,13 +488,13 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
       {/* Left Sidebar Modal for Selected Place (Google Maps Style) */}
       {selectedPlace && (
-        <div className="absolute top-0 left-0 h-full w-full sm:w-[400px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[1500] flex flex-col animate-in slide-in-from-left-12 duration-300">
+        <div className={`absolute top-0 left-0 h-full w-full sm:w-[400px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[2500] flex flex-col transition-transform duration-300 ${isPanelCollapsed ? '-translate-x-full' : 'translate-x-0'}`}>
           
           {isDirectionsMode ? (
             <div className="flex flex-col h-full bg-slate-50">
                <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
-                  <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="mb-5 text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors">
-                    <X className="w-4 h-4" /> Back to details
+                  <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="mb-4 text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors w-fit p-2 -ml-2 rounded-full hover:bg-slate-100">
+                    <ArrowLeft className="w-5 h-5" />
                   </button>
                   <div className="space-y-3 relative ml-2">
                      <div className="absolute left-3.5 top-5 bottom-5 w-0.5 bg-slate-200"></div>
@@ -488,7 +502,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                        <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
                           <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
                        </div>
-                       <div className="flex-1 bg-slate-100 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 border border-slate-200">Your Location</div>
+                       <div className="flex-1 bg-slate-100 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 border border-slate-200 truncate">{userAddress}</div>
                      </div>
                      <div className="flex items-center gap-4">
                        <div className="w-7 h-7 bg-rose-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
@@ -525,11 +539,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                {routes.length > 0 && (
                  <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
                     <button 
-                      onClick={() => setIsNavigating(true)}
+                      onClick={() => { setIsNavigating(true); setIsPanelCollapsed(true); }}
                       className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
                     >
                       <Navigation className="w-5 h-5 fill-white" />
-                      {isNavigating ? 'Navigating...' : 'Start Navigation'}
+                      Start Navigation
                     </button>
                  </div>
                )}
@@ -537,17 +551,18 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           ) : (
             <>
               {/* Header (No Image, White Clean Style) */}
-              <div className="pt-8 pb-6 px-6 bg-white relative shrink-0 border-b border-slate-100">
+              <div className="pt-6 pb-4 px-4 bg-white relative shrink-0 border-b border-slate-100 flex items-start gap-3">
                 <button 
-                  onClick={() => setSelectedPlace(null)}
-                  className="absolute top-4 right-4 bg-slate-100 text-slate-400 p-2 rounded-full hover:bg-slate-200 transition-colors"
+                  onClick={() => { setSelectedPlace(null); setIsDirectionsMode(false); setRoutes([]); }}
+                  className="bg-transparent text-slate-500 p-2 rounded-full hover:bg-slate-100 transition-colors mt-1 shrink-0"
                 >
-                  <X className="w-4 h-4" />
+                  <ArrowLeft className="w-5 h-5" />
                 </button>
-                
-                <h2 className="text-2xl font-extrabold text-slate-900 line-clamp-2 leading-tight pr-8 mt-2">
-                  {selectedPlace.display_name.split(',')[0]}
-                </h2>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-extrabold text-slate-900 line-clamp-2 leading-tight">
+                    {selectedPlace.display_name.split(',')[0]}
+                  </h2>
+                </div>
               </div>
           
           {/* Scrollable Content */}
@@ -637,6 +652,20 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </>
           )}
         </div>
+      )}
+
+      {/* Floating collapsed widget when navigating */}
+      {selectedPlace && isPanelCollapsed && (
+         <div className="absolute top-4 left-4 z-[2500] bg-white p-4 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col gap-3 animate-in fade-in zoom-in duration-300">
+            <div className="font-bold text-slate-900 flex items-center gap-2">
+               <Navigation className="w-5 h-5 text-blue-600" />
+               Navigating to {selectedPlace.name}
+            </div>
+            <div className="flex gap-2">
+               <button onClick={() => setIsPanelCollapsed(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Details</button>
+               <button onClick={() => { setIsPanelCollapsed(false); setIsNavigating(false); setIsDirectionsMode(false); setSelectedPlace(null); setRoutes([]); }} className="px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 text-sm font-bold rounded-lg transition-colors">End Route</button>
+            </div>
+         </div>
       )}
 
       {/* Compass Icon (Bottom Right, adjusted if fullScreen) */}
