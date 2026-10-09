@@ -91,20 +91,21 @@ export default function MapWidget() {
   };
 
   return (
-    <div className="w-full h-full min-h-[600px] flex-1 rounded-2xl overflow-hidden shadow-sm border border-slate-200 relative z-0">
-      <MapContainer 
-        center={position} 
-        zoom={12} 
-        scrollWheelZoom={true} 
-        zoomControl={false}
-        style={{ height: '100%', width: '100%' }}
-        ref={mapRef}
-      >
-        {/* OpenStreetMap Tiles */}
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
-        />
+    <div className="w-full h-full min-h-[500px] lg:min-h-[600px] flex-1 rounded-2xl overflow-hidden shadow-sm border border-slate-200 relative z-0">
+      <div className="absolute inset-0">
+        <MapContainer 
+          center={position} 
+          zoom={12} 
+          scrollWheelZoom={true} 
+          zoomControl={false}
+          style={{ height: '100%', width: '100%' }}
+          ref={mapRef}
+        >
+          {/* Standard OpenStreetMap Tiles (No API Key Required) */}
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+          />
 
         {/* Live User Location Marker */}
         {userLocation && (
@@ -196,6 +197,7 @@ export default function MapWidget() {
             <div className="font-bold text-slate-900 text-xs">AQI: 165 <span className="text-yellow-600 font-semibold">(Unhealthy)</span></div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
