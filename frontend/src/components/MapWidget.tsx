@@ -58,15 +58,8 @@ export default function MapWidget() {
     }
   }, [userLocation, hasCentered]);
 
-  // Clean up map instance on unmount (solves "Map container is being reused" in React 19 StrictMode)
-  useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
-  }, []);
+  // Note: We do NOT manually call mapRef.current.remove() on unmount.
+  // react-leaflet handles its own cleanup. Doing so manually breaks it in StrictMode.
 
   if (!mounted) {
     return (
@@ -97,10 +90,10 @@ export default function MapWidget() {
         style={{ height: '100%', width: '100%' }}
         ref={mapRef}
       >
-        {/* Google Maps Style Tiles */}
+        {/* OpenStreetMap Tiles */}
         <TileLayer
-          url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
-          attribution="&copy; Google Maps"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
         />
 
         {/* Live User Location Marker */}
