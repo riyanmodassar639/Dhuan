@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2 } from 'lucide-react';
@@ -44,6 +44,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const skipNextSearch = useRef(false);
+
+  // Directions State
+  const [isDirectionsMode, setIsDirectionsMode] = useState(false);
+  const [routes, setRoutes] = useState<any[]>([]);
+  const [selectedRouteIdx, setSelectedRouteIdx] = useState(0);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -312,6 +318,34 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return null;
   };
 
+  const handleDirectionsClick = async () => {
+    if (!selectedPlace) return;
+    setIsDirectionsMode(true);
+    setIsNavigating(false);
+    
+    // Mock user location if null (use Lahore center)
+    const origin = userLocation || [31.5204, 74.3587];
+    const dest = [selectedPlace.lat, selectedPlace.lon];
+    
+    try {
+      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=true&overview=full`);
+      const data = await res.json();
+      if (data.routes && data.routes.length > 0) {
+        setRoutes(data.routes);
+        setSelectedRouteIdx(0);
+        
+        // Fit bounds to the route
+        if (mapRef.current && data.routes[0]) {
+           const coords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+           const bounds = L.latLngBounds(coords);
+           mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
       <div className="absolute inset-0">
@@ -348,6 +382,23 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </Popup>
           </Marker>
         )}
+
+        {/* Direction Routes */}
+        {isDirectionsMode && routes.length > 0 && routes.map((route, idx) => {
+           const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
+           const isSelected = idx === selectedRouteIdx;
+           return (
+             <Polyline 
+               key={idx} 
+               positions={coords} 
+               color={isSelected ? '#2563eb' : '#94a3b8'} 
+               weight={isSelected ? 6 : 4} 
+               opacity={isSelected ? 0.9 : 0.6}
+               eventHandlers={{ click: () => setSelectedRouteIdx(idx) }}
+               pathOptions={{ zIndex: isSelected ? 500 : 400 }}
+             />
+           );
+        })}
 
         {/* Simulated Air Quality / Smog Layer */}
         {/* Adjusted for higher visibility and distinction between zones */}
@@ -424,19 +475,80 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       {/* Left Sidebar Modal for Selected Place (Google Maps Style) */}
       {selectedPlace && (
         <div className="absolute top-0 left-0 h-full w-full sm:w-[400px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[1500] flex flex-col animate-in slide-in-from-left-12 duration-300">
-          {/* Header (No Image) */}
-          <div className="pt-8 pb-6 px-6 bg-slate-900 relative shrink-0">
-            <button 
-              onClick={() => setSelectedPlace(null)}
-              className="absolute top-4 right-4 bg-white/10 text-white p-2 rounded-full hover:bg-white/20 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            
-            <h2 className="text-2xl font-extrabold text-white line-clamp-2 leading-tight pr-8 mt-2">
-              {selectedPlace.display_name.split(',')[0]}
-            </h2>
-          </div>
+          
+          {isDirectionsMode ? (
+            <div className="flex flex-col h-full bg-slate-50">
+               <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
+                  <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="mb-5 text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors">
+                    <X className="w-4 h-4" /> Back to details
+                  </button>
+                  <div className="space-y-3 relative ml-2">
+                     <div className="absolute left-3.5 top-5 bottom-5 w-0.5 bg-slate-200"></div>
+                     <div className="flex items-center gap-4">
+                       <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
+                          <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
+                       </div>
+                       <div className="flex-1 bg-slate-100 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 border border-slate-200">Your Location</div>
+                     </div>
+                     <div className="flex items-center gap-4">
+                       <div className="w-7 h-7 bg-rose-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
+                          <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                       </div>
+                       <div className="flex-1 bg-slate-100 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-900 border border-slate-200 truncate">{selectedPlace.name}</div>
+                     </div>
+                  </div>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {routes.length === 0 && <div className="text-center p-8 text-slate-400 font-medium">Calculating route...</div>}
+                  {routes.map((route, idx) => (
+                    <div 
+                      key={idx} 
+                      onClick={() => setSelectedRouteIdx(idx)}
+                      className={`p-4 rounded-xl cursor-pointer border-2 transition-all ${idx === selectedRouteIdx ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-200'}`}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`font-black text-lg ${idx === selectedRouteIdx ? 'text-blue-700' : 'text-slate-800'}`}>
+                          {Math.round(route.duration / 60)} min
+                        </span>
+                        <span className="text-sm font-bold text-slate-500">
+                          {(route.distance / 1000).toFixed(1)} km
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 font-medium">
+                        via {route.legs[0]?.steps?.[0]?.name || "Main Route"}
+                      </div>
+                    </div>
+                  ))}
+               </div>
+               
+               {routes.length > 0 && (
+                 <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+                    <button 
+                      onClick={() => setIsNavigating(true)}
+                      className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
+                    >
+                      <Navigation className="w-5 h-5 fill-white" />
+                      {isNavigating ? 'Navigating...' : 'Start Navigation'}
+                    </button>
+                 </div>
+               )}
+            </div>
+          ) : (
+            <>
+              {/* Header (No Image, White Clean Style) */}
+              <div className="pt-8 pb-6 px-6 bg-white relative shrink-0 border-b border-slate-100">
+                <button 
+                  onClick={() => setSelectedPlace(null)}
+                  className="absolute top-4 right-4 bg-slate-100 text-slate-400 p-2 rounded-full hover:bg-slate-200 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                
+                <h2 className="text-2xl font-extrabold text-slate-900 line-clamp-2 leading-tight pr-8 mt-2">
+                  {selectedPlace.display_name.split(',')[0]}
+                </h2>
+              </div>
           
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto bg-slate-50 pb-8">
@@ -447,7 +559,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
               {/* Action Buttons */}
               <div className="flex items-center justify-around pb-2">
-                <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
+                <div onClick={handleDirectionsClick} className="flex flex-col items-center gap-1.5 cursor-pointer group">
                   <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md group-hover:bg-blue-700 transition-colors">
                     <Navigation className="w-5 h-5" />
                   </div>
@@ -521,6 +633,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                 ))}
               </div>
             </div>
+          )}
+            </>
           )}
         </div>
       )}
