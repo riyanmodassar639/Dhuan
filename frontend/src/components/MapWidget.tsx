@@ -128,9 +128,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         }
 
         // Regular Text Search (Location names)
-        const searchQuery = trimmedQuery.toLowerCase().includes('lahore') ? trimmedQuery : `${trimmedQuery} Lahore`;
         // Photon API with location bias for Lahore
-        fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery)}&lat=31.5204&lon=74.3587&limit=5`)
+        fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(trimmedQuery)}&lat=31.5204&lon=74.3587&limit=6`)
           .then(res => res.json())
           .then(data => {
             // Map GeoJSON features to our expected format
