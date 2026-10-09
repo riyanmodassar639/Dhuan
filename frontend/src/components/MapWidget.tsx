@@ -78,25 +78,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return () => clearTimeout(timer);
   }, [mounted, fullScreen, selectedPlace]);
 
-  if (!mounted) {
-    return (
-      <div className="w-full h-full bg-slate-100 animate-pulse rounded-2xl flex items-center justify-center">
-        <span className="text-slate-400 font-medium">Loading Map...</span>
-      </div>
-    );
-  }
-
-  // Coordinates for Lahore
-  const position: [number, number] = [31.5204, 74.3587];
-
-  const handleCompassClick = () => {
-    if (mapRef.current && userLocation) {
-      mapRef.current.flyTo(userLocation, 14, { animate: true, duration: 1.5 });
-    } else if (mapRef.current) {
-      mapRef.current.flyTo(position, 12, { animate: true, duration: 1.5 });
-    }
-  };
-
   // Live Search with Debounce
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -121,6 +102,25 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
+
+  if (!mounted) {
+    return (
+      <div className="w-full h-full bg-slate-100 animate-pulse rounded-2xl flex items-center justify-center">
+        <span className="text-slate-400 font-medium">Loading Map...</span>
+      </div>
+    );
+  }
+
+  // Coordinates for Lahore
+  const position: [number, number] = [31.5204, 74.3587];
+
+  const handleCompassClick = () => {
+    if (mapRef.current && userLocation) {
+      mapRef.current.flyTo(userLocation, 14, { animate: true, duration: 1.5 });
+    } else if (mapRef.current) {
+      mapRef.current.flyTo(position, 12, { animate: true, duration: 1.5 });
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
