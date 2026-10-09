@@ -43,6 +43,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const skipNextSearch = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -82,6 +83,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   // Live Search with Debounce using Photon API (handles text and coordinates)
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
+      if (skipNextSearch.current) {
+        skipNextSearch.current = false;
+        return;
+      }
       const trimmedQuery = query.trim();
       if (trimmedQuery.length > 2) {
         setIsSearching(true);
@@ -216,12 +221,35 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     if (aqiVal > 200) { status = 'Very Unhealthy'; color = 'text-orange-700'; bg = 'bg-orange-50'; border = 'border-orange-200'; }
     if (aqiVal > 300) { status = 'Hazardous'; color = 'text-rose-700'; bg = 'bg-rose-50'; border = 'border-rose-200'; }
 
+    // Generate 24h mock forecast
+    const forecast = [];
+    let currentAqi = aqiVal;
+    for (let i = 1; i <= 24; i++) {
+       currentAqi += Math.floor(Math.random() * 21) - 10;
+       if (currentAqi < 10) currentAqi = 10;
+       
+       let statusColor = 'text-emerald-500';
+       if (currentAqi > 150) statusColor = 'text-yellow-500';
+       if (currentAqi > 200) statusColor = 'text-orange-500';
+       if (currentAqi > 300) statusColor = 'text-rose-500';
+       
+       const d = new Date();
+       d.setHours(d.getHours() + i);
+       forecast.push({
+          time: d.toLocaleString('en-US', { hour: 'numeric', hour12: true }),
+          aqi: currentAqi,
+          color: statusColor
+       });
+    }
+
     setSelectedPlace({
       ...place,
       lat, lon,
       aqi: aqiVal,
-      status, color, bg, border
+      status, color, bg, border,
+      forecast
     });
+    skipNextSearch.current = true;
     setResults([]);
     setHasSearched(false);
     setQuery(place.name || place.display_name.split(',')[0]);
@@ -473,8 +501,27 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                  </div>
                </div>
             </div>
-            
           </div>
+
+          {/* 24-Hour Forecast */}
+          {selectedPlace.forecast && (
+            <div className="mt-2 p-5 bg-white shadow-sm border-t border-slate-100">
+              <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                <Activity className="w-4 h-4 text-emerald-600" />
+                24-Hour Forecast
+              </h3>
+              
+              <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                {selectedPlace.forecast.map((f: any, idx: number) => (
+                  <div key={idx} className="flex flex-col items-center justify-center min-w-[70px] p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors cursor-default">
+                    <span className="text-xs font-bold text-slate-500 mb-2">{f.time}</span>
+                    <Wind className={`w-5 h-5 mb-2 ${f.color}`} />
+                    <span className="text-lg font-black text-slate-900">{f.aqi}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
