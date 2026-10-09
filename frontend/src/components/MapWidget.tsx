@@ -58,6 +58,16 @@ export default function MapWidget() {
     }
   }, [userLocation, hasCentered]);
 
+  // Fix: Force Leaflet to recalculate map size after rendering in flex containers
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [mounted]);
+
   // Note: We do NOT manually call mapRef.current.remove() on unmount.
   // react-leaflet handles its own cleanup. Doing so manually breaks it in StrictMode.
 
@@ -81,7 +91,7 @@ export default function MapWidget() {
   };
 
   return (
-    <div className="w-full h-full rounded-2xl overflow-hidden shadow-sm border border-slate-200 relative z-0">
+    <div className="w-full h-full min-h-[600px] flex-1 rounded-2xl overflow-hidden shadow-sm border border-slate-200 relative z-0">
       <MapContainer 
         center={position} 
         zoom={12} 

@@ -22,7 +22,7 @@ export default function MapPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-[600px] bg-white rounded-[2rem] p-2 border border-slate-200 shadow-xl shadow-slate-200/50 relative overflow-hidden group">
+      <div className="flex-1 flex flex-col min-h-[600px] bg-white rounded-[2rem] p-2 border border-slate-200 shadow-xl shadow-slate-200/50 relative overflow-hidden group">
          <div className="absolute -inset-2 bg-gradient-to-tr from-emerald-100 to-blue-50 rounded-[20px] blur-lg -z-10 opacity-50 pointer-events-none group-hover:opacity-70 transition-opacity duration-500"></div>
          <MapWidget />
       </div>
