@@ -396,22 +396,30 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       
       let baseRoutes = data.routes || [];
       
-      // If OSRM fails to return multiple routes (common for basic open source routing), we mock 2 extra smooth alternatives
-      if (baseRoutes.length === 1) {
+      // OSRM often returns identical overlapping alternative geometries. 
+      // To guarantee visually distinct routes for the demo, we take the primary route and mock 2 visual alternatives.
+      if (baseRoutes.length > 0) {
          const primary = baseRoutes[0];
+         baseRoutes = [primary]; // Discard OSRM's overlapping alternatives
+         
          const createMockRoute = (offsetMult: number) => {
             const newCoords = primary.geometry.coordinates.map((c: any, i: number, arr: any[]) => {
+               // Don't offset the first and last 5% of the trip so they connect at origin/destination
                if (i < arr.length * 0.05 || i > arr.length * 0.95) return [c[0], c[1]];
                const progress = i / arr.length;
                const sineOffset = Math.sin(progress * Math.PI); // Smooth bulge in the middle
-               return [c[0] + (0.004 * offsetMult * sineOffset), c[1] + (0.004 * offsetMult * sineOffset)];
+               // 0.008 degrees offset is roughly 800 meters, highly visible at zoom 12-14
+               return [
+                  c[0] + (0.008 * offsetMult * sineOffset), 
+                  c[1] + (0.008 * offsetMult * sineOffset)
+               ];
             });
             return {
                ...primary,
                distance: primary.distance * (1 + Math.abs(offsetMult) * 0.08),
                duration: primary.duration * (1 + Math.abs(offsetMult) * 0.12),
                geometry: { ...primary.geometry, coordinates: newCoords },
-               legs: [{ ...primary.legs[0], steps: [{ name: `Alt Route ${offsetMult > 0 ? 'East' : 'West'}` }] }]
+               legs: [{ ...primary.legs[0], steps: [{ name: `Alternative Route ${offsetMult > 0 ? 'A' : 'B'}` }] }]
             };
          };
          baseRoutes.push(createMockRoute(1));  // Bulge right
@@ -563,7 +571,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            const isSelected = originalIdx === selectedRouteIdx;
            return (
              <Polyline 
-               key={originalIdx} 
+               key={`${originalIdx}-${isSelected}`} 
                positions={coords} 
                color={isSelected ? '#7c3aed' : '#64748b'} 
                weight={isSelected ? 6 : 4} 
