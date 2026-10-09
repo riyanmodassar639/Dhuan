@@ -51,7 +51,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [selectedRouteIdx, setSelectedRouteIdx] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  
+  // Custom Origin State for Directions
   const [userAddress, setUserAddress] = useState("Your Location");
+  const [originInput, setOriginInput] = useState("");
+  const [routeOriginCoords, setRouteOriginCoords] = useState<[number, number] | null>(null);
+
+  useEffect(() => {
+    setOriginInput(userAddress);
+  }, [userAddress]);
 
   useEffect(() => {
     setMounted(true);
@@ -320,38 +328,41 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return null;
   };
 
-  const handleDirectionsClick = async () => {
-    if (!selectedPlace) return;
-    setIsDirectionsMode(true);
-    setIsNavigating(false);
-    
-    // Mock user location if null (use Lahore center)
-    const origin = userLocation || [31.5204, 74.3587];
-    const dest = [selectedPlace.lat, selectedPlace.lon];
-    
-    // Reverse geocode origin for display name
-    setUserAddress("Locating...");
-    fetch(`https://photon.komoot.io/reverse?lon=${origin[1]}&lat=${origin[0]}`)
-      .then(r => r.json())
-      .then(d => {
-         if (d.features && d.features.length > 0) {
-            setUserAddress(d.features[0].properties.name || d.features[0].properties.street || "Current Location");
-         } else {
-            setUserAddress("Current Location");
-         }
-      }).catch(() => setUserAddress("Current Location"));
-
+  const fetchRoutesAndEnhance = async (origin: [number, number], dest: [number, number]) => {
     try {
       const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=3&overview=full`);
       const data = await res.json();
-      if (data.routes && data.routes.length > 0) {
-        
+      
+      let baseRoutes = data.routes || [];
+      
+      // If OSRM fails to return multiple routes (common for basic open source routing), we mock 2 extra smooth alternatives
+      if (baseRoutes.length === 1) {
+         const primary = baseRoutes[0];
+         const createMockRoute = (offsetMult: number) => {
+            const newCoords = primary.geometry.coordinates.map((c: any, i: number, arr: any[]) => {
+               if (i < arr.length * 0.05 || i > arr.length * 0.95) return [c[0], c[1]];
+               const progress = i / arr.length;
+               const sineOffset = Math.sin(progress * Math.PI); // Smooth bulge in the middle
+               return [c[0] + (0.004 * offsetMult * sineOffset), c[1] + (0.004 * offsetMult * sineOffset)];
+            });
+            return {
+               ...primary,
+               distance: primary.distance * (1 + Math.abs(offsetMult) * 0.08),
+               duration: primary.duration * (1 + Math.abs(offsetMult) * 0.12),
+               geometry: { ...primary.geometry, coordinates: newCoords },
+               legs: [{ ...primary.legs[0], steps: [{ name: `Alt Route ${offsetMult > 0 ? 'East' : 'West'}` }] }]
+            };
+         };
+         baseRoutes.push(createMockRoute(1));  // Bulge right
+         baseRoutes.push(createMockRoute(-1)); // Bulge left
+      }
+
+      if (baseRoutes.length > 0) {
         // Enhance routes with mock AI environment data
-        const enhancedRoutes = data.routes.map((r: any, idx: number) => {
+        const enhancedRoutes = baseRoutes.map((r: any, idx: number) => {
            let isSafest = false;
-           // If multiple routes, make the second one the safest to show AI choice vs fastest
-           if (data.routes.length > 1 && idx === 1) isSafest = true;
-           else if (data.routes.length === 1 && idx === 0) isSafest = true;
+           if (baseRoutes.length > 1 && idx === 1) isSafest = true;
+           else if (baseRoutes.length === 1 && idx === 0) isSafest = true;
            
            const smogExposure = isSafest ? Math.floor(Math.random() * 20) + 20 : Math.floor(Math.random() * 50) + 70;
            const trafficLevel = isSafest ? 'Low' : ['Moderate', 'High'][Math.floor(Math.random() * 2)];
@@ -365,7 +376,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         setRoutes(enhancedRoutes);
         setSelectedRouteIdx(enhancedRoutes.length > 1 ? 1 : 0); // Auto-select safest
         
-        // Fit bounds to the route
         if (mapRef.current && enhancedRoutes[0]) {
            const coords = enhancedRoutes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
            const bounds = L.latLngBounds(coords);
@@ -373,8 +383,65 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         }
       }
     } catch (err) {
-      console.error(err);
+      console.error("Routing error:", err);
     }
+  };
+
+  const handleDirectionsClick = async () => {
+    if (!selectedPlace) return;
+    setIsDirectionsMode(true);
+    setIsNavigating(false);
+    
+    const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+    setRouteOriginCoords(origin);
+    const dest: [number, number] = [selectedPlace.lat, selectedPlace.lon];
+    
+    // Reverse geocode origin for display name
+    if (userAddress === "Your Location" || originInput === "Your Location") {
+      setUserAddress("Locating...");
+      fetch(`https://photon.komoot.io/reverse?lon=${origin[1]}&lat=${origin[0]}`)
+        .then(r => r.json())
+        .then(d => {
+           if (d.features && d.features.length > 0) {
+              const name = d.features[0].properties.name || d.features[0].properties.street || "Current Location";
+              setUserAddress(name);
+           } else setUserAddress("Current Location");
+        }).catch(() => setUserAddress("Current Location"));
+    }
+
+    await fetchRoutesAndEnhance(origin, dest);
+  };
+
+  const handleCustomOriginSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+     if (e.key === 'Enter' && originInput.trim().length > 2) {
+        setIsSearching(true);
+        try {
+           const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(originInput)}&lat=31.5204&lon=74.3587&limit=1`);
+           const data = await res.json();
+           if (data.features && data.features.length > 0) {
+              const f = data.features[0];
+              const newOrigin: [number, number] = [f.geometry.coordinates[1], f.geometry.coordinates[0]];
+              setRouteOriginCoords(newOrigin);
+              setUserAddress(f.properties.name || originInput);
+              if (selectedPlace) {
+                 await fetchRoutesAndEnhance(newOrigin, [selectedPlace.lat, selectedPlace.lon]);
+              }
+           } else {
+              // Fallback to ArcGIS
+              const arcRes = await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine=${encodeURIComponent(originInput)}&maxLocations=1`);
+              const arcData = await arcRes.json();
+              if (arcData.candidates && arcData.candidates.length > 0) {
+                 const newOrigin: [number, number] = [arcData.candidates[0].location.y, arcData.candidates[0].location.x];
+                 setRouteOriginCoords(newOrigin);
+                 setUserAddress(arcData.candidates[0].address.split(',')[0]);
+                 if (selectedPlace) {
+                    await fetchRoutesAndEnhance(newOrigin, [selectedPlace.lat, selectedPlace.lon]);
+                 }
+              }
+           }
+        } catch(err) { console.error(err); }
+        setIsSearching(false);
+     }
   };
 
   return (
@@ -394,12 +461,22 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             attribution="&copy; Google Maps"
           />
 
-        {/* Live User Location Marker */}
-        {userLocation && (
+        {/* Live User Location Marker (if not overridden by custom route origin) */}
+        {userLocation && (!isDirectionsMode || !routeOriginCoords || (routeOriginCoords[0] === userLocation[0] && routeOriginCoords[1] === userLocation[1])) && (
           <Marker position={userLocation} icon={blueDotIcon} zIndexOffset={1000}>
             <Popup>
                <div className="font-bold text-slate-900 text-sm">You are here</div>
                <div className="text-slate-500 text-xs">Live GPS Location</div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Custom Route Origin Marker */}
+        {isDirectionsMode && routeOriginCoords && (!userLocation || routeOriginCoords[0] !== userLocation[0] || routeOriginCoords[1] !== userLocation[1]) && (
+          <Marker position={routeOriginCoords} icon={blueDotIcon} zIndexOffset={1000}>
+            <Popup>
+               <div className="font-bold text-slate-900 text-sm">Starting Point</div>
+               <div className="text-slate-500 text-xs">{userAddress}</div>
             </Popup>
           </Marker>
         )}
@@ -524,7 +601,13 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                        <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
                           <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
                        </div>
-                       <div className="flex-1 bg-slate-100 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 border border-slate-200 truncate">{userAddress}</div>
+                       <input 
+                         value={originInput}
+                         onChange={(e) => setOriginInput(e.target.value)}
+                         onKeyDown={handleCustomOriginSubmit}
+                         className="flex-1 bg-white px-3 py-2.5 rounded-xl text-sm font-medium text-slate-900 border border-slate-200 shadow-inner focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
+                         placeholder="Enter starting point..."
+                       />
                      </div>
                      <div className="flex items-center gap-4">
                        <div className="w-7 h-7 bg-rose-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
