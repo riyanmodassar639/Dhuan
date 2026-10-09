@@ -78,17 +78,29 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return () => clearTimeout(timer);
   }, [mounted, fullScreen, selectedPlace]);
 
-  // Live Search with Debounce
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Live Search with Debounce using Photon API (much better fuzzy matching & autocomplete)
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (query.trim().length > 2) {
         setIsSearching(true);
-        // Append 'Lahore' to prioritize local results
+        // Append 'Lahore' to prioritize local results but photon uses lat/lon bias
         const searchQuery = query.toLowerCase().includes('lahore') ? query : `${query} Lahore`;
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`)
+        // Photon API with location bias for Lahore
+        fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery)}&lat=31.5204&lon=74.3587&limit=5`)
           .then(res => res.json())
           .then(data => {
-            setResults(data);
+            // Map GeoJSON features to our expected format
+            const mappedResults = data.features.map((f: any) => ({
+              place_id: f.properties.osm_id,
+              lat: f.geometry.coordinates[1],
+              lon: f.geometry.coordinates[0],
+              display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || f.properties.name,
+              name: f.properties.name || f.properties.street || "Unknown Place"
+            }));
+            setResults(mappedResults);
+            setHasSearched(true);
             setIsSearching(false);
           })
           .catch(err => {
@@ -97,8 +109,9 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           });
       } else {
         setResults([]);
+        setHasSearched(false);
       }
-    }, 600); // 600ms debounce to respect Nominatim API rate limits
+    }, 600); // 600ms debounce
 
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
@@ -145,7 +158,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       status, color, bg, border
     });
     setResults([]);
-    setQuery(place.display_name.split(',')[0]);
+    setHasSearched(false);
+    setQuery(place.name || place.display_name.split(',')[0]);
     
     // Fly to location
     if (mapRef.current) {
@@ -229,28 +243,34 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <div className="w-4 h-4 ml-2 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
           )}
           {query && !isSearching && (
-            <button type="button" onClick={() => { setQuery(''); setResults([]); setSelectedPlace(null); }} className="ml-2 p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+            <button type="button" onClick={() => { setQuery(''); setResults([]); setHasSearched(false); setSelectedPlace(null); }} className="ml-2 p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
               <X className="w-4 h-4" />
             </button>
           )}
         </form>
 
         {/* Search Results Dropdown */}
-        {results.length > 0 && (
+        {(results.length > 0 || (hasSearched && query.trim().length > 2 && !isSearching)) && (
           <div className="mt-2 bg-white rounded-xl shadow-[0_12px_24px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden max-h-[300px] overflow-y-auto">
-            {results.map((place, idx) => (
-              <div 
-                key={place.place_id || idx}
-                onClick={() => handleSelectPlace(place)}
-                className="flex items-start gap-3 p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
-              >
-                <MapPin className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-slate-900 line-clamp-1">{place.display_name.split(',')[0]}</span>
-                  <span className="text-xs text-slate-500 line-clamp-1">{place.display_name}</span>
+            {results.length > 0 ? (
+              results.map((place, idx) => (
+                <div 
+                  key={place.place_id || idx}
+                  onClick={() => handleSelectPlace(place)}
+                  className="flex items-start gap-3 p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+                >
+                  <MapPin className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-slate-900 line-clamp-1">{place.name}</span>
+                    <span className="text-xs text-slate-500 line-clamp-1">{place.display_name}</span>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="p-4 text-center text-slate-500 text-sm font-medium">
+                No results found for "{query}"
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
