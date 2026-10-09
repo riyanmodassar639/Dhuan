@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Pane } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2 } from 'lucide-react';
@@ -232,6 +232,58 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     }
   };
 
+  // Component to handle map clicks for Reverse Geocoding
+  const MapClickHandler = () => {
+    useMapEvents({
+      click: async (e) => {
+        const { lat, lng } = e.latlng;
+        // Don't trigger if they are already searching or sliding
+        setIsSearching(true);
+        try {
+          // Reverse Geocode using Photon
+          const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
+          const data = await res.json();
+          let placeName = `Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          let displayName = placeName;
+          let placeId = Date.now();
+
+          if (data.features && data.features.length > 0) {
+            const f = data.features[0];
+            placeId = f.properties.osm_id || placeId;
+            displayName = [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || placeName;
+            placeName = f.properties.name || f.properties.street || "Pinned Location";
+          } else {
+             // Fallback to ArcGIS Reverse Geocoding
+             try {
+                const arcRes = await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=${lng},${lat}`);
+                const arcData = await arcRes.json();
+                if (arcData.address && arcData.address.Match_addr) {
+                   displayName = arcData.address.Match_addr;
+                   placeName = displayName.split(',')[0];
+                }
+             } catch(e) {}
+          }
+
+          // Build place object and select it
+          const placeObj = {
+            place_id: placeId,
+            lat: lat,
+            lon: lng,
+            display_name: displayName,
+            name: placeName
+          };
+          
+          handleSelectPlace(placeObj);
+          
+        } catch (err) {
+          console.error("Reverse geocoding error:", err);
+        }
+        setIsSearching(false);
+      }
+    });
+    return null;
+  };
+
   return (
     <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
       <div className="absolute inset-0">
@@ -291,6 +343,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <Circle center={[31.5800, 74.4500]} pathOptions={{ stroke: false, fillColor: '#16a34a', fillOpacity: 0.7 }} radius={5000} />
             <Circle center={[31.5500, 74.4800]} pathOptions={{ stroke: false, fillColor: '#22c55e', fillOpacity: 0.6 }} radius={5500} />
         </Pane>
+        <MapClickHandler />
       </MapContainer>
 
       {/* Floating Google-Maps-Style Search Bar */}
