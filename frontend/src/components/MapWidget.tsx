@@ -4,15 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-
-// Fix for default marker icons in Leaflet with Next.js
-const customIcon = new L.Icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2 } from 'lucide-react';
 
 // Custom Blue Dot icon for Live Location
 const blueDotIcon = new L.DivIcon({
@@ -25,13 +17,31 @@ const blueDotIcon = new L.DivIcon({
   iconAnchor: [8, 8]
 });
 
+// Custom Red Pin for Searched Location
+const searchPinIcon = new L.DivIcon({
+  className: 'search-location-marker',
+  html: `<div class="relative flex h-8 w-8 items-center justify-center">
+           <div class="absolute inset-0 bg-rose-500 rounded-full opacity-20 animate-ping"></div>
+           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#e11d48" class="w-8 h-8 drop-shadow-md">
+             <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+           </svg>
+         </div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32]
+});
+
 export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean }) {
   const [mounted, setMounted] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   
-  // Fix: Use useRef instead of useState to prevent multiple re-renders and React 19 lifecycle crashes
   const mapRef = useRef<L.Map | null>(null);
   const [hasCentered, setHasCentered] = useState(false);
+
+  // Search State
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -66,10 +76,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [mounted]);
-
-  // Note: We do NOT manually call mapRef.current.remove() on unmount.
-  // react-leaflet handles its own cleanup. Doing so manually breaks it in StrictMode.
+  }, [mounted, fullScreen, selectedPlace]);
 
   if (!mounted) {
     return (
@@ -87,6 +94,56 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       mapRef.current.flyTo(userLocation, 14, { animate: true, duration: 1.5 });
     } else if (mapRef.current) {
       mapRef.current.flyTo(position, 12, { animate: true, duration: 1.5 });
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setIsSearching(true);
+    try {
+      // Nominatim search API (Free geocoding)
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+      const data = await res.json();
+      setResults(data);
+    } catch (err) {
+      console.error("Search error:", err);
+    }
+    setIsSearching(false);
+  };
+
+  const handleSelectPlace = (place: any) => {
+    const lat = parseFloat(place.lat);
+    const lon = parseFloat(place.lon);
+    
+    // Simulate AQI based on random values for realism in the demo
+    const aqiVal = Math.floor(Math.random() * 250) + 50; 
+    let status = 'Moderate'; let color = 'text-emerald-700'; let bg = 'bg-emerald-50'; let border = 'border-emerald-200';
+    if (aqiVal > 150) { status = 'Unhealthy'; color = 'text-yellow-700'; bg = 'bg-yellow-50'; border = 'border-yellow-200'; }
+    if (aqiVal > 200) { status = 'Very Unhealthy'; color = 'text-orange-700'; bg = 'bg-orange-50'; border = 'border-orange-200'; }
+    if (aqiVal > 300) { status = 'Hazardous'; color = 'text-rose-700'; bg = 'bg-rose-50'; border = 'border-rose-200'; }
+
+    // Random placeholder image from Unsplash depicting Lahore/Streets
+    const images = [
+      'https://images.unsplash.com/photo-1599059813005-11265ba4b4ce?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1627885062409-e58f2e22c95e?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1588614959060-4d144f28b207?auto=format&fit=crop&w=800&q=80'
+    ];
+    const randomImage = images[Math.floor(Math.random() * images.length)];
+
+    setSelectedPlace({
+      ...place,
+      lat, lon,
+      aqi: aqiVal,
+      status, color, bg, border,
+      image: randomImage
+    });
+    setResults([]);
+    setQuery(place.display_name.split(',')[0]);
+    
+    // Fly to location
+    if (mapRef.current) {
+      mapRef.current.flyTo([lat, lon], 16, { animate: true, duration: 1.5 });
     }
   };
 
@@ -113,12 +170,16 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <Popup>
                <div className="font-bold text-slate-900 text-sm">You are here</div>
                <div className="text-slate-500 text-xs">Live GPS Location</div>
-               <div className="bg-yellow-50 text-yellow-700 px-2 py-1.5 rounded-md text-xs font-bold border border-yellow-200 mt-2">
-                 Environment: AQI 165 (Unhealthy)
-               </div>
-               <div className="text-[10px] text-slate-500 mt-1.5 leading-tight">
-                 AI Advice: Wear a mask if traveling outdoors today.
-               </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Searched Place Marker */}
+        {selectedPlace && (
+          <Marker position={[selectedPlace.lat, selectedPlace.lon]} icon={searchPinIcon} zIndexOffset={1001}>
+            <Popup>
+               <div className="font-bold text-slate-900 text-sm">{selectedPlace.display_name.split(',')[0]}</div>
+               <div className="text-slate-500 text-xs line-clamp-1">{selectedPlace.display_name}</div>
             </Popup>
           </Marker>
         )}
@@ -147,56 +208,190 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </Pane>
       </MapContainer>
 
-      {/* Compass Icon (Top Left) */}
+      {/* Floating Google-Maps-Style Search Bar */}
+      <div className="absolute top-4 left-4 z-[2000] w-[calc(100%-32px)] sm:w-[380px]">
+        <form onSubmit={handleSearch} className="relative bg-white rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] flex items-center px-4 py-3 border border-slate-200">
+          <Search className="w-5 h-5 text-slate-500 mr-3 shrink-0" />
+          <input 
+            type="text" 
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search Google Maps style..." 
+            className="flex-1 bg-transparent outline-none text-slate-900 text-sm font-medium placeholder:text-slate-500"
+          />
+          {query && (
+            <button type="button" onClick={() => { setQuery(''); setResults([]); setSelectedPlace(null); }} className="ml-2 p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </form>
+
+        {/* Search Results Dropdown */}
+        {results.length > 0 && (
+          <div className="mt-2 bg-white rounded-xl shadow-[0_12px_24px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden max-h-[300px] overflow-y-auto">
+            {results.map((place, idx) => (
+              <div 
+                key={place.place_id || idx}
+                onClick={() => handleSelectPlace(place)}
+                className="flex items-start gap-3 p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+              >
+                <MapPin className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-slate-900 line-clamp-1">{place.display_name.split(',')[0]}</span>
+                  <span className="text-xs text-slate-500 line-clamp-1">{place.display_name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Left Sidebar Modal for Selected Place (Google Maps Style) */}
+      {selectedPlace && (
+        <div className="absolute top-0 left-0 h-full w-full sm:w-[400px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[1500] flex flex-col animate-in slide-in-from-left-12 duration-300">
+          {/* Header Image */}
+          <div className="h-56 bg-slate-200 relative shrink-0">
+            <img 
+              src={selectedPlace.image} 
+              alt={selectedPlace.display_name}
+              className="w-full h-full object-cover"
+            />
+            {/* Linear gradient overlay for text protection if we put text over image */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+            
+            <button 
+              onClick={() => setSelectedPlace(null)}
+              className="absolute top-4 right-4 bg-white/20 text-white p-2 rounded-full hover:bg-white/40 backdrop-blur-md transition-colors shadow-sm"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="absolute bottom-4 left-5 right-5">
+              <h2 className="text-2xl font-extrabold text-white line-clamp-2 leading-tight drop-shadow-md">
+                {selectedPlace.display_name.split(',')[0]}
+              </h2>
+            </div>
+          </div>
+          
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto bg-slate-50 pb-8">
+            <div className="p-5 bg-white mb-2 shadow-sm">
+              <p className="text-sm text-slate-600 leading-relaxed mb-6">
+                {selectedPlace.display_name}
+              </p>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-around pb-2">
+                <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
+                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md group-hover:bg-blue-700 transition-colors">
+                    <Navigation className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold text-blue-700">Directions</span>
+                </div>
+                <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 group-hover:bg-slate-200 transition-colors">
+                    <Bookmark className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-600">Save</span>
+                </div>
+                <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 group-hover:bg-slate-200 transition-colors">
+                    <Share2 className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-600">Share</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Environment Data */}
+            <div className="p-5 bg-white shadow-sm">
+               <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                 <Wind className="w-4 h-4 text-emerald-600" />
+                 Environmental Status
+               </h3>
+               
+               <div className={`p-5 rounded-2xl border ${selectedPlace.border} ${selectedPlace.bg} flex flex-col items-center justify-center mb-4 relative overflow-hidden`}>
+                 <div className="absolute -right-4 -top-4 opacity-5">
+                   <Activity className="w-32 h-32" />
+                 </div>
+                 <span className="text-4xl font-black tracking-tighter mb-1" style={{ color: selectedPlace.color.replace('text-', '') }}>
+                   {selectedPlace.aqi}
+                 </span>
+                 <span className={`text-sm font-bold ${selectedPlace.color}`}>
+                   AQI US • {selectedPlace.status}
+                 </span>
+               </div>
+
+               <div className="space-y-3 mt-5">
+                 <div className="flex items-start gap-3">
+                   <ShieldAlert className={`w-5 h-5 mt-0.5 ${selectedPlace.color}`} />
+                   <div>
+                     <h4 className="text-sm font-bold text-slate-900">Health Recommendation</h4>
+                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                       {selectedPlace.aqi > 150 
+                         ? "Avoid prolonged outdoor exertion. Sensitive groups should remain indoors with air purifiers active." 
+                         : "Air quality is acceptable. However, unusually sensitive individuals should consider limiting outdoor exertion."}
+                     </p>
+                   </div>
+                 </div>
+               </div>
+            </div>
+            
+            {/* Photos Grid Placeholder */}
+            <div className="mt-2 p-5 bg-white shadow-sm">
+               <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                 <ImageIcon className="w-4 h-4 text-emerald-600" />
+                 Photos
+               </h3>
+               <div className="grid grid-cols-2 gap-2">
+                 <img src="https://images.unsplash.com/photo-1599059813005-11265ba4b4ce?auto=format&fit=crop&w=300&q=80" className="w-full h-24 object-cover rounded-xl" />
+                 <img src="https://images.unsplash.com/photo-1627885062409-e58f2e22c95e?auto=format&fit=crop&w=300&q=80" className="w-full h-24 object-cover rounded-xl" />
+                 <img src="https://images.unsplash.com/photo-1588614959060-4d144f28b207?auto=format&fit=crop&w=300&q=80" className="w-full h-24 object-cover rounded-xl" />
+                 <div className="w-full h-24 bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200 text-xs font-bold text-slate-400">
+                   +12 more
+                 </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compass Icon (Bottom Right, adjusted if fullScreen) */}
       <div 
         onClick={handleCompassClick}
         title="Find My Location"
-        className="absolute top-4 left-4 z-[1000] w-10 h-10 bg-white/95 backdrop-blur-sm rounded-full shadow-lg border border-slate-200 flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all hover:scale-105 active:scale-95"
+        className={`absolute z-[1000] w-12 h-12 bg-white/95 backdrop-blur-md rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-slate-200 flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all hover:scale-105 active:scale-95 ${fullScreen ? 'bottom-24 right-6' : 'bottom-6 right-6'}`}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-slate-700">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-slate-700">
            <path d="M12 2.25l4.5 10.5-4.5-2.25-4.5 2.25L12 2.25z" className="text-red-500" />
            <path d="M12 21.75l-4.5-10.5 4.5 2.25 4.5-2.25-4.5 10.5z" className="text-slate-400" />
         </svg>
       </div>
 
-      {/* Right Side UI Column */}
-      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2">
-        {/* Floating UI Legend */}
-        <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-slate-200">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Live AQI Zones</p>
-            <div className="space-y-2">
-               <div className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full bg-rose-700 opacity-70"></div>
-                   <span className="text-xs font-medium text-slate-700">Hazardous (300+)</span>
+      {/* Right Side UI Column (AQI Zones Legend) */}
+      {/* Hide on mobile if selectedPlace is active to avoid clutter */}
+      <div className={`absolute top-4 right-4 z-[1000] flex-col gap-2 ${selectedPlace ? 'hidden sm:flex' : 'flex'}`}>
+        <div className="bg-white/95 backdrop-blur-md p-3.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-slate-200">
+            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">Live AQI Zones</p>
+            <div className="space-y-2.5">
+               <div className="flex items-center gap-3">
+                   <div className="w-3.5 h-3.5 rounded-full bg-rose-700 opacity-90 shadow-sm"></div>
+                   <span className="text-xs font-semibold text-slate-700">Hazardous (300+)</span>
                </div>
-               <div className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full bg-orange-500 opacity-70"></div>
-                   <span className="text-xs font-medium text-slate-700">Very Unhealthy (200+)</span>
+               <div className="flex items-center gap-3">
+                   <div className="w-3.5 h-3.5 rounded-full bg-orange-600 opacity-90 shadow-sm"></div>
+                   <span className="text-xs font-semibold text-slate-700">Very Unhealthy (200+)</span>
                </div>
-               <div className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full bg-yellow-500 opacity-70"></div>
-                   <span className="text-xs font-medium text-slate-700">Unhealthy (150+)</span>
+               <div className="flex items-center gap-3">
+                   <div className="w-3.5 h-3.5 rounded-full bg-yellow-500 opacity-90 shadow-sm"></div>
+                   <span className="text-xs font-semibold text-slate-700">Unhealthy (150+)</span>
                </div>
-               <div className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full bg-emerald-500 opacity-70"></div>
-                   <span className="text-xs font-medium text-slate-700">Moderate (&lt;150)</span>
+               <div className="flex items-center gap-3">
+                   <div className="w-3.5 h-3.5 rounded-full bg-emerald-600 opacity-90 shadow-sm"></div>
+                   <span className="text-xs font-semibold text-slate-700">Moderate (&lt;150)</span>
                </div>
             </div>
         </div>
-
-        {/* Live User Environment Panel (Compact) */}
-        {userLocation && (
-          <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-slate-200 w-full">
-            <div className="flex items-center justify-between mb-1">
-               <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">You</span>
-               <div className="relative flex h-2 w-2">
-                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-               </div>
-            </div>
-            <div className="font-bold text-slate-900 text-xs">AQI: 165 <span className="text-yellow-600 font-semibold">(Unhealthy)</span></div>
-          </div>
-        )}
       </div>
       </div>
     </div>
