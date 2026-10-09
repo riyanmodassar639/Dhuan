@@ -55,7 +55,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   // Custom Origin State for Directions
   const [userAddress, setUserAddress] = useState("Your Location");
   const [originInput, setOriginInput] = useState("");
+  const [originResults, setOriginResults] = useState<any[]>([]);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
+  const [isSelectingOriginOnMap, setIsSelectingOriginOnMap] = useState(false);
   const [routeOriginCoords, setRouteOriginCoords] = useState<[number, number] | null>(null);
+  const skipNextOriginSearch = useRef(false);
+  const originInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setOriginInput(userAddress);
@@ -202,6 +207,32 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
 
+  // Live Search for Origin Input
+  useEffect(() => {
+    const delayFn = setTimeout(() => {
+      if (skipNextOriginSearch.current) { skipNextOriginSearch.current = false; return; }
+      if (originInput.trim().length > 2 && document.activeElement === originInputRef.current) {
+         setIsSearchingOrigin(true);
+         fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(originInput.trim())}&lat=31.5204&lon=74.3587&limit=4`)
+           .then(r => r.json())
+           .then(data => {
+              if (data.features) {
+                 setOriginResults(data.features.map((f: any) => ({
+                   lat: f.geometry.coordinates[1],
+                   lon: f.geometry.coordinates[0],
+                   name: f.properties.name || f.properties.street || "Unknown",
+                   display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ')
+                 })));
+              }
+              setIsSearchingOrigin(false);
+           }).catch(() => setIsSearchingOrigin(false));
+      } else {
+         setOriginResults([]);
+      }
+    }, 600);
+    return () => clearTimeout(delayFn);
+  }, [originInput]);
+
   if (!mounted) {
     return (
       <div className="w-full h-full bg-slate-100 animate-pulse rounded-2xl flex items-center justify-center">
@@ -281,6 +312,36 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     useMapEvents({
       click: async (e) => {
         const { lat, lng } = e.latlng;
+        
+        if (isSelectingOriginOnMap) {
+            setIsSelectingOriginOnMap(false);
+            setRouteOriginCoords([lat, lng]);
+            skipNextOriginSearch.current = true;
+            setUserAddress("Locating...");
+            setOriginInput("Locating...");
+            try {
+               const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
+               const data = await res.json();
+               if (data.features && data.features.length > 0) {
+                  const name = data.features[0].properties.name || data.features[0].properties.street || "Selected Location";
+                  setUserAddress(name);
+                  setOriginInput(name);
+               } else {
+                  setUserAddress("Selected Location");
+                  setOriginInput("Selected Location");
+               }
+            } catch {
+               setUserAddress("Selected Location");
+               setOriginInput("Selected Location");
+            }
+            if (selectedPlace) {
+               await fetchRoutesAndEnhance([lat, lng], [selectedPlace.lat, selectedPlace.lon]);
+            }
+            return;
+        }
+
+        if (isDirectionsMode) return; // Prevent changing destination while navigating/routing
+        
         // Don't trigger if they are already searching or sliding
         setIsSearching(true);
         try {
@@ -597,17 +658,56 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   </button>
                   <div className="space-y-3 relative ml-2">
                      <div className="absolute left-3.5 top-5 bottom-5 w-0.5 bg-slate-200"></div>
-                     <div className="flex items-center gap-4">
-                       <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
+                     <div className="flex items-start gap-4 relative">
+                       <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white mt-1">
                           <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
                        </div>
-                       <input 
-                         value={originInput}
-                         onChange={(e) => setOriginInput(e.target.value)}
-                         onKeyDown={handleCustomOriginSubmit}
-                         className="flex-1 bg-white px-3 py-2.5 rounded-xl text-sm font-medium text-slate-900 border border-slate-200 shadow-inner focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
-                         placeholder="Enter starting point..."
-                       />
+                       <div className="flex-1 flex gap-2 relative">
+                         <div className="flex-1 relative">
+                           <input 
+                             ref={originInputRef}
+                             value={originInput}
+                             onChange={(e) => setOriginInput(e.target.value)}
+                             onKeyDown={handleCustomOriginSubmit}
+                             className="w-full bg-white px-3 py-2.5 rounded-xl text-sm font-medium text-slate-900 border border-slate-200 shadow-inner focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
+                             placeholder="Enter starting point..."
+                           />
+                           
+                           {/* Origin Search Results Dropdown */}
+                           {originResults.length > 0 && (
+                             <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-[0_12px_24px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden max-h-[200px] overflow-y-auto z-[3000]">
+                               {originResults.map((place, idx) => (
+                                 <div 
+                                   key={idx}
+                                   onClick={async () => {
+                                      setOriginInput(place.name);
+                                      setUserAddress(place.name);
+                                      setRouteOriginCoords([place.lat, place.lon]);
+                                      setOriginResults([]);
+                                      if (selectedPlace) {
+                                         await fetchRoutesAndEnhance([place.lat, place.lon], [selectedPlace.lat, selectedPlace.lon]);
+                                      }
+                                   }}
+                                   className="flex items-start gap-3 p-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+                                 >
+                                   <MapPin className="w-3.5 h-3.5 text-slate-400 mt-1 shrink-0" />
+                                   <div className="flex flex-col">
+                                     <span className="text-xs font-bold text-slate-900 line-clamp-1">{place.name}</span>
+                                     <span className="text-[10px] text-slate-500 line-clamp-1">{place.display_name}</span>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                         <button 
+                           onClick={() => setIsSelectingOriginOnMap(true)}
+                           title="Select on map"
+                           className={`p-2.5 rounded-xl border transition-colors shrink-0 ${isSelectingOriginOnMap ? 'bg-blue-100 border-blue-500 text-blue-700 animate-pulse' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+                         >
+                           <MapPin className="w-4 h-4" />
+                         </button>
+                       </div>
                      </div>
                      <div className="flex items-center gap-4">
                        <div className="w-7 h-7 bg-rose-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
@@ -623,7 +723,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   {routes.map((route, idx) => (
                     <div 
                       key={idx} 
-                      onClick={() => setSelectedRouteIdx(idx)}
+                      onClick={() => {
+                         setSelectedRouteIdx(idx);
+                         if (mapRef.current && route.geometry && route.geometry.coordinates) {
+                            const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
+                            const bounds = L.latLngBounds(coords);
+                            mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
+                         }
+                      }}
                       className={`p-4 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden ${idx === selectedRouteIdx ? 'border-blue-500 bg-blue-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-200'}`}
                     >
                       {route.aiStats?.isSafest && (
