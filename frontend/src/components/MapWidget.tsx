@@ -132,16 +132,41 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(trimmedQuery)}&lat=31.5204&lon=74.3587&limit=6`)
           .then(res => res.json())
           .then(data => {
-            // Map GeoJSON features to our expected format
-            const mappedResults = data.features.map((f: any) => ({
-              place_id: f.properties.osm_id,
-              lat: f.geometry.coordinates[1],
-              lon: f.geometry.coordinates[0],
-              display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || f.properties.name || "Unknown Place",
-              name: f.properties.name || f.properties.street || "Unknown Place"
-            }));
-            setResults(mappedResults);
-            setIsSearching(false);
+            if (data.features && data.features.length > 0) {
+              // Map GeoJSON features to our expected format
+              const mappedResults = data.features.map((f: any) => ({
+                place_id: f.properties.osm_id || Math.random(),
+                lat: f.geometry.coordinates[1],
+                lon: f.geometry.coordinates[0],
+                display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || f.properties.name || "Unknown Place",
+                name: f.properties.name || f.properties.street || "Unknown Place"
+              }));
+              setResults(mappedResults);
+              setIsSearching(false);
+            } else {
+              // Fallback to ArcGIS World Geocoding Service if Photon finds nothing
+              fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine=${encodeURIComponent(trimmedQuery)}&maxLocations=5`)
+                .then(res => res.json())
+                .then(arcData => {
+                   if (arcData.candidates && arcData.candidates.length > 0) {
+                      const mappedArcResults = arcData.candidates.map((c: any) => ({
+                         place_id: Math.random(),
+                         lat: c.location.y,
+                         lon: c.location.x,
+                         display_name: c.address,
+                         name: c.address.split(',')[0]
+                      }));
+                      setResults(mappedArcResults);
+                   } else {
+                      setResults([]);
+                   }
+                   setIsSearching(false);
+                })
+                .catch(() => {
+                   setResults([]);
+                   setIsSearching(false);
+                });
+            }
           })
           .catch(err => {
             console.error("Search error:", err);
