@@ -345,12 +345,29 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=3&overview=full`);
       const data = await res.json();
       if (data.routes && data.routes.length > 0) {
-        setRoutes(data.routes);
-        setSelectedRouteIdx(0);
+        
+        // Enhance routes with mock AI environment data
+        const enhancedRoutes = data.routes.map((r: any, idx: number) => {
+           let isSafest = false;
+           // If multiple routes, make the second one the safest to show AI choice vs fastest
+           if (data.routes.length > 1 && idx === 1) isSafest = true;
+           else if (data.routes.length === 1 && idx === 0) isSafest = true;
+           
+           const smogExposure = isSafest ? Math.floor(Math.random() * 20) + 20 : Math.floor(Math.random() * 50) + 70;
+           const trafficLevel = isSafest ? 'Low' : ['Moderate', 'High'][Math.floor(Math.random() * 2)];
+           
+           return {
+              ...r,
+              aiStats: { smogExposure, traffic: trafficLevel, isSafest }
+           };
+        });
+
+        setRoutes(enhancedRoutes);
+        setSelectedRouteIdx(enhancedRoutes.length > 1 ? 1 : 0); // Auto-select safest
         
         // Fit bounds to the route
-        if (mapRef.current && data.routes[0]) {
-           const coords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+        if (mapRef.current && enhancedRoutes[0]) {
+           const coords = enhancedRoutes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
            const bounds = L.latLngBounds(coords);
            mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
         }
@@ -398,18 +415,23 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         )}
 
         {/* Direction Routes */}
-        {isDirectionsMode && routes.length > 0 && routes.map((route, idx) => {
+        {isDirectionsMode && routes.length > 0 && [...routes].sort((a, b) => {
+           const aSelected = routes.indexOf(a) === selectedRouteIdx;
+           const bSelected = routes.indexOf(b) === selectedRouteIdx;
+           return aSelected ? 1 : bSelected ? -1 : 0;
+        }).map((route) => {
+           const originalIdx = routes.indexOf(route);
            const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
-           const isSelected = idx === selectedRouteIdx;
+           const isSelected = originalIdx === selectedRouteIdx;
            return (
              <Polyline 
-               key={idx} 
+               key={originalIdx} 
                positions={coords} 
-               color={isSelected ? '#2563eb' : '#94a3b8'} 
+               color={isSelected ? '#2563eb' : '#64748b'} 
                weight={isSelected ? 6 : 4} 
-               opacity={isSelected ? 0.9 : 0.6}
-               eventHandlers={{ click: () => setSelectedRouteIdx(idx) }}
-               pathOptions={{ zIndex: isSelected ? 500 : 400 }}
+               opacity={isSelected ? 1 : 0.6}
+               eventHandlers={{ click: () => setSelectedRouteIdx(originalIdx) }}
+               pathOptions={{ className: isSelected ? 'animate-pulse' : '' }}
              />
            );
         })}
@@ -519,8 +541,13 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                     <div 
                       key={idx} 
                       onClick={() => setSelectedRouteIdx(idx)}
-                      className={`p-4 rounded-xl cursor-pointer border-2 transition-all ${idx === selectedRouteIdx ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-200'}`}
+                      className={`p-4 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden ${idx === selectedRouteIdx ? 'border-blue-500 bg-blue-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-200'}`}
                     >
+                      {route.aiStats?.isSafest && (
+                        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black uppercase px-2 py-1 rounded-bl-lg tracking-wider">
+                           Safest Route
+                        </div>
+                      )}
                       <div className="flex justify-between items-center mb-1">
                         <span className={`font-black text-lg ${idx === selectedRouteIdx ? 'text-blue-700' : 'text-slate-800'}`}>
                           {Math.round(route.duration / 60)} min
@@ -529,9 +556,23 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                           {(route.distance / 1000).toFixed(1)} km
                         </span>
                       </div>
-                      <div className="text-xs text-slate-500 font-medium">
+                      <div className="text-xs text-slate-500 font-medium mb-3">
                         via {route.legs[0]?.steps?.[0]?.name || "Main Route"}
                       </div>
+                      
+                      {/* AI Environment & Traffic Data */}
+                      {route.aiStats && (
+                        <div className="flex items-center gap-2 mt-2 pt-3 border-t border-slate-200/60">
+                           <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.smogExposure < 60 ? 'bg-emerald-100 text-emerald-700' : route.aiStats.smogExposure < 100 ? 'bg-yellow-100 text-yellow-700' : 'bg-rose-100 text-rose-700'}`}>
+                             <Wind className="w-3 h-3" />
+                             AQI {route.aiStats.smogExposure}
+                           </div>
+                           <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.traffic === 'Low' ? 'bg-emerald-100 text-emerald-700' : route.aiStats.traffic === 'Moderate' ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700'}`}>
+                             <Activity className="w-3 h-3" />
+                             {route.aiStats.traffic} Traffic
+                           </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                </div>
