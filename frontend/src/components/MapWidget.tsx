@@ -42,6 +42,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [results, setResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -78,15 +79,56 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return () => clearTimeout(timer);
   }, [mounted, fullScreen, selectedPlace]);
 
-  const [hasSearched, setHasSearched] = useState(false);
-
-  // Live Search with Debounce using Photon API (much better fuzzy matching & autocomplete)
+  // Live Search with Debounce using Photon API (handles text and coordinates)
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (query.trim().length > 2) {
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length > 2) {
         setIsSearching(true);
-        // Append 'Lahore' to prioritize local results but photon uses lat/lon bias
-        const searchQuery = query.toLowerCase().includes('lahore') ? query : `${query} Lahore`;
+        setHasSearched(true);
+
+        // Check if query is Latitude/Longitude (e.g. "31.52, 74.35")
+        const isCoord = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(trimmedQuery) || /^-?\d+(\.\d+)?\s+-?\d+(\.\d+)?$/.test(trimmedQuery);
+        
+        if (isCoord) {
+          const parts = trimmedQuery.replace(',', ' ').split(/\s+/).filter(Boolean);
+          const lat = parseFloat(parts[0]);
+          const lon = parseFloat(parts[1]);
+          
+          if (!isNaN(lat) && !isNaN(lon)) {
+             // Reverse Geocoding for coordinates
+             fetch(`https://photon.komoot.io/reverse?lon=${lon}&lat=${lat}`)
+               .then(res => res.json())
+               .then(data => {
+                  if (data.features && data.features.length > 0) {
+                     const f = data.features[0];
+                     setResults([{
+                        place_id: f.properties.osm_id || Date.now(),
+                        lat: lat,
+                        lon: lon,
+                        display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || `Lat: ${lat}, Lon: ${lon}`,
+                        name: f.properties.name || "Pinned Coordinates"
+                     }]);
+                  } else {
+                     setResults([{
+                        place_id: Date.now(),
+                        lat, lon,
+                        display_name: `Latitude: ${lat}, Longitude: ${lon}`,
+                        name: "Pinned Location"
+                     }]);
+                  }
+                  setIsSearching(false);
+               })
+               .catch(() => {
+                  setResults([{ place_id: Date.now(), lat, lon, display_name: `Latitude: ${lat}, Longitude: ${lon}`, name: "Pinned Location" }]);
+                  setIsSearching(false);
+               });
+             return;
+          }
+        }
+
+        // Regular Text Search (Location names)
+        const searchQuery = trimmedQuery.toLowerCase().includes('lahore') ? trimmedQuery : `${trimmedQuery} Lahore`;
         // Photon API with location bias for Lahore
         fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery)}&lat=31.5204&lon=74.3587&limit=5`)
           .then(res => res.json())
@@ -96,11 +138,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               place_id: f.properties.osm_id,
               lat: f.geometry.coordinates[1],
               lon: f.geometry.coordinates[0],
-              display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || f.properties.name,
+              display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || f.properties.name || "Unknown Place",
               name: f.properties.name || f.properties.street || "Unknown Place"
             }));
             setResults(mappedResults);
-            setHasSearched(true);
             setIsSearching(false);
           })
           .catch(err => {
