@@ -124,26 +124,26 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         )}
 
         {/* Simulated Air Quality / Smog Layer */}
-        {/* Normal blend mode with 0.4 opacity keeps Google Maps colors intact while showing smog clouds */}
-        <Pane name="smogLayer" style={{ filter: 'blur(35px)', opacity: 0.45, pointerEvents: 'none', zIndex: 400 }}>
+        {/* Adjusted for higher visibility and distinction between zones */}
+        <Pane name="smogLayer" style={{ filter: 'blur(20px)', opacity: 0.65, pointerEvents: 'none', zIndex: 400 }}>
             {/* Hazardous Zone (Deep Red) */}
-            <Circle center={[31.4697, 74.2728]} pathOptions={{ stroke: false, fillColor: '#9f1239', fillOpacity: 0.8 }} radius={3500} />
-            <Circle center={[31.4500, 74.2500]} pathOptions={{ stroke: false, fillColor: '#be123c', fillOpacity: 0.7 }} radius={4500} />
-            <Circle center={[31.4200, 74.2800]} pathOptions={{ stroke: false, fillColor: '#e11d48', fillOpacity: 0.6 }} radius={5000} />
+            <Circle center={[31.4697, 74.2728]} pathOptions={{ stroke: false, fillColor: '#9f1239', fillOpacity: 1 }} radius={3200} />
+            <Circle center={[31.4500, 74.2500]} pathOptions={{ stroke: false, fillColor: '#be123c', fillOpacity: 0.9 }} radius={4000} />
+            <Circle center={[31.4200, 74.2800]} pathOptions={{ stroke: false, fillColor: '#e11d48', fillOpacity: 0.8 }} radius={4500} />
             
-            {/* Very Unhealthy Zone (Red/Orange) */}
-            <Circle center={[31.5204, 74.3187]} pathOptions={{ stroke: false, fillColor: '#ea580c', fillOpacity: 0.7 }} radius={3500} />
-            <Circle center={[31.5500, 74.3300]} pathOptions={{ stroke: false, fillColor: '#f97316', fillOpacity: 0.6 }} radius={4500} />
-            <Circle center={[31.4900, 74.3400]} pathOptions={{ stroke: false, fillColor: '#ea580c', fillOpacity: 0.5 }} radius={4000} />
+            {/* Very Unhealthy Zone (Orange-Red) */}
+            <Circle center={[31.5204, 74.3187]} pathOptions={{ stroke: false, fillColor: '#c2410c', fillOpacity: 0.9 }} radius={3000} />
+            <Circle center={[31.5500, 74.3300]} pathOptions={{ stroke: false, fillColor: '#ea580c', fillOpacity: 0.8 }} radius={3500} />
+            <Circle center={[31.4900, 74.3400]} pathOptions={{ stroke: false, fillColor: '#c2410c', fillOpacity: 0.8 }} radius={3500} />
 
-            {/* Unhealthy Zone (Yellow/Orange) */}
-            <Circle center={[31.4800, 74.3800]} pathOptions={{ stroke: false, fillColor: '#eab308', fillOpacity: 0.6 }} radius={6000} />
-            <Circle center={[31.5400, 74.3800]} pathOptions={{ stroke: false, fillColor: '#facc15', fillOpacity: 0.5 }} radius={5000} />
+            {/* Unhealthy Zone (Yellow-Orange) */}
+            <Circle center={[31.4800, 74.3800]} pathOptions={{ stroke: false, fillColor: '#ca8a04', fillOpacity: 0.8 }} radius={5000} />
+            <Circle center={[31.5400, 74.3800]} pathOptions={{ stroke: false, fillColor: '#eab308', fillOpacity: 0.7 }} radius={4000} />
             
             {/* Moderate/Safe Zone (Green) */}
-            <Circle center={[31.5204, 74.4287]} pathOptions={{ stroke: false, fillColor: '#10b981', fillOpacity: 0.5 }} radius={5500} />
-            <Circle center={[31.5800, 74.4500]} pathOptions={{ stroke: false, fillColor: '#34d399', fillOpacity: 0.4 }} radius={6500} />
-            <Circle center={[31.5500, 74.4800]} pathOptions={{ stroke: false, fillColor: '#6ee7b7', fillOpacity: 0.4 }} radius={6000} />
+            <Circle center={[31.5204, 74.4287]} pathOptions={{ stroke: false, fillColor: '#15803d', fillOpacity: 0.8 }} radius={4500} />
+            <Circle center={[31.5800, 74.4500]} pathOptions={{ stroke: false, fillColor: '#16a34a', fillOpacity: 0.7 }} radius={5000} />
+            <Circle center={[31.5500, 74.4800]} pathOptions={{ stroke: false, fillColor: '#22c55e', fillOpacity: 0.6 }} radius={5500} />
         </Pane>
       </MapContainer>
 
