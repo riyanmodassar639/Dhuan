@@ -138,20 +138,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     if (aqiVal > 200) { status = 'Very Unhealthy'; color = 'text-orange-700'; bg = 'bg-orange-50'; border = 'border-orange-200'; }
     if (aqiVal > 300) { status = 'Hazardous'; color = 'text-rose-700'; bg = 'bg-rose-50'; border = 'border-rose-200'; }
 
-    // Random placeholder image from Unsplash depicting Lahore/Streets
-    const images = [
-      'https://images.unsplash.com/photo-1599059813005-11265ba4b4ce?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1627885062409-e58f2e22c95e?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1588614959060-4d144f28b207?auto=format&fit=crop&w=800&q=80'
-    ];
-    const randomImage = images[Math.floor(Math.random() * images.length)];
-
     setSelectedPlace({
       ...place,
       lat, lon,
       aqi: aqiVal,
-      status, color, bg, border,
-      image: randomImage
+      status, color, bg, border
     });
     setResults([]);
     setQuery(place.display_name.split(',')[0]);
@@ -267,28 +258,18 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       {/* Left Sidebar Modal for Selected Place (Google Maps Style) */}
       {selectedPlace && (
         <div className="absolute top-0 left-0 h-full w-full sm:w-[400px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[1500] flex flex-col animate-in slide-in-from-left-12 duration-300">
-          {/* Header Image */}
-          <div className="h-56 bg-slate-200 relative shrink-0">
-            <img 
-              src={selectedPlace.image} 
-              alt={selectedPlace.display_name}
-              className="w-full h-full object-cover"
-            />
-            {/* Linear gradient overlay for text protection if we put text over image */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-            
+          {/* Header (No Image) */}
+          <div className="pt-8 pb-6 px-6 bg-slate-900 relative shrink-0">
             <button 
               onClick={() => setSelectedPlace(null)}
-              className="absolute top-4 right-4 bg-white/20 text-white p-2 rounded-full hover:bg-white/40 backdrop-blur-md transition-colors shadow-sm"
+              className="absolute top-4 right-4 bg-white/10 text-white p-2 rounded-full hover:bg-white/20 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
             
-            <div className="absolute bottom-4 left-5 right-5">
-              <h2 className="text-2xl font-extrabold text-white line-clamp-2 leading-tight drop-shadow-md">
-                {selectedPlace.display_name.split(',')[0]}
-              </h2>
-            </div>
+            <h2 className="text-2xl font-extrabold text-white line-clamp-2 leading-tight pr-8 mt-2">
+              {selectedPlace.display_name.split(',')[0]}
+            </h2>
           </div>
           
           {/* Scrollable Content */}
@@ -355,21 +336,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                </div>
             </div>
             
-            {/* Photos Grid Placeholder */}
-            <div className="mt-2 p-5 bg-white shadow-sm">
-               <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
-                 <ImageIcon className="w-4 h-4 text-emerald-600" />
-                 Photos
-               </h3>
-               <div className="grid grid-cols-2 gap-2">
-                 <img src="https://images.unsplash.com/photo-1599059813005-11265ba4b4ce?auto=format&fit=crop&w=300&q=80" className="w-full h-24 object-cover rounded-xl" />
-                 <img src="https://images.unsplash.com/photo-1627885062409-e58f2e22c95e?auto=format&fit=crop&w=300&q=80" className="w-full h-24 object-cover rounded-xl" />
-                 <img src="https://images.unsplash.com/photo-1588614959060-4d144f28b207?auto=format&fit=crop&w=300&q=80" className="w-full h-24 object-cover rounded-xl" />
-                 <div className="w-full h-24 bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200 text-xs font-bold text-slate-400">
-                   +12 more
-                 </div>
-               </div>
-            </div>
           </div>
         </div>
       )}
