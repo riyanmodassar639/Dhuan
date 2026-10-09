@@ -25,7 +25,7 @@ const blueDotIcon = new L.DivIcon({
   iconAnchor: [8, 8]
 });
 
-export default function MapWidget() {
+export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean }) {
   const [mounted, setMounted] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   
@@ -91,7 +91,7 @@ export default function MapWidget() {
   };
 
   return (
-    <div className="w-full h-full min-h-[500px] lg:min-h-[600px] flex-1 rounded-2xl overflow-hidden shadow-sm border border-slate-200 relative z-0">
+    <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
       <div className="absolute inset-0">
         <MapContainer 
           center={position} 

@@ -107,14 +107,20 @@ export default function DashboardLayout({
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col">
+      <main className={`flex-1 w-full mx-auto flex flex-col ${
+        pathname === '/dashboard/map' 
+          ? 'max-w-none p-0' 
+          : 'max-w-7xl p-4 sm:p-6 lg:p-8'
+      }`}>
         {children}
       </main>
 
-      {/* Dashboard Footer (Shown on all views since bottom bar is gone) */}
-      <div>
-        <Footer />
-      </div>
+      {/* Dashboard Footer (Hidden on full-screen map) */}
+      {pathname !== '/dashboard/map' && (
+        <div>
+          <Footer />
+        </div>
+      )}
 
       {/* Floating DHUAN Assistant Button - Reset position to standard bottom */}
       <div className="fixed bottom-6 right-6 z-[100] group">
