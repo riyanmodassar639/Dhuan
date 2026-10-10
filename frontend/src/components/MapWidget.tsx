@@ -3,7 +3,7 @@ import { Search, MapPin, Wind, Activity, X, Navigation, ArrowLeft, Bookmark, Sha
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer, Circle } from '@react-google-maps/api';
 
 const LIBRARIES: ("places" | "geometry")[] = ['places', 'geometry'];
-const API_KEY = "AIzaSyB71oeDQWH2FF_jpMqgep8F4yK_Sd3k7qM"; // The key provided by the user
+const API_KEY = "AIzaSyBsDB5X7eB6_6cTFwFoExccByR95NWZtt8"; // The key provided by the user
 
 const LAHORE_CENTER = { lat: 31.5204, lng: 74.3587 };
 
@@ -46,19 +46,14 @@ export default function MapWidget({ fullScreen = false }: MapWidgetProps) {
   const skipNextOriginSearch = useRef(false);
   const originInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize GPS Location with Geofencing for Pakistan
+  // Initialize GPS Location
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-          
-          // Smart Geofencing: Check if the user's GPS (or VPN) is inside Pakistan (roughly)
-          // Bounding box for Pakistan: Lat 23 to 37, Lng 60 to 78
-          const isInsidePakistan = lat > 23 && lat < 37 && lng > 60 && lng < 78;
-          
-          const loc = isInsidePakistan ? { lat, lng } : LAHORE_CENTER;
+          const loc = { lat, lng };
           setUserLocation(loc);
 
           if (isLoaded) {
