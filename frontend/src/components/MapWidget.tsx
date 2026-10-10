@@ -94,7 +94,7 @@ export default function MapWidget({ fullScreen = false }: MapWidgetProps) {
                  display_name: p.description
               })));
            } else {
-              setResults([]);
+              setResults([{ place_id: "err", name: `API Error: ${status}`, display_name: "Please check Google Cloud Billing or API restrictions" }]);
            }
            setIsSearching(false);
         });
