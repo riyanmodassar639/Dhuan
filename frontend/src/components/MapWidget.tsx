@@ -46,13 +46,21 @@ export default function MapWidget({ fullScreen = false }: MapWidgetProps) {
   const skipNextOriginSearch = useRef(false);
   const originInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize GPS Location
+  // Initialize GPS Location with Geofencing for Pakistan
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          
+          // Smart Geofencing: Check if the user's GPS (or VPN) is inside Pakistan (roughly)
+          // Bounding box for Pakistan: Lat 23 to 37, Lng 60 to 78
+          const isInsidePakistan = lat > 23 && lat < 37 && lng > 60 && lng < 78;
+          
+          const loc = isInsidePakistan ? { lat, lng } : LAHORE_CENTER;
           setUserLocation(loc);
+
           if (isLoaded) {
              const geocoder = new window.google.maps.Geocoder();
              geocoder.geocode({ location: loc }, (res, status) => {
@@ -63,7 +71,7 @@ export default function MapWidget({ fullScreen = false }: MapWidgetProps) {
              });
           }
         },
-        () => setUserLocation(LAHORE_CENTER) // Fallback to Lahore
+        () => setUserLocation(LAHORE_CENTER) // Fallback if permission denied
       );
     } else {
       setUserLocation(LAHORE_CENTER);
