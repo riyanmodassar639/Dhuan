@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft } from 'lucide-react';
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp } from 'lucide-react';
 
 // Custom Blue Dot icon for Live Location
 const blueDotIcon = new L.DivIcon({
@@ -53,6 +53,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [navPosition, setNavPosition] = useState<{lat: number, lng: number} | null>(null);
   const [navHeading, setNavHeading] = useState(0);
+  const [navInstruction, setNavInstruction] = useState({ type: "Head straight", distance: 0 });
   
   // Custom Origin State for Directions
   const [userAddress, setUserAddress] = useState("Your Location");
@@ -273,6 +274,27 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         const routeCoords = routes[selectedRouteIdx].geometry.coordinates;
         let currentIndex = 0;
         
+        // Helper to calculate distance in meters
+        const getDist = (coord1: number[], coord2: number[]) => {
+           const R = 6371e3;
+           const p1 = coord1[1] * Math.PI/180;
+           const p2 = coord2[1] * Math.PI/180;
+           const dp = (coord2[1]-coord1[1]) * Math.PI/180;
+           const dl = (coord2[0]-coord1[0]) * Math.PI/180;
+           const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+           return R * c;
+        };
+
+        const getBearing = (coord1: number[], coord2: number[]) => {
+           const lat1 = coord1[1] * Math.PI/180;
+           const lat2 = coord2[1] * Math.PI/180;
+           const dl = (coord2[0] - coord1[0]) * Math.PI/180;
+           const y = Math.sin(dl) * Math.cos(lat2);
+           const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dl);
+           return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        };
+        
         // Start at index 0
         setNavPosition({ lat: routeCoords[0][1], lng: routeCoords[0][0] });
         if (mapRef.current) {
@@ -290,22 +312,49 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            
            const current = routeCoords[currentIndex];
            const next = routeCoords[currentIndex + 1];
-           const lat1 = current[1], lng1 = current[0];
-           const lat2 = next[1], lng2 = next[0];
            
-           // Calculate bearing (angle)
-           const dLng = (lng2 - lng1) * Math.PI / 180;
-           const lat1Rad = lat1 * Math.PI / 180;
-           const lat2Rad = lat2 * Math.PI / 180;
-           const y = Math.sin(dLng) * Math.cos(lat2Rad);
-           const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
-           const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+           // Bearing
+           const bearing = getBearing(current, next);
            
+           // Calculate next turn instruction
+           let distanceToTurn = 0;
+           let turnType = "Continue straight";
+           let foundTurn = false;
+           
+           for (let i = currentIndex; i < routeCoords.length - 2; i++) {
+               const p1 = routeCoords[i];
+               const p2 = routeCoords[i+1];
+               const p3 = routeCoords[i+2];
+               
+               distanceToTurn += getDist(p1, p2);
+               
+               let angleDiff = getBearing(p2, p3) - getBearing(p1, p2);
+               if (angleDiff > 180) angleDiff -= 360;
+               if (angleDiff < -180) angleDiff += 360;
+               
+               if (Math.abs(angleDiff) > 25) {
+                   if (angleDiff > 25 && angleDiff <= 130) turnType = "Turn right";
+                   else if (angleDiff < -25 && angleDiff >= -130) turnType = "Turn left";
+                   else turnType = "Make a U-turn";
+                   
+                   // Sprinkle flavor events requested by user
+                   if (i % 14 === 0 && Math.abs(angleDiff) < 45) turnType = "Take the flyover";
+                   if (i % 19 === 0 && Math.abs(angleDiff) < 45) turnType = "Take the underpass";
+                   
+                   foundTurn = true;
+                   break;
+               }
+           }
+           if (!foundTurn) {
+              turnType = "Arrive at destination";
+           }
+           
+           setNavInstruction({ type: turnType, distance: Math.round(distanceToTurn) });
            setNavHeading(bearing);
-           setNavPosition({ lat: lat2, lng: lng2 });
+           setNavPosition({ lat: next[1], lng: next[0] });
            
            if (mapRef.current) {
-              mapRef.current.setView([lat2, lng2], 18, { animate: true, duration: 1.0 });
+              mapRef.current.setView([next[1], next[0]], 18, { animate: true, duration: 1.0 });
            }
         }, 1500);
      }
@@ -708,6 +757,24 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </Pane>
         <MapClickHandler />
       </MapContainer>
+
+      {/* Floating Turn-by-Turn Instruction Panel */}
+      {isNavigating && navInstruction && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[3000] bg-emerald-600 text-white px-6 py-4 rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex items-center gap-5 min-w-[320px] max-w-[90%] border-t border-emerald-500 transition-all duration-500 animate-in slide-in-from-top-4">
+           <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+              {navInstruction.type.includes('right') ? <CornerUpRight className="w-8 h-8" /> : 
+               navInstruction.type.includes('left') ? <CornerUpLeft className="w-8 h-8" /> : 
+               navInstruction.type.includes('U-turn') ? <CornerDownLeft className="w-8 h-8" /> : 
+               <ArrowUp className="w-8 h-8" />}
+           </div>
+           <div className="flex flex-col">
+              <span className="text-3xl font-black tracking-tighter drop-shadow-sm">
+                 {navInstruction.distance > 1000 ? (navInstruction.distance/1000).toFixed(1) + ' km' : navInstruction.distance + ' m'}
+              </span>
+              <span className="text-emerald-50 font-bold text-lg leading-tight opacity-90 drop-shadow-sm">{navInstruction.type}</span>
+           </div>
+        </div>
+      )}
 
       {/* Floating Google-Maps-Style Search Bar */}
       <div className="absolute top-4 left-4 z-[2000] w-[calc(100%-32px)] sm:w-[380px]">
