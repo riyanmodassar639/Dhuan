@@ -266,6 +266,51 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     }, 600);
     return () => clearTimeout(delayFn);
   }, [originInput]);
+  // Navigation Simulator
+  useEffect(() => {
+     let interval: NodeJS.Timeout;
+     if (isNavigating && routes.length > 0 && routes[selectedRouteIdx]) {
+        const routeCoords = routes[selectedRouteIdx].geometry.coordinates;
+        let currentIndex = 0;
+        
+        // Start at index 0
+        setNavPosition({ lat: routeCoords[0][1], lng: routeCoords[0][0] });
+        if (mapRef.current) {
+           mapRef.current.setView([routeCoords[0][1], routeCoords[0][0]], 18, { animate: true, duration: 1.5 });
+        }
+        
+        interval = setInterval(() => {
+           currentIndex += 1;
+           if (currentIndex >= routeCoords.length - 1) {
+              clearInterval(interval);
+              setIsNavigating(false);
+              setIsPanelCollapsed(false);
+              return;
+           }
+           
+           const current = routeCoords[currentIndex];
+           const next = routeCoords[currentIndex + 1];
+           const lat1 = current[1], lng1 = current[0];
+           const lat2 = next[1], lng2 = next[0];
+           
+           // Calculate bearing (angle)
+           const dLng = (lng2 - lng1) * Math.PI / 180;
+           const lat1Rad = lat1 * Math.PI / 180;
+           const lat2Rad = lat2 * Math.PI / 180;
+           const y = Math.sin(dLng) * Math.cos(lat2Rad);
+           const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+           const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+           
+           setNavHeading(bearing);
+           setNavPosition({ lat: lat2, lng: lng2 });
+           
+           if (mapRef.current) {
+              mapRef.current.setView([lat2, lng2], 18, { animate: true, duration: 1.0 });
+           }
+        }, 1500);
+     }
+     return () => clearInterval(interval);
+  }, [isNavigating, routes, selectedRouteIdx]);
 
   if (!mounted) {
     return (
@@ -546,52 +591,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         setIsSearching(false);
      }
   };
-  // Navigation Simulator
-  useEffect(() => {
-     let interval: NodeJS.Timeout;
-     if (isNavigating && routes.length > 0 && routes[selectedRouteIdx]) {
-        const routeCoords = routes[selectedRouteIdx].geometry.coordinates;
-        let currentIndex = 0;
-        
-        // Start at index 0
-        setNavPosition({ lat: routeCoords[0][1], lng: routeCoords[0][0] });
-        if (mapRef.current) {
-           mapRef.current.setView([routeCoords[0][1], routeCoords[0][0]], 18, { animate: true, duration: 1.5 });
-        }
-        
-        interval = setInterval(() => {
-           currentIndex += 1;
-           if (currentIndex >= routeCoords.length - 1) {
-              clearInterval(interval);
-              setIsNavigating(false);
-              setIsPanelCollapsed(false);
-              return;
-           }
-           
-           const current = routeCoords[currentIndex];
-           const next = routeCoords[currentIndex + 1];
-           const lat1 = current[1], lng1 = current[0];
-           const lat2 = next[1], lng2 = next[0];
-           
-           // Calculate bearing (angle)
-           const dLng = (lng2 - lng1) * Math.PI / 180;
-           const lat1Rad = lat1 * Math.PI / 180;
-           const lat2Rad = lat2 * Math.PI / 180;
-           const y = Math.sin(dLng) * Math.cos(lat2Rad);
-           const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
-           const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-           
-           setNavHeading(bearing);
-           setNavPosition({ lat: lat2, lng: lng2 });
-           
-           if (mapRef.current) {
-              mapRef.current.setView([lat2, lng2], 18, { animate: true, duration: 1.0 });
-           }
-        }, 1500); // move to next coordinate every 1.5 seconds
-     }
-     return () => clearInterval(interval);
-  }, [isNavigating, routes, selectedRouteIdx]);
-
 
   return (
     <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
