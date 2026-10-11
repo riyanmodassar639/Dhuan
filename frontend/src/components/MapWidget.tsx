@@ -831,53 +831,40 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       
       if (baseRoutes.length > 0) {
          const primary = baseRoutes[0];
-         baseRoutes = [primary];
          
-         const createMockRoute = (offsetMult: number, routeName: string) => {
-            const newCoords = primary.geometry.coordinates.map((c: any, i: number, arr: any[]) => {
-               if (i < arr.length * 0.05 || i > arr.length * 0.95) return [c[0], c[1]];
-               const progress = i / arr.length;
-               const sineOffset = Math.sin(progress * Math.PI);
-               return [
-                  c[0] + (0.009 * offsetMult * sineOffset), 
-                  c[1] + (0.009 * offsetMult * sineOffset)
-               ];
-            });
-            return {
-               ...primary,
-               distance: primary.distance * (1 + Math.abs(offsetMult) * 0.08),
-               duration: primary.duration * (1 + Math.abs(offsetMult) * 0.12),
-               geometry: { ...primary.geometry, coordinates: newCoords },
-               legs: [{ ...primary.legs[0], steps: [{ name: routeName }] }]
-            };
-         };
-
-         if (validStops.length > 0) {
-            const stopLabel = validStops.length === 1 
-               ? `via Stop A (${validStops[0].name.split(',')[0] || "Custom Stop"})` 
-               : `via ${validStops.length} stops (${validStops.map((_, i) => String.fromCharCode(65 + i)).join(' → ')})`;
-            primary.legs[0].steps[0] = { name: stopLabel };
-         } else if (mode === 'car') {
-            primary.legs[0].steps[0] = { 
-               name: primary.distance > 5000 ? "via Lahore Ring Road (L-20) / Expressway" : "via Main Boulevard & Canal Expressway" 
-            };
-            baseRoutes.push(createMockRoute(1, "via Canal Bank Road"));
-            baseRoutes.push(createMockRoute(-1, "via Ferozepur Road Arterial"));
-         } else if (mode === 'bike') {
-            primary.duration = Math.round(primary.duration * 0.75); // Faster in heavy traffic
-            primary.legs[0].steps[0] = { name: "via Inner Arterial & Service Lanes" };
-            baseRoutes.push({
-               ...createMockRoute(1, "via Canal Road Bike Lane"),
-               duration: Math.round(primary.duration * 1.1)
-            });
-         } else if (mode === 'walk') {
-            const walkSpeedMps = 1.33; // ~4.8 km/h pedestrian pace
-            primary.duration = Math.round(primary.distance / walkSpeedMps);
-            primary.legs[0].steps[0] = { name: "via Pedestrian Walkway & Sidewalks" };
-            baseRoutes.push({
-               ...createMockRoute(0.5, "via Park Promenade & Footpath"),
-               duration: Math.round(primary.duration * 1.08)
-            });
+         if (validStops.length > 0 || isNavigating) {
+            // During navigation or multi-stop routes: strictly single clean real road route
+            baseRoutes = [primary];
+            if (validStops.length > 0) {
+               const stopLabel = validStops.length === 1 
+                  ? `via Stop A (${validStops[0].name.split(',')[0] || "Custom Stop"})` 
+                  : `via ${validStops.length} stops (${validStops.map((_, i) => String.fromCharCode(65 + i)).join(' → ')})`;
+               if (primary.legs && primary.legs[0] && primary.legs[0].steps && primary.legs[0].steps[0]) {
+                  primary.legs[0].steps[0] = { name: stopLabel };
+               }
+            } else {
+               if (primary.legs && primary.legs[0] && primary.legs[0].steps && primary.legs[0].steps[0]) {
+                  primary.legs[0].steps[0] = { name: "Safest Recalculated Route" };
+               }
+            }
+         } else {
+            // Before navigation: if OSRM returned genuine alternative driving routes, use them!
+            if (data.routes && data.routes.length > 1) {
+               baseRoutes = data.routes.slice(0, 3).map((r: any, rIdx: number) => {
+                  const roadName = r.legs?.[0]?.steps?.[0]?.name || (rIdx === 0 ? "Fastest Route" : `Alternative Route ${rIdx}`);
+                  return {
+                     ...r,
+                     legs: [{ ...r.legs?.[0], steps: [{ name: `via ${roadName}` }] }]
+                  };
+               });
+            } else {
+               // Single genuine road route
+               if (primary.legs && primary.legs[0] && primary.legs[0].steps && primary.legs[0].steps[0]) {
+                  const defaultLabel = primary.distance > 5000 ? "via Lahore Ring Road / Expressway" : "via Canal Road & Main Boulevard";
+                  primary.legs[0].steps[0] = { name: defaultLabel };
+               }
+               baseRoutes = [primary];
+            }
          }
       }
 
@@ -1003,32 +990,48 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     if (!selectedPlace) return;
     setIsRerouting(true);
     setRerouteNotice(`Off-route detected • Automatically recalculating route to ${selectedPlace.name || "destination"}...`);
-    setNavPosition({ lat: newCoords[0], lng: newCoords[1] });
+
+    // Snap to nearest actual drivable road coordinate via OSRM Nearest API
+    let roadCoords: [number, number] = newCoords;
+    try {
+      const nearRes = await fetch(`https://router.project-osrm.org/nearest/v1/driving/${newCoords[1]},${newCoords[0]}`);
+      const nearData = await nearRes.json();
+      if (nearData.waypoints && nearData.waypoints.length > 0) {
+        roadCoords = [nearData.waypoints[0].location[1], nearData.waypoints[0].location[0]];
+      }
+    } catch (e) {
+      console.log("OSRM snap error, using fallback coords", e);
+    }
+
+    setNavPosition({ lat: roadCoords[0], lng: roadCoords[1] });
     if (mapRef.current) {
-       mapRef.current.setView([newCoords[0], newCoords[1]], 17, { animate: true });
+       mapRef.current.setView([roadCoords[0], roadCoords[1]], 17, { animate: true });
     }
 
     try {
-       const origin = newCoords;
+       const origin = roadCoords;
        const dest: [number, number] = [selectedPlace.lat, selectedPlace.lon];
        await fetchRoutesAndEnhance(origin, dest, selectedVehicle, routeStops);
-       setRouteOriginCoords(newCoords);
+       setRouteOriginCoords(roadCoords);
+       setSelectedRouteIdx(0);
     } catch (err) {
        console.error("Reroute error:", err);
     } finally {
        setTimeout(() => {
           setIsRerouting(false);
           setRerouteNotice(null);
-       }, 3000);
+       }, 2500);
     }
   };
 
   // Simulate Detour Trigger for interactive testing
-  const handleSimulateDetour = () => {
+  const handleSimulateDetour = async () => {
     if (!navPosition || !selectedPlace) return;
-    const detourLat = navPosition.lat + 0.0035;
-    const detourLng = navPosition.lng + 0.0035;
-    handleOffRoute([detourLat, detourLng]);
+    // Calculate a small cross-street offset perpendicular to current heading (~180m)
+    const rad = ((navHeading || 0) + 90) * Math.PI / 180;
+    const detourLat = navPosition.lat + (0.0018 * Math.cos(rad));
+    const detourLng = navPosition.lng + (0.0018 * Math.sin(rad));
+    await handleOffRoute([detourLat, detourLng]);
   };
 
   return (
@@ -1166,14 +1169,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </>
           ) : (
             // Standard Road Polylines (Car, Bike, Walk)
-            [...routes].sort((a, b) => {
+            // During active navigation, strictly render only the single active route to prevent any overlapping lines
+            (isNavigating && routes[selectedRouteIdx] ? [routes[selectedRouteIdx]] : [...routes].sort((a, b) => {
                const aSelected = routes.indexOf(a) === selectedRouteIdx;
                const bSelected = routes.indexOf(b) === selectedRouteIdx;
                return aSelected ? 1 : bSelected ? -1 : 0;
-            }).map((route) => {
+            })).map((route) => {
                const originalIdx = routes.indexOf(route);
                const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
-               const isSelected = originalIdx === selectedRouteIdx;
+               const isSelected = isNavigating || originalIdx === selectedRouteIdx;
                const routeColor = selectedVehicle === 'walk' 
                   ? (isSelected ? '#0284c7' : '#94a3b8')
                   : selectedVehicle === 'bike'
