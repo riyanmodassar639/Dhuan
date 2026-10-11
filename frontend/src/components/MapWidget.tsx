@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus } from 'lucide-react';
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, AlertTriangle } from 'lucide-react';
 import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 
 // Custom Blue Dot icon for Live Location
@@ -59,6 +59,57 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [navRemainingDuration, setNavRemainingDuration] = useState<number>(0);
   const [navEtaTime, setNavEtaTime] = useState<string>("");
   const [selectedVehicle, setSelectedVehicle] = useState<'car' | 'bike' | 'walk' | 'transit'>('car');
+  
+  // Live Journey Environment & Smog state during Navigation
+  const [navCurrentArea, setNavCurrentArea] = useState<string>("Current Corridor");
+  const [navCurrentAqi, setNavCurrentAqi] = useState<number>(145);
+  const [navCurrentStatus, setNavCurrentStatus] = useState<string>("Unhealthy");
+  const [navCurrentPm25, setNavCurrentPm25] = useState<number>(95);
+
+  const [navUpcomingArea, setNavUpcomingArea] = useState<string>("Approaching Area");
+  const [navUpcomingAqi, setNavUpcomingAqi] = useState<number>(170);
+  const [navUpcomingDistance, setNavUpcomingDistance] = useState<number>(2500);
+  const [navUpcomingStatus, setNavUpcomingStatus] = useState<string>("Unhealthy");
+  const [navUpcomingWarning, setNavUpcomingWarning] = useState<string>("");
+
+  // Off-Route Rerouting state
+  const [isRerouting, setIsRerouting] = useState(false);
+  const [rerouteNotice, setRerouteNotice] = useState<string | null>(null);
+
+  // Spatial AQI calculation for real-time environment simulation across Lahore
+  const getSpatialAqi = (lat: number, lng: number): number => {
+    const hotspots = [
+      { lat: 31.4697, lng: 74.2728, radius: 4000, maxAqi: 360 }, // Kot Lakhpat Industrial
+      { lat: 31.5950, lng: 74.3250, radius: 4500, maxAqi: 340 }, // Northern Ring Road
+      { lat: 31.5204, lng: 74.3187, radius: 3500, maxAqi: 280 }, // Gulberg / Kalma Chowk
+      { lat: 31.4800, lng: 74.3800, radius: 5000, maxAqi: 210 }, // Ferozepur Road
+      { lat: 31.5204, lng: 74.4500, radius: 5000, maxAqi: 85 },  // Cantt Green Belt
+    ];
+
+    const calcMeters = (la1: number, lo1: number, la2: number, lo2: number) => {
+      const dLat = (la2 - la1) * 111000;
+      const dLng = (lo2 - lo1) * 96000;
+      return Math.sqrt(dLat * dLat + dLng * dLng);
+    };
+
+    let computedAqi = 145;
+    for (const spot of hotspots) {
+      const d = calcMeters(lat, lng, spot.lat, spot.lng);
+      if (d < spot.radius) {
+        const weight = 1 - (d / spot.radius);
+        computedAqi = Math.round(computedAqi + (spot.maxAqi - computedAqi) * weight);
+      }
+    }
+    const jitter = Math.floor(Math.sin(lat * 1200 + lng * 1200) * 8);
+    return Math.max(60, Math.min(390, computedAqi + jitter));
+  };
+
+  const getAqiCategory = (aqi: number) => {
+    if (aqi > 300) return { status: 'Hazardous', color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', badgeBg: 'bg-rose-600' };
+    if (aqi > 200) return { status: 'Very Unhealthy', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', badgeBg: 'bg-orange-500' };
+    if (aqi > 150) return { status: 'Unhealthy', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', badgeBg: 'bg-amber-500' };
+    return { status: 'Moderate', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', badgeBg: 'bg-emerald-600' };
+  };
   
   // Custom Origin State for Directions
   const [userAddress, setUserAddress] = useState("Your Location");
@@ -427,6 +478,78 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            setNavRemainingDistance(remDistMeters);
            setNavRemainingDuration(remDurationSec);
            setNavEtaTime(formattedEta);
+
+           // Live Spatial AQI & Environment for Current Location
+           const curLat = next[1];
+           const curLng = next[0];
+           const curAqi = getSpatialAqi(curLat, curLng);
+           const curCat = getAqiCategory(curAqi);
+           setNavCurrentAqi(curAqi);
+           setNavCurrentStatus(curCat.status);
+           setNavCurrentPm25(Math.round(curAqi * 0.65));
+
+           // Derive current area / road name
+           let curAreaName = "Connecting Corridor";
+           if (currentRoute.legs?.[0]?.steps && currentRoute.legs[0].steps.length > 0) {
+              const stepIndex = Math.min(
+                 currentRoute.legs[0].steps.length - 1, 
+                 Math.floor((currentIndex / routeCoords.length) * currentRoute.legs[0].steps.length)
+              );
+              const stepObj = currentRoute.legs[0].steps[stepIndex];
+              if (stepObj?.name && stepObj.name.trim().length > 0) {
+                 curAreaName = stepObj.name.replace(/^via\s+/i, '');
+              }
+           }
+           if (!curAreaName || curAreaName === "Main Route" || curAreaName === "Connecting Corridor") {
+              if (curLat > 31.54) curAreaName = "Mall Road Expressway";
+              else if (curLat > 31.50) curAreaName = "Canal Bank Corridor";
+              else if (curLng > 74.37) curAreaName = "Defence Road Sector";
+              else curAreaName = "Ferozepur Road Arterial";
+           }
+           setNavCurrentArea(curAreaName);
+
+           // Calculate upcoming area ~2-3 km ahead
+           let distAheadSum = 0;
+           let aheadIdx = currentIndex + 1;
+           for (let k = currentIndex + 1; k < routeCoords.length - 1; k++) {
+              distAheadSum += getDist(routeCoords[k], routeCoords[k+1]);
+              aheadIdx = k;
+              if (distAheadSum >= 2300) {
+                 break;
+              }
+           }
+           if (aheadIdx >= routeCoords.length - 1) {
+              aheadIdx = routeCoords.length - 1;
+           }
+
+           const aheadCoord = routeCoords[aheadIdx];
+           const aheadAqi = getSpatialAqi(aheadCoord[1], aheadCoord[0]);
+           const aheadCat = getAqiCategory(aheadAqi);
+           const aheadDistMeters = Math.round(distAheadSum);
+
+           setNavUpcomingDistance(aheadDistMeters);
+           setNavUpcomingAqi(aheadAqi);
+           setNavUpcomingStatus(aheadCat.status);
+
+           // Upcoming Area Name
+           let upcomingName = selectedPlace?.name ? `${selectedPlace.name} Corridor` : "Destination Vicinity";
+           if (aheadIdx < routeCoords.length - 2) {
+              if (aheadCoord[1] > 31.54) upcomingName = "Mall Road Junction";
+              else if (aheadCoord[1] > 31.50) upcomingName = "Canal Bank Road Sector";
+              else if (aheadCoord[0] > 74.37) upcomingName = "Ring Road Interchange";
+              else upcomingName = "Ferozepur Underpass Sector";
+           }
+           setNavUpcomingArea(upcomingName);
+
+           // Environmental Warning / Smog Ahead Trend
+           const distKmStr = aheadDistMeters >= 1000 ? `${(aheadDistMeters / 1000).toFixed(1)} km` : `${aheadDistMeters} m`;
+           if (aheadAqi > curAqi + 20) {
+              setNavUpcomingWarning(`⚠️ Smog Spikes Ahead: Air quality worsens by +${aheadAqi - curAqi} AQI in next ${distKmStr}. Visibility drops to ~700m.`);
+           } else if (aheadAqi < curAqi - 20) {
+              setNavUpcomingWarning(`🌿 Cleaner Corridor Ahead: Smog decreases by -${curAqi - aheadAqi} AQI in next ${distKmStr}. Lower particulate concentration.`);
+           } else {
+              setNavUpcomingWarning(`🌫️ Steady Smog Level: Uniform air conditions (${aheadCat.status}) continue for next ${distKmStr}.`);
+           }
            
            // Calculate next turn instruction
            let distanceToTurn = 0;
@@ -585,6 +708,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             if (selectedPlace) {
                await fetchRoutesAndEnhance([lat, lng], [selectedPlace.lat, selectedPlace.lon]);
             }
+            return;
+        }
+
+        if (isNavigating) {
+            // User tapped another road or off-route location while actively navigating -> Automatically recalculate route!
+            handleOffRoute([lat, lng]);
             return;
         }
 
@@ -850,6 +979,58 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
      }
   };
 
+  // End Navigation Handler: stops route, clears directions, closes modal, and locks current user GPS location
+  const handleEndNavigation = () => {
+    if (navPosition) {
+       setUserLocation([navPosition.lat, navPosition.lng]);
+       setUserAddress(navCurrentArea || `Coordinates: ${navPosition.lat.toFixed(4)}, ${navPosition.lng.toFixed(4)}`);
+       if (mapRef.current) {
+          mapRef.current.flyTo([navPosition.lat, navPosition.lng], 16, { animate: true, duration: 1.2 });
+       }
+    }
+    setIsNavigating(false);
+    setIsDirectionsMode(false);
+    setRoutes([]);
+    setSelectedPlace(null);
+    setIsPanelCollapsed(false);
+    setNavPosition(null);
+    setRerouteNotice(null);
+    setIsRerouting(false);
+  };
+
+  // Off-Route Rerouting Handler: auto recalculates route from drifted road coordinates
+  const handleOffRoute = async (newCoords: [number, number]) => {
+    if (!selectedPlace) return;
+    setIsRerouting(true);
+    setRerouteNotice(`Off-route detected • Automatically recalculating route to ${selectedPlace.name || "destination"}...`);
+    setNavPosition({ lat: newCoords[0], lng: newCoords[1] });
+    if (mapRef.current) {
+       mapRef.current.setView([newCoords[0], newCoords[1]], 17, { animate: true });
+    }
+
+    try {
+       const origin = newCoords;
+       const dest: [number, number] = [selectedPlace.lat, selectedPlace.lon];
+       await fetchRoutesAndEnhance(origin, dest, selectedVehicle, routeStops);
+       setRouteOriginCoords(newCoords);
+    } catch (err) {
+       console.error("Reroute error:", err);
+    } finally {
+       setTimeout(() => {
+          setIsRerouting(false);
+          setRerouteNotice(null);
+       }, 3000);
+    }
+  };
+
+  // Simulate Detour Trigger for interactive testing
+  const handleSimulateDetour = () => {
+    if (!navPosition || !selectedPlace) return;
+    const detourLat = navPosition.lat + 0.0035;
+    const detourLng = navPosition.lng + 0.0035;
+    handleOffRoute([detourLat, detourLng]);
+  };
+
   return (
     <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
       <div className="absolute inset-0">
@@ -1064,10 +1245,22 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
+      {/* Off-Route Recalculation Notice Banner */}
+      {rerouteNotice && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[3200] bg-amber-600 text-white px-5 py-2.5 rounded-2xl shadow-2xl border border-amber-400 flex items-center gap-3 text-xs font-bold animate-in fade-in slide-in-from-top-3">
+           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0"></div>
+           <span>{rerouteNotice}</span>
+        </div>
+      )}
+
       {/* Google Maps Style Bottom Navigation Bar (Remaining Time, Remaining Distance & ETA) */}
       {isNavigating && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[3000] bg-white/95 backdrop-blur-md px-6 py-3.5 rounded-3xl shadow-[0_16px_45px_rgba(0,0,0,0.25)] border border-slate-200/90 flex items-center justify-between min-w-[340px] max-w-[92%] sm:min-w-[420px] animate-in slide-in-from-bottom-5 duration-300">
-           <div className="flex flex-col">
+           <div 
+             onClick={() => setIsPanelCollapsed(false)}
+             className="flex flex-col cursor-pointer select-none"
+             title="Click to view Live Journey & Smog Details"
+           >
               <div className="flex items-baseline gap-1.5">
                  <span className="text-3xl sm:text-4xl font-black text-emerald-600 tracking-tight leading-none">
                     {Math.max(1, Math.round(navRemainingDuration / 60))}
@@ -1088,22 +1281,17 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            <div className="flex items-center gap-3">
               <button 
                 onClick={() => {
-                   if (mapRef.current && navPosition) {
-                      mapRef.current.setView([navPosition.lat, navPosition.lng], 18, { animate: true });
-                   }
+                   setIsPanelCollapsed(prev => !prev);
                 }}
-                title="Re-center location"
+                title="View Journey & Smog Details"
                 className="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-all active:scale-95 shadow-sm"
               >
                 <Navigation className="w-5 h-5 fill-slate-700 text-slate-700" />
               </button>
 
               <button 
-                onClick={() => { 
-                   setIsNavigating(false); 
-                   setIsPanelCollapsed(false); 
-                }}
-                title="Exit Navigation"
+                onClick={handleEndNavigation}
+                title="End Navigation"
                 className="w-11 h-11 rounded-full bg-rose-50 hover:bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 hover:text-rose-700 transition-all active:scale-95 shadow-sm"
               >
                 <X className="w-5 h-5 stroke-[2.5]" />
@@ -1167,7 +1355,188 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           
           {isDirectionsMode ? (
             <div className="flex flex-col h-full bg-slate-50">
-               <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
+              {isNavigating ? (
+                /* LIVE SMOG & JOURNEY ENVIRONMENT MONITOR (DURING NAVIGATION) */
+                <div className="flex flex-col h-full bg-slate-50">
+                   {/* Navigation Details Header */}
+                   <div className="bg-white p-4 pt-6 shadow-sm border-b border-slate-200 shrink-0">
+                     <div className="flex items-center justify-between mb-2">
+                       <button 
+                         onClick={() => setIsPanelCollapsed(true)} 
+                         className="text-slate-500 hover:text-slate-900 flex items-center gap-1.5 text-xs font-bold transition-colors p-1.5 -ml-1 rounded-full hover:bg-slate-100"
+                         title="Back to Map"
+                       >
+                         <ArrowLeft className="w-4 h-4" />
+                         <span>Map View</span>
+                       </button>
+                       <span className="text-[10px] uppercase font-black tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-xs">
+                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                         Navigating
+                       </span>
+                     </div>
+                     
+                     <h2 className="text-xl font-black text-slate-900 line-clamp-1 leading-tight">
+                       To: {selectedPlace?.name || selectedPlace?.display_name?.split(',')[0] || "Destination"}
+                     </h2>
+                     <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                       Live Smog Corridor & Environmental Status
+                     </p>
+
+                     {/* Trip Progress Metrics */}
+                     <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
+                       <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-2.5 text-center shadow-xs">
+                         <span className="text-[11px] text-emerald-700 font-bold block">Remaining</span>
+                         <span className="text-lg font-black text-emerald-800 leading-none">
+                           {Math.max(1, Math.round(navRemainingDuration / 60))} <span className="text-xs font-bold">min</span>
+                         </span>
+                       </div>
+                       <div className="bg-slate-100/80 border border-slate-200 rounded-xl p-2.5 text-center shadow-xs">
+                         <span className="text-[11px] text-slate-500 font-bold block">Distance</span>
+                         <span className="text-lg font-black text-slate-800 leading-none">
+                           {navRemainingDistance >= 1000 ? `${(navRemainingDistance / 1000).toFixed(1)} km` : `${navRemainingDistance} m`}
+                         </span>
+                       </div>
+                       <div className="bg-purple-50/80 border border-purple-200/80 rounded-xl p-2.5 text-center shadow-xs">
+                         <span className="text-[11px] text-purple-700 font-bold block">Arrival ETA</span>
+                         <span className="text-lg font-black text-purple-900 leading-none">{navEtaTime || "--:--"}</span>
+                       </div>
+                     </div>
+                   </div>
+
+                   {/* Scrollable Smog & Environmental Status Feed */}
+                   <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                     {/* 1. CURRENT LOCATION SMOG & ENVIRONMENT CARD */}
+                     <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 relative overflow-hidden">
+                       <div className="flex items-center justify-between mb-2">
+                         <div className="flex items-center gap-2">
+                           <span className="relative flex h-2.5 w-2.5">
+                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                           </span>
+                           <span className="text-[11px] font-black uppercase tracking-wider text-rose-600">Current Area Smog</span>
+                         </div>
+                         <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                           navCurrentStatus === 'Hazardous' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                           navCurrentStatus === 'Very Unhealthy' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                           navCurrentStatus === 'Unhealthy' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                           'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                         }`}>
+                           {navCurrentStatus}
+                         </span>
+                       </div>
+
+                       <div className="flex items-baseline justify-between mt-1 mb-2">
+                         <div>
+                           <h3 className="text-base font-extrabold text-slate-900 line-clamp-1">{navCurrentArea}</h3>
+                           <p className="text-xs text-slate-500">Real-time coordinate index</p>
+                         </div>
+                         <div className="text-right">
+                           <span className="text-3xl font-black text-slate-900 tracking-tight leading-none">{navCurrentAqi}</span>
+                           <span className="text-[10px] font-bold text-slate-400 block -mt-0.5">AQI</span>
+                         </div>
+                       </div>
+
+                       {/* Live Metrics Grid */}
+                       <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
+                         <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                           <Wind className="w-4 h-4 text-slate-500 shrink-0" />
+                           <div>
+                             <span className="text-slate-400 text-[10px] block font-bold">PM2.5 PARTICULATES</span>
+                             <span className="font-black text-slate-800">{navCurrentPm25} µg/m³</span>
+                           </div>
+                         </div>
+                         <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                           <Activity className="w-4 h-4 text-emerald-600 shrink-0" />
+                           <div>
+                             <span className="text-slate-400 text-[10px] block font-bold">SMOG VISIBILITY</span>
+                             <span className="font-black text-slate-800">{navCurrentAqi > 250 ? '600m (Dense Smog)' : '1.8 km (Fair)'}</span>
+                           </div>
+                         </div>
+                       </div>
+
+                       {/* Vehicle Specific Health Advisory */}
+                       <div className="mt-3 p-3 rounded-xl bg-amber-50/80 border border-amber-200/80 text-amber-900 text-xs font-medium flex items-start gap-2.5">
+                         <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                         <div className="leading-tight">
+                           {selectedVehicle === 'car' ? (
+                             <span><strong>Vehicle Advisory:</strong> Windows closed, cabin air recirculate activated to block outdoor smog intake.</span>
+                           ) : selectedVehicle === 'bike' ? (
+                             <span><strong>Bike Advisory:</strong> Direct open-air exposure. N95 respirator mask & goggles mandatory!</span>
+                           ) : selectedVehicle === 'walk' ? (
+                             <span><strong>Pedestrian Alert:</strong> Hazardous particulate inhalation. Avoid deep breathing & wear mask.</span>
+                           ) : (
+                             <span><strong>Transit Advisory:</strong> Punjab MassTransit filtered carriage active. Protect yourself during platform transfers.</span>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* 2. UPCOMING AREA (~2-3 KM AHEAD) SMOG & ENVIRONMENT CARD */}
+                     <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 relative overflow-hidden">
+                       <div className="flex items-center justify-between mb-2">
+                         <div className="flex items-center gap-1.5">
+                           <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+                           <span className="text-[11px] font-black uppercase tracking-wider text-purple-700">
+                             Upcoming in {(navUpcomingDistance / 1000).toFixed(1)} km
+                           </span>
+                         </div>
+                         <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                           navUpcomingStatus === 'Hazardous' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                           navUpcomingStatus === 'Very Unhealthy' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                           navUpcomingStatus === 'Unhealthy' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                           'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                         }`}>
+                           {navUpcomingStatus}
+                         </span>
+                       </div>
+
+                       <div className="flex items-baseline justify-between mt-1 mb-2">
+                         <div>
+                           <h3 className="text-base font-extrabold text-slate-900 line-clamp-1">{navUpcomingArea}</h3>
+                           <p className="text-xs text-slate-500">Upcoming corridor projection</p>
+                         </div>
+                         <div className="text-right">
+                           <span className="text-3xl font-black text-slate-900 tracking-tight leading-none">{navUpcomingAqi}</span>
+                           <span className="text-[10px] font-bold text-slate-400 block -mt-0.5">AQI</span>
+                         </div>
+                       </div>
+
+                       {/* Environmental Trend / Warning */}
+                       <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 leading-snug">
+                         {navUpcomingWarning}
+                       </div>
+                     </div>
+
+                     {/* 3. OFF-ROUTE & DETOUR ASSISTANT */}
+                     <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 flex items-center justify-between gap-3">
+                       <div>
+                         <h4 className="text-xs font-black text-slate-900">Off-Route Auto Recalculation</h4>
+                         <p className="text-[11px] text-slate-500">Tap any road on map to detour</p>
+                       </div>
+                       <button 
+                         onClick={handleSimulateDetour}
+                         disabled={isRerouting}
+                         className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition-all active:scale-95 border border-slate-200 shrink-0"
+                       >
+                         {isRerouting ? 'Rerouting...' : 'Simulate Detour'}
+                       </button>
+                     </div>
+                   </div>
+
+                   {/* Bottom Action: Prominent End Navigation Button */}
+                   <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] shrink-0">
+                     <button 
+                       onClick={handleEndNavigation}
+                       className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-lg transition-colors flex justify-center items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
+                     >
+                       <X className="w-5 h-5 stroke-[2.5]" />
+                       End Navigation
+                     </button>
+                   </div>
+                </div>
+              ) : (
+                <div className="flex flex-col h-full bg-slate-50">
+                   <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
                   <div className="flex items-center justify-between mb-3.5">
                     <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors w-fit p-2 -ml-2 rounded-full hover:bg-slate-100">
                       <ArrowLeft className="w-5 h-5" />
@@ -1464,6 +1833,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                     </button>
                  </div>
                )}
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -1571,31 +1942,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
-      {/* Floating collapsed widget when navigating */}
-      {selectedPlace && isPanelCollapsed && (
-         <div className="absolute top-4 left-4 z-[2500] bg-white p-4 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col gap-2.5 animate-in fade-in zoom-in duration-300">
-            <div className="font-bold text-slate-900 flex items-center gap-2">
-               <Navigation className="w-5 h-5 text-purple-600 fill-purple-600" />
-               <span className="truncate max-w-[220px]">Navigating to {selectedPlace.name}</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-               <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                  {Math.max(1, Math.round(navRemainingDuration / 60))} min left
-               </span>
-               <span>•</span>
-               <span>
-                  {navRemainingDistance >= 1000 
-                    ? `${(navRemainingDistance / 1000).toFixed(1)} km remaining` 
-                    : `${navRemainingDistance} m remaining`}
-               </span>
-            </div>
-            <div className="flex gap-2 pt-0.5">
-               <button onClick={() => setIsPanelCollapsed(false)} className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors">Details</button>
-               <button onClick={() => { setIsPanelCollapsed(false); setIsNavigating(false); setIsDirectionsMode(false); setSelectedPlace(null); setRoutes([]); }} className="px-3.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold rounded-lg transition-colors">End Route</button>
-            </div>
-         </div>
-      )}
-
       {/* Compass Icon (Bottom Right, adjusted if fullScreen) */}
       <div 
         onClick={handleCompassClick}
@@ -1606,32 +1952,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            <path d="M12 2.25l4.5 10.5-4.5-2.25-4.5 2.25L12 2.25z" className="text-red-500" />
            <path d="M12 21.75l-4.5-10.5 4.5 2.25 4.5-2.25-4.5 10.5z" className="text-slate-400" />
         </svg>
-      </div>
-
-      {/* Right Side UI Column (AQI Zones Legend) */}
-      {/* Hide on mobile if selectedPlace is active to avoid clutter */}
-      <div className={`absolute top-4 right-4 z-[1000] flex-col gap-2 ${selectedPlace ? 'hidden sm:flex' : 'flex'}`}>
-        <div className="bg-white/95 backdrop-blur-md p-3.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-slate-200">
-            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">Live AQI Zones</p>
-            <div className="space-y-2.5">
-               <div className="flex items-center gap-3">
-                   <div className="w-3.5 h-3.5 rounded-full bg-rose-700 opacity-90 shadow-sm"></div>
-                   <span className="text-xs font-semibold text-slate-700">Hazardous (300+)</span>
-               </div>
-               <div className="flex items-center gap-3">
-                   <div className="w-3.5 h-3.5 rounded-full bg-orange-600 opacity-90 shadow-sm"></div>
-                   <span className="text-xs font-semibold text-slate-700">Very Unhealthy (200+)</span>
-               </div>
-               <div className="flex items-center gap-3">
-                   <div className="w-3.5 h-3.5 rounded-full bg-yellow-500 opacity-90 shadow-sm"></div>
-                   <span className="text-xs font-semibold text-slate-700">Unhealthy (150+)</span>
-               </div>
-               <div className="flex items-center gap-3">
-                   <div className="w-3.5 h-3.5 rounded-full bg-emerald-600 opacity-90 shadow-sm"></div>
-                   <span className="text-xs font-semibold text-slate-700">Moderate (&lt;150)</span>
-               </div>
-            </div>
-        </div>
       </div>
       </div>
     </div>
