@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, AlertTriangle } from 'lucide-react';
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, AlertTriangle, Calendar, Bell } from 'lucide-react';
 import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 
 // Custom Blue Dot icon for Live Location
@@ -32,11 +33,28 @@ const searchPinIcon = new L.DivIcon({
 });
 
 export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean }) {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   
   const mapRef = useRef<L.Map | null>(null);
   const [hasCentered, setHasCentered] = useState(false);
+
+  // Pre-Plan Itinerary Mode (Triggered from Smart Routing page)
+  const [isPrePlanMode, setIsPrePlanMode] = useState(false);
+  const [prePlanDay, setPrePlanDay] = useState('Monday');
+  const [prePlanStops, setPrePlanStops] = useState<Array<{
+    id: string;
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+    time: string;
+    day: string;
+    aqiForecast: number;
+    smogStatus: string;
+    advisory?: string;
+  }>>([]);
 
   // Search State
   const [query, setQuery] = useState('');
@@ -105,10 +123,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   };
 
   const getAqiCategory = (aqi: number) => {
-    if (aqi > 300) return { status: 'Hazardous', color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', badgeBg: 'bg-rose-600' };
-    if (aqi > 200) return { status: 'Very Unhealthy', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', badgeBg: 'bg-orange-500' };
-    if (aqi > 150) return { status: 'Unhealthy', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', badgeBg: 'bg-amber-500' };
-    return { status: 'Moderate', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', badgeBg: 'bg-emerald-600' };
+    if (aqi > 300) return { status: 'Hazardous', color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', badgeBg: 'bg-rose-600', advisory: 'Severe smog spike. N95 respirator mandatory. Seal cabin.' };
+    if (aqi > 200) return { status: 'Very Unhealthy', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', badgeBg: 'bg-orange-500', advisory: 'High smog inversion. Use AC recirculation mode.' };
+    if (aqi > 150) return { status: 'Unhealthy', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', badgeBg: 'bg-amber-500', advisory: 'Elevated PM2.5. Vulnerable groups should limit outdoor time.' };
+    return { status: 'Moderate', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', badgeBg: 'bg-emerald-600', advisory: 'Air quality within acceptable range.' };
   };
   
   // Custom Origin State for Directions
@@ -201,6 +219,96 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   useEffect(() => {
     setOriginInput(userAddress);
   }, [userAddress]);
+
+  // Check URL parameters on mount for Pre-Plan Mode and Navigation from Smart Routing page
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const day = params.get('day') || 'Monday';
+
+      if (params.get('mode') === 'preplan') {
+        setIsPrePlanMode(true);
+        setPrePlanDay(day);
+        try {
+          const saved = localStorage.getItem('dhuan_planned_trips');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const filtered = parsed.filter((p: any) => p.day === day && p.status !== 'cancelled');
+            setPrePlanStops(filtered);
+          }
+        } catch(e) {
+          console.error(e);
+        }
+      } else if (params.get('destLat') && params.get('destLng')) {
+        const dLat = parseFloat(params.get('destLat')!);
+        const dLng = parseFloat(params.get('destLng')!);
+        const dName = params.get('destName') || 'Scheduled Destination';
+        const aqi = getSpatialAqi(dLat, dLng);
+        const cat = getAqiCategory(aqi);
+
+        const targetPlace = {
+          place_id: Date.now(),
+          lat: dLat,
+          lon: dLng,
+          name: dName,
+          display_name: dName,
+          aqi,
+          status: cat.status,
+          color: cat.color,
+          bg: cat.bg,
+          border: cat.border,
+          advisory: cat.advisory
+        };
+
+        setSelectedPlace(targetPlace);
+        setIsDirectionsMode(true);
+        const origin = userLocation || [31.5204, 74.3587];
+        fetchRoutesAndEnhance(origin, [dLat, dLng]);
+      } else if (params.get('mode') === 'tour') {
+        try {
+          const saved = localStorage.getItem('dhuan_planned_trips');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const dayStops = parsed.filter((p: any) => p.day === day && p.status !== 'cancelled');
+            if (dayStops.length > 0) {
+              const lastStop = dayStops[dayStops.length - 1];
+              const intermediate = dayStops.slice(0, dayStops.length - 1).map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                coords: [s.lat, s.lng] as [number, number],
+                input: s.name
+              }));
+
+              const aqi = lastStop.aqiForecast || getSpatialAqi(lastStop.lat, lastStop.lng);
+              const cat = getAqiCategory(aqi);
+
+              const targetPlace = {
+                place_id: Date.now(),
+                lat: lastStop.lat,
+                lon: lastStop.lng,
+                name: lastStop.name,
+                display_name: lastStop.address || lastStop.name,
+                aqi,
+                status: cat.status,
+                color: cat.color,
+                bg: cat.bg,
+                border: cat.border,
+                advisory: cat.advisory
+              };
+
+              setSelectedPlace(targetPlace);
+              setRouteStops(intermediate);
+              setIsDirectionsMode(true);
+              const origin = userLocation || [31.5204, 74.3587];
+              fetchRoutesAndEnhance(origin, [lastStop.lat, lastStop.lng], 'car', intermediate);
+            }
+          }
+        } catch(e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -632,6 +740,35 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     const lat = parseFloat(place.lat);
     const lon = parseFloat(place.lon);
     
+    if (isPrePlanMode) {
+      const aqi = getSpatialAqi(lat, lon);
+      const cat = getAqiCategory(aqi);
+      const defaultTimes = ["09:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:45 PM", "09:00 PM"];
+      const assignedTime = defaultTimes[prePlanStops.length % defaultTimes.length];
+
+      const newStop = {
+        id: Date.now().toString(),
+        name: place.name || place.display_name.split(',')[0],
+        address: place.display_name,
+        lat,
+        lng: lon,
+        time: assignedTime,
+        day: prePlanDay,
+        aqiForecast: aqi,
+        smogStatus: cat.status,
+        advisory: cat.advisory || "Air quality verified"
+      };
+
+      setPrePlanStops(prev => [...prev, newStop]);
+      setQuery('');
+      setResults([]);
+      setHasSearched(false);
+      if (mapRef.current) {
+        mapRef.current.flyTo([lat, lon], 15, { animate: true, duration: 1.2 });
+      }
+      return;
+    }
+    
     // Simulate AQI based on random values for realism in the demo
     const aqiVal = Math.floor(Math.random() * 250) + 50; 
     let status = 'Moderate'; let color = 'text-emerald-700'; let bg = 'bg-emerald-50'; let border = 'border-emerald-200';
@@ -709,6 +846,43 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                await fetchRoutesAndEnhance([lat, lng], [selectedPlace.lat, selectedPlace.lon]);
             }
             return;
+        }
+
+        if (isPrePlanMode) {
+           try {
+              const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
+              const data = await res.json();
+              let name = `Location (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
+              let address = name;
+              if (data.features && data.features.length > 0) {
+                 const prop = data.features[0].properties;
+                 name = prop.name || prop.street || name;
+                 address = [prop.name, prop.street, prop.city].filter(Boolean).join(', ') || name;
+              }
+
+              const aqi = getSpatialAqi(lat, lng);
+              const cat = getAqiCategory(aqi);
+              const defaultTimes = ["09:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:45 PM", "09:00 PM"];
+              const assignedTime = defaultTimes[prePlanStops.length % defaultTimes.length];
+
+              const newStop = {
+                 id: Date.now().toString(),
+                 name,
+                 address,
+                 lat,
+                 lng,
+                 time: assignedTime,
+                 day: prePlanDay,
+                 aqiForecast: aqi,
+                 smogStatus: cat.status,
+                 advisory: cat.advisory || "Air quality verified"
+              };
+
+              setPrePlanStops(prev => [...prev, newStop]);
+           } catch(e) {
+              console.error(e);
+           }
+           return;
         }
 
         if (isNavigating) {
@@ -1121,6 +1295,32 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </Marker>
           );
         })}
+
+        {/* Pre-Plan Selected Stops Markers (1, 2, 3...) */}
+        {isPrePlanMode && prePlanStops.map((st, sIdx) => (
+          <Marker
+            key={`preplan-${st.id}`}
+            position={[st.lat, st.lng]}
+            icon={L.divIcon({
+              className: 'preplan-stop-marker',
+              html: `<div style="background: linear-gradient(135deg, #7c3aed, #4f46e5); border: 2.5px solid white; box-shadow: 0 6px 16px rgba(0,0,0,0.4); width: 32px; height: 32px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 14px;">
+                       ${sIdx + 1}
+                     </div>`,
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            })}
+            zIndexOffset={1800}
+          >
+            <Popup>
+              <div className="font-extrabold text-slate-900 text-sm">Stop {sIdx + 1}: {st.name}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{st.address}</div>
+              <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-slate-100">
+                <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">⏰ {st.time}</span>
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">AQI {st.aqiForecast}</span>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
 
         {/* Direction Routes */}
         {isDirectionsMode && routes.length > 0 && (
@@ -1943,6 +2143,106 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Pre-Plan Destinations Picker Modal (Triggered when mode=preplan) */}
+      {isPrePlanMode && (
+        <div className="absolute top-4 right-4 z-[3000] w-[calc(100%-32px)] sm:w-[380px] bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_16px_45px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col max-h-[85vh] animate-in slide-in-from-right-4 duration-300 overflow-hidden">
+           {/* Header */}
+           <div className="p-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between shadow-sm">
+              <div>
+                 <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-purple-200" />
+                    <span className="font-extrabold text-sm uppercase tracking-wider">{prePlanDay} Itinerary</span>
+                 </div>
+                 <p className="text-[11px] text-purple-100 mt-0.5">Click map to pick destination stops</p>
+              </div>
+              <span className="bg-white/20 text-white font-black text-xs px-2.5 py-1 rounded-full border border-white/20 shadow-xs">
+                 {prePlanStops.length} Selected
+              </span>
+           </div>
+
+           {/* List of Picked Destinations */}
+           <div className="p-3 overflow-y-auto space-y-2.5 flex-1 divide-y divide-slate-100 max-h-[380px]">
+              {prePlanStops.length === 0 ? (
+                 <div className="text-center py-8 px-4 text-slate-400">
+                    <MapPin className="w-8 h-8 mx-auto mb-2 text-purple-400 animate-bounce" />
+                    <p className="text-xs font-bold text-slate-700">No destinations picked yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Tap roads, shops or landmarks on the map to add stops for {prePlanDay}.</p>
+                 </div>
+              ) : (
+                 prePlanStops.map((st, idx) => (
+                    <div key={st.id} className="pt-2.5 first:pt-0 flex items-start gap-2.5">
+                       <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center shrink-0 mt-1 shadow-xs">
+                          {idx + 1}
+                       </div>
+                       <div className="flex-1 min-w-0">
+                          <h4 className="text-xs font-black text-slate-900 truncate">{st.name}</h4>
+                          <p className="text-[10px] text-slate-500 truncate">{st.address}</p>
+                          
+                          {/* Time Input & AQI preview */}
+                          <div className="flex items-center gap-2 mt-1.5">
+                             <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                                <Clock className="w-3 h-3 text-slate-500" />
+                                <input 
+                                  type="text"
+                                  value={st.time}
+                                  onChange={(e) => {
+                                     const val = e.target.value;
+                                     setPrePlanStops(prev => prev.map(p => p.id === st.id ? { ...p, time: val } : p));
+                                  }}
+                                  className="bg-transparent text-[11px] font-bold text-slate-800 outline-none w-20"
+                                  placeholder="e.g. 10:30 AM"
+                                />
+                             </div>
+                             <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded text-emerald-700 bg-emerald-50 border border-emerald-200">
+                                AQI {st.aqiForecast}
+                             </span>
+                          </div>
+                       </div>
+
+                       {/* Delete Stop */}
+                       <button 
+                         onClick={() => setPrePlanStops(prev => prev.filter(p => p.id !== st.id))}
+                         className="text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                         title="Remove destination"
+                       >
+                          <X className="w-3.5 h-3.5" />
+                       </button>
+                    </div>
+                 ))
+              )}
+           </div>
+
+           {/* Footer Actions */}
+           <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
+              <button 
+                onClick={() => {
+                   try {
+                      const existingStr = localStorage.getItem('dhuan_planned_trips') || '[]';
+                      const existing = JSON.parse(existingStr);
+                      const others = existing.filter((p: any) => p.day !== prePlanDay);
+                      const updated = [...others, ...prePlanStops];
+                      localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
+                   } catch(e) {
+                      console.error(e);
+                   }
+                   router.push('/dashboard/routing');
+                }}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Done ({prePlanStops.length} Destinations)</span>
+              </button>
+
+              <button 
+                onClick={() => router.push('/dashboard/routing')}
+                className="py-2.5 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+              >
+                Cancel
+              </button>
+           </div>
         </div>
       )}
 
