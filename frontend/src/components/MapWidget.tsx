@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp } from 'lucide-react';
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2 } from 'lucide-react';
+import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 
 // Custom Blue Dot icon for Live Location
 const blueDotIcon = new L.DivIcon({
@@ -54,6 +55,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [navPosition, setNavPosition] = useState<{lat: number, lng: number} | null>(null);
   const [navHeading, setNavHeading] = useState(0);
   const [navInstruction, setNavInstruction] = useState({ type: "Head straight", distance: 0 });
+  const [selectedVehicle, setSelectedVehicle] = useState<'car' | 'bike' | 'walk' | 'transit'>('car');
   
   // Custom Origin State for Directions
   const [userAddress, setUserAddress] = useState("Your Location");
@@ -337,18 +339,26 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                    else if (angleDiff < -25 && angleDiff >= -130) turnType = "Turn left";
                    else turnType = "Make a U-turn";
                    
-                   // Sprinkle flavor events requested by user
-                   if (i % 14 === 0 && Math.abs(angleDiff) < 45) turnType = "Take the flyover";
-                   if (i % 19 === 0 && Math.abs(angleDiff) < 45) turnType = "Take the underpass";
+                   // Sprinkle vehicle-specific flavor events
+                   if (selectedVehicle === 'transit') {
+                      turnType = routes[selectedRouteIdx]?.transitData?.steps?.[1]?.badge ? `Ride ${routes[selectedRouteIdx].transitData.steps[1].badge}` : "Transfer at Metro Station";
+                   } else if (selectedVehicle === 'walk') {
+                      turnType = i % 2 === 0 ? 'Follow pedestrian path' : 'Cross at walkway';
+                   } else if (selectedVehicle === 'bike') {
+                      turnType = i % 2 === 0 ? 'Stay in service lane' : (angleDiff > 0 ? 'Turn right' : 'Turn left');
+                   } else {
+                      if (i % 14 === 0 && Math.abs(angleDiff) < 45) turnType = 'Take the flyover';
+                      if (i % 19 === 0 && Math.abs(angleDiff) < 45) turnType = 'Take the underpass';
+                      if (i % 25 === 0) turnType = 'Continue on Ring Road (L-20)';
+                   }
                    
                    foundTurn = true;
                    break;
                }
            }
            if (!foundTurn) {
-              turnType = "Arrive at destination";
+              turnType = selectedVehicle === 'transit' ? 'Arrive at Metro/Bus Station' : 'Arrive at destination';
            }
-           
            setNavInstruction({ type: turnType, distance: Math.round(distanceToTurn) });
            setNavHeading(bearing);
            setNavPosition({ lat: next[1], lng: next[0] });
@@ -517,29 +527,70 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return null;
   };
 
-  const fetchRoutesAndEnhance = async (origin: [number, number], dest: [number, number]) => {
+  const fetchRoutesAndEnhance = async (
+    origin: [number, number], 
+    dest: [number, number], 
+    vehicleMode?: 'car' | 'bike' | 'walk' | 'transit'
+  ) => {
+    const mode = vehicleMode || selectedVehicle;
+    setIsSearching(true);
     try {
+      // 1. PUBLIC TRANSPORT (Punjab MassTransit Authority - Metrobus, Orange Line, Speedo, Green Bus)
+      if (mode === 'transit') {
+        const pmaRoutes = solvePmaTransitRoutes(origin, dest);
+        if (pmaRoutes.length > 0) {
+          const formattedRoutes = pmaRoutes.map((tr, idx) => ({
+            duration: tr.totalDurationMin * 60,
+            distance: tr.totalDistanceMeters,
+            geometry: {
+              type: 'LineString',
+              coordinates: tr.geometryCoordinates
+            },
+            legs: [{
+              steps: tr.steps.map(s => ({ name: s.instructions }))
+            }],
+            transitData: tr,
+            aiStats: {
+              smogExposure: 28 + idx * 8, // AC Metro / Bus protects commuters from smog!
+              traffic: 'Dedicated Transit Corridor',
+              isSafest: idx === 0,
+              ecoFriendly: true
+            }
+          }));
+
+          setRoutes(formattedRoutes);
+          setSelectedRouteIdx(0);
+
+          if (mapRef.current && formattedRoutes[0]) {
+             const allCoords = formattedRoutes[0].transitData.segments.flatMap(s => s.coordinates);
+             if (allCoords.length > 0) {
+                const bounds = L.latLngBounds(allCoords);
+                mapRef.current.fitBounds(bounds, { padding: [60, 60], animate: true, duration: 1.5 });
+             }
+          }
+          setIsSearching(false);
+          return;
+        }
+      }
+
+      // 2. ROAD ROUTING (Car, Bike, Walk) using OSRM
       const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=3&overview=full`);
       const data = await res.json();
       
       let baseRoutes = data.routes || [];
       
-      // OSRM often returns identical overlapping alternative geometries. 
-      // To guarantee visually distinct routes for the demo, we take the primary route and mock 2 visual alternatives.
       if (baseRoutes.length > 0) {
          const primary = baseRoutes[0];
-         baseRoutes = [primary]; // Discard OSRM's overlapping alternatives
+         baseRoutes = [primary];
          
-         const createMockRoute = (offsetMult: number) => {
+         const createMockRoute = (offsetMult: number, routeName: string) => {
             const newCoords = primary.geometry.coordinates.map((c: any, i: number, arr: any[]) => {
-               // Don't offset the first and last 5% of the trip so they connect at origin/destination
                if (i < arr.length * 0.05 || i > arr.length * 0.95) return [c[0], c[1]];
                const progress = i / arr.length;
-               const sineOffset = Math.sin(progress * Math.PI); // Smooth bulge in the middle
-               // 0.008 degrees offset is roughly 800 meters, highly visible at zoom 12-14
+               const sineOffset = Math.sin(progress * Math.PI);
                return [
-                  c[0] + (0.008 * offsetMult * sineOffset), 
-                  c[1] + (0.008 * offsetMult * sineOffset)
+                  c[0] + (0.009 * offsetMult * sineOffset), 
+                  c[1] + (0.009 * offsetMult * sineOffset)
                ];
             });
             return {
@@ -547,31 +598,61 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                distance: primary.distance * (1 + Math.abs(offsetMult) * 0.08),
                duration: primary.duration * (1 + Math.abs(offsetMult) * 0.12),
                geometry: { ...primary.geometry, coordinates: newCoords },
-               legs: [{ ...primary.legs[0], steps: [{ name: `Alternative Route ${offsetMult > 0 ? 'A' : 'B'}` }] }]
+               legs: [{ ...primary.legs[0], steps: [{ name: routeName }] }]
             };
          };
-         baseRoutes.push(createMockRoute(1));  // Bulge right
-         baseRoutes.push(createMockRoute(-1)); // Bulge left
+
+         if (mode === 'car') {
+            primary.legs[0].steps[0] = { 
+               name: primary.distance > 5000 ? "via Lahore Ring Road (L-20) / Expressway" : "via Main Boulevard & Canal Expressway" 
+            };
+            baseRoutes.push(createMockRoute(1, "via Canal Bank Road"));
+            baseRoutes.push(createMockRoute(-1, "via Ferozepur Road Arterial"));
+         } else if (mode === 'bike') {
+            primary.duration = Math.round(primary.duration * 0.75); // Faster in heavy traffic
+            primary.legs[0].steps[0] = { name: "via Inner Arterial & Service Lanes" };
+            baseRoutes.push({
+               ...createMockRoute(1, "via Canal Road Bike Lane"),
+               duration: Math.round(primary.duration * 1.1)
+            });
+         } else if (mode === 'walk') {
+            const walkSpeedMps = 1.33; // ~4.8 km/h pedestrian pace
+            primary.duration = Math.round(primary.distance / walkSpeedMps);
+            primary.legs[0].steps[0] = { name: "via Pedestrian Walkway & Sidewalks" };
+            baseRoutes.push({
+               ...createMockRoute(0.5, "via Park Promenade & Footpath"),
+               duration: Math.round(primary.duration * 1.08)
+            });
+         }
       }
 
       if (baseRoutes.length > 0) {
-        // Enhance routes with mock AI environment data
         const enhancedRoutes = baseRoutes.map((r: any, idx: number) => {
            let isSafest = false;
            if (baseRoutes.length > 1 && idx === 1) isSafest = true;
            else if (baseRoutes.length === 1 && idx === 0) isSafest = true;
            
-           const smogExposure = isSafest ? Math.floor(Math.random() * 20) + 20 : Math.floor(Math.random() * 50) + 70;
-           const trafficLevel = isSafest ? 'Low' : ['Moderate', 'High'][Math.floor(Math.random() * 2)];
+           let smogExposure = isSafest ? Math.floor(Math.random() * 20) + 20 : Math.floor(Math.random() * 50) + 70;
+           let trafficLevel = isSafest ? 'Low' : ['Moderate', 'High'][Math.floor(Math.random() * 2)];
+
+           if (mode === 'bike') {
+             smogExposure += 25; // Open air high exposure
+           } else if (mode === 'walk') {
+             smogExposure += 15;
+             trafficLevel = 'Pedestrian Friendly';
+           }
+
+           const caloriesBurned = mode === 'walk' ? Math.round((r.distance / 1000) * 58) : undefined;
+           const stepsCount = mode === 'walk' ? Math.round(r.distance * 1.35) : undefined;
            
            return {
               ...r,
-              aiStats: { smogExposure, traffic: trafficLevel, isSafest }
+              aiStats: { smogExposure, traffic: trafficLevel, isSafest, caloriesBurned, stepsCount }
            };
         });
 
         setRoutes(enhancedRoutes);
-        setSelectedRouteIdx(enhancedRoutes.length > 1 ? 1 : 0); // Auto-select safest
+        setSelectedRouteIdx(enhancedRoutes.length > 1 ? 1 : 0);
         
         if (mapRef.current && enhancedRoutes[0]) {
            const coords = enhancedRoutes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
@@ -581,6 +662,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       }
     } catch (err) {
       console.error("Routing error:", err);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -706,32 +789,87 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         )}
 
         {/* Direction Routes */}
-        {isDirectionsMode && routes.length > 0 && [...routes].sort((a, b) => {
-           const aSelected = routes.indexOf(a) === selectedRouteIdx;
-           const bSelected = routes.indexOf(b) === selectedRouteIdx;
-           return aSelected ? 1 : bSelected ? -1 : 0;
-        }).map((route) => {
-           const originalIdx = routes.indexOf(route);
-           const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
-           const isSelected = originalIdx === selectedRouteIdx;
-           return (
-             <Polyline 
-               key={`${originalIdx}-${isSelected}`} 
-               positions={coords} 
-               color={isSelected ? '#7c3aed' : '#64748b'} 
-               weight={isSelected ? 6 : 4} 
-               opacity={isSelected ? 1 : 0.6}
-               eventHandlers={{ click: () => {
-                  setSelectedRouteIdx(originalIdx);
-                  if (mapRef.current) {
-                     const bounds = L.latLngBounds(coords);
-                     mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
-                  }
-               }}}
-               pathOptions={{ className: isSelected ? 'animate-pulse' : '' }}
-             />
-           );
-        })}
+        {isDirectionsMode && routes.length > 0 && (
+          selectedVehicle === 'transit' && routes[selectedRouteIdx]?.transitData ? (
+            <>
+              {/* Transit Multi-Colored Segments (Metrobus Yellow, Orange Line Orange, Speedo Red, Green Bus Green) */}
+              {routes[selectedRouteIdx].transitData.segments.map((seg: any, sIdx: number) => (
+                <Polyline 
+                  key={`transit-seg-${sIdx}`}
+                  positions={seg.coordinates}
+                  color={seg.color}
+                  weight={seg.isDashed ? 5 : 7}
+                  opacity={seg.isDashed ? 0.8 : 1}
+                  dashArray={seg.isDashed ? '8, 8' : undefined}
+                  pathOptions={{
+                     lineCap: 'round',
+                     lineJoin: 'round',
+                     className: !seg.isDashed ? 'drop-shadow-md' : ''
+                  }}
+                />
+              ))}
+
+              {/* Transit Stations / Bus Stops Markers */}
+              {routes[selectedRouteIdx].transitData.stationsToMark.map((st: any, stIdx: number) => (
+                <Marker
+                  key={`st-${stIdx}`}
+                  position={[st.lat, st.lng]}
+                  icon={L.divIcon({
+                    className: 'transit-station-marker',
+                    html: `<div style="background-color: ${st.color}; border: 2.5px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.35); width: 22px; height: 22px; border-radius: 9999px; display: flex; items: center; justify-content: center;">
+                             <div style="background-color: white; width: 7px; height: 7px; border-radius: 9999px; margin: auto;"></div>
+                           </div>`,
+                    iconSize: [22, 22],
+                    iconAnchor: [11, 11]
+                  })}
+                  zIndexOffset={1500}
+                >
+                  <Popup>
+                    <div className="font-bold text-slate-900 text-sm">{st.name}</div>
+                    <div className="text-[11px] font-bold px-2 py-0.5 rounded text-white mt-1 w-fit shadow-sm" style={{ backgroundColor: st.color }}>
+                      {st.badge}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </>
+          ) : (
+            // Standard Road Polylines (Car, Bike, Walk)
+            [...routes].sort((a, b) => {
+               const aSelected = routes.indexOf(a) === selectedRouteIdx;
+               const bSelected = routes.indexOf(b) === selectedRouteIdx;
+               return aSelected ? 1 : bSelected ? -1 : 0;
+            }).map((route) => {
+               const originalIdx = routes.indexOf(route);
+               const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
+               const isSelected = originalIdx === selectedRouteIdx;
+               const routeColor = selectedVehicle === 'walk' 
+                  ? (isSelected ? '#0284c7' : '#94a3b8')
+                  : selectedVehicle === 'bike'
+                  ? (isSelected ? '#059669' : '#94a3b8')
+                  : (isSelected ? '#7c3aed' : '#64748b');
+
+               return (
+                 <Polyline 
+                   key={`${originalIdx}-${isSelected}`} 
+                   positions={coords} 
+                   color={routeColor} 
+                   weight={isSelected ? 6 : 4} 
+                   opacity={isSelected ? 1 : 0.6}
+                   dashArray={selectedVehicle === 'walk' ? '6, 6' : undefined}
+                   eventHandlers={{ click: () => {
+                      setSelectedRouteIdx(originalIdx);
+                      if (mapRef.current) {
+                         const bounds = L.latLngBounds(coords);
+                         mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
+                      }
+                   }}}
+                   pathOptions={{ className: isSelected ? 'animate-pulse' : '' }}
+                 />
+               );
+            })
+          )
+        )}
 
         {/* Simulated Air Quality / Smog Layer */}
         {/* Adjusted for higher visibility and distinction between zones */}
@@ -830,9 +968,45 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           {isDirectionsMode ? (
             <div className="flex flex-col h-full bg-slate-50">
                <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
-                  <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="mb-4 text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors w-fit p-2 -ml-2 rounded-full hover:bg-slate-100">
-                    <ArrowLeft className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center justify-between mb-3.5">
+                    <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors w-fit p-2 -ml-2 rounded-full hover:bg-slate-100">
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+
+                    {/* 4 Vehicle Modes (Car, Bike, Walk, Public Transport) */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-0.5 border border-slate-200/70">
+                       {[
+                         { id: 'car', label: 'Car', icon: Car },
+                         { id: 'bike', label: 'Bike', icon: Bike },
+                         { id: 'walk', label: 'Walk', icon: Footprints },
+                         { id: 'transit', label: 'Transit', icon: Bus },
+                       ].map((v) => {
+                         const Icon = v.icon;
+                         const isSelected = selectedVehicle === v.id;
+                         return (
+                           <button
+                             key={v.id}
+                             onClick={async () => {
+                               setSelectedVehicle(v.id as any);
+                               const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+                               if (selectedPlace) {
+                                 await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], v.id as any);
+                               }
+                             }}
+                             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                               isSelected 
+                                 ? 'bg-purple-600 text-white shadow-sm' 
+                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                             }`}
+                             title={v.label}
+                           >
+                             <Icon className="w-3.5 h-3.5" />
+                             <span className="text-[11px]">{v.label}</span>
+                           </button>
+                         );
+                       })}
+                    </div>
+                  </div>
                   <div className="space-y-3 relative ml-2">
                      <div className="absolute left-3.5 top-5 bottom-5 w-0.5 bg-slate-200"></div>
                      <div className="flex items-start gap-4 relative">
@@ -902,41 +1076,121 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                       key={idx} 
                       onClick={() => {
                          setSelectedRouteIdx(idx);
-                         if (mapRef.current && route.geometry && route.geometry.coordinates) {
-                            const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
-                            const bounds = L.latLngBounds(coords);
-                            mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
+                         if (mapRef.current) {
+                            if (route.transitData) {
+                               const allCoords = route.transitData.segments.flatMap((s: any) => s.coordinates);
+                               const bounds = L.latLngBounds(allCoords);
+                               mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
+                            } else if (route.geometry && route.geometry.coordinates) {
+                               const coords = route.geometry.coordinates.map((c: any) => [c[1], c[0]]);
+                               const bounds = L.latLngBounds(coords);
+                               mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.0 });
+                            }
                          }
                       }}
                       className={`p-4 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden ${idx === selectedRouteIdx ? 'border-purple-500 bg-purple-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-purple-200'}`}
                     >
                       {route.aiStats?.isSafest && (
                         <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black uppercase px-2 py-1 rounded-bl-lg tracking-wider">
-                           Safest Route
+                           {selectedVehicle === 'transit' ? 'Recommended Line' : 'Safest Route'}
                         </div>
                       )}
+                      
                       <div className="flex justify-between items-center mb-1">
                         <span className={`font-black text-lg ${idx === selectedRouteIdx ? 'text-purple-700' : 'text-slate-800'}`}>
                           {Math.round(route.duration / 60)} min
                         </span>
-                        <span className="text-sm font-bold text-slate-500">
-                          {(route.distance / 1000).toFixed(1)} km
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {route.transitData?.totalFarePkr && (
+                            <span className="text-xs font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                              Rs. {route.transitData.totalFarePkr}
+                            </span>
+                          )}
+                          <span className="text-sm font-bold text-slate-500">
+                            {(route.distance / 1000).toFixed(1)} km
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500 font-medium mb-3">
-                        via {route.legs[0]?.steps?.[0]?.name || "Main Route"}
-                      </div>
-                      
+
+                      {/* Transit Lines Badges (Speedo Red, Metrobus Yellow, Orange Line Orange, Green Bus Green) */}
+                      {route.transitData ? (
+                        <div className="space-y-2 mt-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {route.transitData.linesUsed.map((line: any, lIdx: number) => (
+                              <span 
+                                key={lIdx} 
+                                className="px-2.5 py-1 rounded-md text-xs font-bold text-white shadow-sm flex items-center gap-1"
+                                style={{ backgroundColor: line.color }}
+                              >
+                                {line.type === 'orange_line' ? <Train className="w-3.5 h-3.5" /> : <Bus className="w-3.5 h-3.5" />}
+                                {line.badge}
+                              </span>
+                            ))}
+                            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1 ml-1">
+                              <Clock className="w-3.5 h-3.5" />
+                              Every {route.transitData.linesUsed[0]?.intervalMin || 4} min
+                            </span>
+                          </div>
+
+                          {/* Step-by-Step Transit Timeline if card is active */}
+                          {idx === selectedRouteIdx && (
+                            <div className="pt-2.5 mt-2 border-t border-slate-200/80 space-y-2">
+                              {route.transitData.steps.map((st: any, sIdx: number) => (
+                                <div key={sIdx} className="flex items-start gap-2.5 text-xs text-slate-700">
+                                  <div className="w-4 h-4 mt-0.5 shrink-0 flex items-center justify-center">
+                                    {st.mode === 'walk' ? (
+                                      <Footprints className="w-3.5 h-3.5 text-slate-400" />
+                                    ) : (
+                                      <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: st.color }} />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 leading-snug">
+                                    <span className="font-semibold text-slate-800">{st.instructions}</span>
+                                    <span className="text-slate-400 text-[10px] ml-1.5 font-medium">({st.durationMin}m)</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500 font-medium mb-2">
+                          via {route.legs[0]?.steps?.[0]?.name || "Main Route"}
+                        </div>
+                      )}
+
+                      {/* Walking metrics: Calories and Steps */}
+                      {selectedVehicle === 'walk' && route.aiStats?.caloriesBurned && (
+                        <div className="flex items-center gap-3 text-xs font-bold text-slate-600 mt-2 pt-2 border-t border-slate-200/60">
+                          <span className="flex items-center gap-1 text-orange-600">
+                            <Flame className="w-3.5 h-3.5 fill-orange-500" />
+                            {route.aiStats.caloriesBurned} kcal
+                          </span>
+                          <span className="flex items-center gap-1 text-sky-600">
+                            <Footprints className="w-3.5 h-3.5" />
+                            {route.aiStats.stepsCount.toLocaleString()} steps
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Bike advisory */}
+                      {selectedVehicle === 'bike' && (
+                        <div className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-md mt-2 flex items-center gap-1">
+                          <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          Two-Wheeler: Open Air Inhalation Risk • Wear N95 Mask
+                        </div>
+                      )}
+
                       {/* AI Environment & Traffic Data */}
                       {route.aiStats && (
-                        <div className="flex items-center gap-2 mt-2 pt-3 border-t border-slate-200/60">
+                        <div className="flex items-center gap-2 mt-2 pt-2.5 border-t border-slate-200/60">
                            <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.smogExposure < 60 ? 'bg-emerald-100 text-emerald-700' : route.aiStats.smogExposure < 100 ? 'bg-yellow-100 text-yellow-700' : 'bg-rose-100 text-rose-700'}`}>
                              <Wind className="w-3 h-3" />
                              AQI {route.aiStats.smogExposure}
                            </div>
-                           <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.traffic === 'Low' ? 'bg-emerald-100 text-emerald-700' : route.aiStats.traffic === 'Moderate' ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700'}`}>
+                           <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.traffic === 'Low' || route.aiStats.traffic === 'Dedicated Transit Corridor' || route.aiStats.traffic === 'Pedestrian Friendly' ? 'bg-emerald-100 text-emerald-700' : route.aiStats.traffic === 'Moderate' ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700'}`}>
                              <Activity className="w-3 h-3" />
-                             {route.aiStats.traffic} Traffic
+                             {route.aiStats.traffic}
                            </div>
                         </div>
                       )}
