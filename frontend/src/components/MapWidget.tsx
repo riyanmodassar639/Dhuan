@@ -55,6 +55,9 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [navPosition, setNavPosition] = useState<{lat: number, lng: number} | null>(null);
   const [navHeading, setNavHeading] = useState(0);
   const [navInstruction, setNavInstruction] = useState({ type: "Head straight", distance: 0 });
+  const [navRemainingDistance, setNavRemainingDistance] = useState<number>(0);
+  const [navRemainingDuration, setNavRemainingDuration] = useState<number>(0);
+  const [navEtaTime, setNavEtaTime] = useState<string>("");
   const [selectedVehicle, setSelectedVehicle] = useState<'car' | 'bike' | 'walk' | 'transit'>('car');
   
   // Custom Origin State for Directions
@@ -350,7 +353,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   useEffect(() => {
      let interval: NodeJS.Timeout;
      if (isNavigating && routes.length > 0 && routes[selectedRouteIdx]) {
-        const routeCoords = routes[selectedRouteIdx].geometry.coordinates;
+        const currentRoute = routes[selectedRouteIdx];
+        const routeCoords = currentRoute.geometry.coordinates;
         let currentIndex = 0;
         
         // Helper to calculate distance in meters
@@ -373,6 +377,24 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dl);
            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         };
+
+        const calcRemainingDist = (fromIdx: number) => {
+           let total = 0;
+           for (let i = fromIdx; i < routeCoords.length - 1; i++) {
+              total += getDist(routeCoords[i], routeCoords[i+1]);
+           }
+           return total;
+        };
+
+        const totalRouteDist = calcRemainingDist(0) || currentRoute.distance || 1000;
+        const totalRouteDuration = currentRoute.duration || 600;
+
+        // Initialize remaining trip metrics
+        const initRemDist = Math.round(totalRouteDist);
+        const initRemSec = Math.round(totalRouteDuration);
+        setNavRemainingDistance(initRemDist);
+        setNavRemainingDuration(initRemSec);
+        setNavEtaTime(new Date(Date.now() + initRemSec * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
         
         // Start at index 0
         setNavPosition({ lat: routeCoords[0][1], lng: routeCoords[0][0] });
@@ -394,6 +416,17 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            
            // Bearing
            const bearing = getBearing(current, next);
+
+           // Live Remaining Distance, Time & ETA
+           const remDistMeters = Math.round(calcRemainingDist(currentIndex));
+           const progressRatio = Math.max(0, Math.min(1, remDistMeters / totalRouteDist));
+           const remDurationSec = Math.max(30, Math.round(totalRouteDuration * progressRatio));
+           const etaDate = new Date(Date.now() + remDurationSec * 1000);
+           const formattedEta = etaDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+           setNavRemainingDistance(remDistMeters);
+           setNavRemainingDuration(remDurationSec);
+           setNavEtaTime(formattedEta);
            
            // Calculate next turn instruction
            let distanceToTurn = 0;
@@ -1031,8 +1064,57 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
+      {/* Google Maps Style Bottom Navigation Bar (Remaining Time, Remaining Distance & ETA) */}
+      {isNavigating && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[3000] bg-white/95 backdrop-blur-md px-6 py-3.5 rounded-3xl shadow-[0_16px_45px_rgba(0,0,0,0.25)] border border-slate-200/90 flex items-center justify-between min-w-[340px] max-w-[92%] sm:min-w-[420px] animate-in slide-in-from-bottom-5 duration-300">
+           <div className="flex flex-col">
+              <div className="flex items-baseline gap-1.5">
+                 <span className="text-3xl sm:text-4xl font-black text-emerald-600 tracking-tight leading-none">
+                    {Math.max(1, Math.round(navRemainingDuration / 60))}
+                 </span>
+                 <span className="text-emerald-700 font-extrabold text-lg sm:text-xl">min</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500 font-bold text-xs sm:text-sm mt-1">
+                 <span className="text-slate-700 font-black">
+                    {navRemainingDistance >= 1000 
+                      ? `${(navRemainingDistance / 1000).toFixed(1)} km` 
+                      : `${navRemainingDistance} m`}
+                 </span>
+                 <span className="text-slate-300">•</span>
+                 <span>{navEtaTime || "Arriving soon"}</span>
+              </div>
+           </div>
+
+           <div className="flex items-center gap-3">
+              <button 
+                onClick={() => {
+                   if (mapRef.current && navPosition) {
+                      mapRef.current.setView([navPosition.lat, navPosition.lng], 18, { animate: true });
+                   }
+                }}
+                title="Re-center location"
+                className="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-all active:scale-95 shadow-sm"
+              >
+                <Navigation className="w-5 h-5 fill-slate-700 text-slate-700" />
+              </button>
+
+              <button 
+                onClick={() => { 
+                   setIsNavigating(false); 
+                   setIsPanelCollapsed(false); 
+                }}
+                title="Exit Navigation"
+                className="w-11 h-11 rounded-full bg-rose-50 hover:bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 hover:text-rose-700 transition-all active:scale-95 shadow-sm"
+              >
+                <X className="w-5 h-5 stroke-[2.5]" />
+              </button>
+           </div>
+        </div>
+      )}
+
       {/* Floating Google-Maps-Style Search Bar */}
-      <div className="absolute top-4 left-4 z-[2000] w-[calc(100%-32px)] sm:w-[380px]">
+      {!isNavigating && (
+        <div className="absolute top-4 left-4 z-[2000] w-[calc(100%-32px)] sm:w-[380px]">
         <form onSubmit={handleSearch} className="relative bg-white rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] flex items-center px-4 py-3 border border-slate-200">
           <Search className="w-5 h-5 text-slate-500 mr-3 shrink-0" />
           <input 
@@ -1077,6 +1159,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           </div>
         )}
       </div>
+      )}
 
       {/* Left Sidebar Modal for Selected Place (Google Maps Style) */}
       {selectedPlace && (
@@ -1490,14 +1573,25 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
       {/* Floating collapsed widget when navigating */}
       {selectedPlace && isPanelCollapsed && (
-         <div className="absolute top-4 left-4 z-[2500] bg-white p-4 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col gap-3 animate-in fade-in zoom-in duration-300">
+         <div className="absolute top-4 left-4 z-[2500] bg-white p-4 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col gap-2.5 animate-in fade-in zoom-in duration-300">
             <div className="font-bold text-slate-900 flex items-center gap-2">
-               <Navigation className="w-5 h-5 text-purple-600" />
-               Navigating to {selectedPlace.name}
+               <Navigation className="w-5 h-5 text-purple-600 fill-purple-600" />
+               <span className="truncate max-w-[220px]">Navigating to {selectedPlace.name}</span>
             </div>
-            <div className="flex gap-2">
-               <button onClick={() => setIsPanelCollapsed(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Details</button>
-               <button onClick={() => { setIsPanelCollapsed(false); setIsNavigating(false); setIsDirectionsMode(false); setSelectedPlace(null); setRoutes([]); }} className="px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 text-sm font-bold rounded-lg transition-colors">End Route</button>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+               <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                  {Math.max(1, Math.round(navRemainingDuration / 60))} min left
+               </span>
+               <span>•</span>
+               <span>
+                  {navRemainingDistance >= 1000 
+                    ? `${(navRemainingDistance / 1000).toFixed(1)} km remaining` 
+                    : `${navRemainingDistance} m remaining`}
+               </span>
+            </div>
+            <div className="flex gap-2 pt-0.5">
+               <button onClick={() => setIsPanelCollapsed(false)} className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors">Details</button>
+               <button onClick={() => { setIsPanelCollapsed(false); setIsNavigating(false); setIsDirectionsMode(false); setSelectedPlace(null); setRoutes([]); }} className="px-3.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold rounded-lg transition-colors">End Route</button>
             </div>
          </div>
       )}
