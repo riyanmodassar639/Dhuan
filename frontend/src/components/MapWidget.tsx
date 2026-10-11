@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2 } from 'lucide-react';
+import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus } from 'lucide-react';
 import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 
 // Custom Blue Dot icon for Live Location
@@ -66,6 +66,83 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [routeOriginCoords, setRouteOriginCoords] = useState<[number, number] | null>(null);
   const skipNextOriginSearch = useRef(false);
   const originInputRef = useRef<HTMLInputElement>(null);
+
+  // Multi-Stop Waypoints State
+  const [routeStops, setRouteStops] = useState<Array<{ id: string; name: string; coords: [number, number]; input: string }>>([]);
+  const [activeStopSearchIdx, setActiveStopSearchIdx] = useState<number | null>(null);
+  const [stopSearchResults, setStopSearchResults] = useState<any[]>([]);
+
+  const handleAddStop = () => {
+    setRouteStops(prev => [
+      ...prev,
+      { id: Date.now().toString(), name: '', coords: [0, 0], input: '' }
+    ]);
+  };
+
+  const handleRemoveStop = async (index: number) => {
+    const updated = routeStops.filter((_, i) => i !== index);
+    setRouteStops(updated);
+    setActiveStopSearchIdx(null);
+    setStopSearchResults([]);
+    const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+    if (selectedPlace) {
+      await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], selectedVehicle, updated);
+    }
+  };
+
+  const handleStopInputChange = (index: number, val: string) => {
+    const updated = [...routeStops];
+    updated[index].input = val;
+    setRouteStops(updated);
+    setActiveStopSearchIdx(index);
+
+    if (val.trim().length > 2) {
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val.trim())}&lat=31.5204&lon=74.3587&limit=4`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.features && data.features.length > 0) {
+            setStopSearchResults(data.features.map((f: any) => ({
+              lat: f.geometry.coordinates[1],
+              lon: f.geometry.coordinates[0],
+              name: f.properties.name || f.properties.street || "Unknown",
+              display_name: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ')
+            })));
+          } else {
+            fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val.trim())}&format=json&limit=4&addressdetails=1`)
+              .then(r => r.json())
+              .then(nomData => {
+                if (nomData && nomData.length > 0) {
+                  setStopSearchResults(nomData.map((c: any) => ({
+                    lat: parseFloat(c.lat),
+                    lon: parseFloat(c.lon),
+                    name: c.name || c.display_name.split(',')[0],
+                    display_name: c.display_name
+                  })));
+                } else {
+                  setStopSearchResults([]);
+                }
+              }).catch(() => setStopSearchResults([]));
+          }
+        }).catch(() => setStopSearchResults([]));
+    } else {
+      setStopSearchResults([]);
+    }
+  };
+
+  const handleSelectStopPlace = async (index: number, place: any) => {
+    const updated = [...routeStops];
+    updated[index].name = place.name;
+    updated[index].input = place.name;
+    updated[index].coords = [place.lat, place.lon];
+    setRouteStops(updated);
+    setActiveStopSearchIdx(null);
+    setStopSearchResults([]);
+
+    const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+    if (selectedPlace) {
+      await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], selectedVehicle, updated);
+    }
+  };
 
   useEffect(() => {
     setOriginInput(userAddress);
@@ -530,14 +607,19 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const fetchRoutesAndEnhance = async (
     origin: [number, number], 
     dest: [number, number], 
-    vehicleMode?: 'car' | 'bike' | 'walk' | 'transit'
+    vehicleMode?: 'car' | 'bike' | 'walk' | 'transit',
+    customStops?: Array<{ id: string; name: string; coords: [number, number]; input: string }>
   ) => {
     const mode = vehicleMode || selectedVehicle;
+    const currentStops = customStops !== undefined ? customStops : routeStops;
+    const validStops = currentStops.filter(s => s.coords && (s.coords[0] !== 0 || s.coords[1] !== 0));
+
     setIsSearching(true);
     try {
       // 1. PUBLIC TRANSPORT (Punjab MassTransit Authority - Metrobus, Orange Line, Speedo, Green Bus)
       if (mode === 'transit') {
-        const pmaRoutes = solvePmaTransitRoutes(origin, dest);
+        const effectiveDest = validStops.length > 0 ? validStops[0].coords : dest;
+        const pmaRoutes = solvePmaTransitRoutes(origin, effectiveDest);
         if (pmaRoutes.length > 0) {
           const formattedRoutes = pmaRoutes.map((tr, idx) => ({
             duration: tr.totalDurationMin * 60,
@@ -573,8 +655,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         }
       }
 
-      // 2. ROAD ROUTING (Car, Bike, Walk) using OSRM
-      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?geometries=geojson&alternatives=3&overview=full`);
+      // 2. ROAD ROUTING (Car, Bike, Walk) using OSRM with all stops included
+      const allWaypoints = [
+        [origin[1], origin[0]],
+        ...validStops.map(s => [s.coords[1], s.coords[0]]),
+        [dest[1], dest[0]]
+      ];
+      const waypointStr = allWaypoints.map(c => `${c[0]},${c[1]}`).join(';');
+      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${waypointStr}?geometries=geojson&alternatives=3&overview=full`);
       const data = await res.json();
       
       let baseRoutes = data.routes || [];
@@ -602,7 +690,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             };
          };
 
-         if (mode === 'car') {
+         if (validStops.length > 0) {
+            const stopLabel = validStops.length === 1 
+               ? `via Stop A (${validStops[0].name.split(',')[0] || "Custom Stop"})` 
+               : `via ${validStops.length} stops (${validStops.map((_, i) => String.fromCharCode(65 + i)).join(' → ')})`;
+            primary.legs[0].steps[0] = { name: stopLabel };
+         } else if (mode === 'car') {
             primary.legs[0].steps[0] = { 
                name: primary.distance > 5000 ? "via Lahore Ring Road (L-20) / Expressway" : "via Main Boulevard & Canal Expressway" 
             };
@@ -787,6 +880,30 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </Popup>
           </Marker>
         )}
+        {/* Intermediate Route Stops Markers (A, B, C...) */}
+        {isDirectionsMode && routeStops.map((stop, sIdx) => {
+          if (!stop.coords || (stop.coords[0] === 0 && stop.coords[1] === 0)) return null;
+          return (
+            <Marker
+              key={stop.id}
+              position={stop.coords}
+              icon={L.divIcon({
+                className: 'route-stop-marker',
+                html: `<div style="background-color: #f59e0b; border: 2.5px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.35); width: 26px; height: 26px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 12px;">
+                         ${String.fromCharCode(65 + sIdx)}
+                       </div>`,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13]
+              })}
+              zIndexOffset={1300}
+            >
+              <Popup>
+                <div className="font-bold text-slate-900 text-sm">Stop {String.fromCharCode(65 + sIdx)}</div>
+                <div className="text-xs text-slate-600 line-clamp-1">{stop.name}</div>
+              </Popup>
+            </Marker>
+          );
+        })}
 
         {/* Direction Routes */}
         {isDirectionsMode && routes.length > 0 && (
@@ -1060,11 +1177,66 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                          </button>
                        </div>
                      </div>
+                     {/* Intermediate Stops Rows */}
+                     {routeStops.map((stop, sIdx) => (
+                       <div key={stop.id} className="flex items-start gap-4 relative">
+                         <div className="w-7 h-7 bg-amber-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white text-amber-700 font-black text-xs mt-1">
+                            {String.fromCharCode(65 + sIdx)}
+                         </div>
+                         <div className="flex-1 flex gap-2 relative">
+                           <div className="flex-1 relative">
+                             <input 
+                               value={stop.input}
+                               onChange={(e) => handleStopInputChange(sIdx, e.target.value)}
+                               className="w-full bg-white px-3 py-2 rounded-xl text-sm font-medium text-slate-900 border border-slate-200 shadow-inner focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all placeholder:text-slate-400"
+                               placeholder={`Stop ${String.fromCharCode(65 + sIdx)}...`}
+                             />
+                             {/* Stop Suggestions Dropdown */}
+                             {activeStopSearchIdx === sIdx && stopSearchResults.length > 0 && (
+                               <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-[0_12px_24px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden max-h-[180px] overflow-y-auto z-[3000]">
+                                 {stopSearchResults.map((place, pIdx) => (
+                                   <div
+                                     key={pIdx}
+                                     onClick={() => handleSelectStopPlace(sIdx, place)}
+                                     className="flex items-start gap-3 p-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+                                   >
+                                     <MapPin className="w-3.5 h-3.5 text-slate-400 mt-1 shrink-0" />
+                                     <div className="flex flex-col">
+                                       <span className="text-xs font-bold text-slate-900 line-clamp-1">{place.name}</span>
+                                       <span className="text-[10px] text-slate-500 line-clamp-1">{place.display_name}</span>
+                                     </div>
+                                   </div>
+                                 ))}
+                               </div>
+                             )}
+                           </div>
+                           <button
+                             onClick={() => handleRemoveStop(sIdx)}
+                             title="Remove stop"
+                             className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors shrink-0"
+                           >
+                             <X className="w-4 h-4" />
+                           </button>
+                         </div>
+                       </div>
+                     ))}
+
                      <div className="flex items-center gap-4">
                        <div className="w-7 h-7 bg-rose-100 rounded-full flex items-center justify-center z-10 shrink-0 border-2 border-white">
                           <MapPin className="w-3.5 h-3.5 text-rose-600" />
                        </div>
                        <div className="flex-1 bg-slate-100 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-900 border border-slate-200 truncate">{selectedPlace.name}</div>
+                     </div>
+
+                     {/* Add Stop Button */}
+                     <div className="pl-11 pt-0.5">
+                       <button
+                         onClick={handleAddStop}
+                         className="flex items-center gap-1.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 px-3 py-1.5 rounded-xl transition-all shadow-sm active:scale-[0.98]"
+                       >
+                         <Plus className="w-3.5 h-3.5" />
+                         <span>Add stop</span>
+                       </button>
                      </div>
                   </div>
                </div>
