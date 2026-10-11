@@ -779,7 +779,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         day: prePlanDay,
         aqiForecast: aqi,
         smogStatus: cat.status,
-        advisory: cat.advisory || "Air quality verified"
+        advisory: cat.advisory || "Air quality verified",
+        notifications: {
+          enabled: true,
+          leadTimeMins: 30,
+          smogSpikeAlert: true,
+          channel: 'push'
+        },
+        status: 'scheduled'
       };
 
       setPrePlanStops(prev => [...prev, newStop]);
@@ -896,7 +903,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
              day: prePlanDay,
              aqiForecast: aqi,
              smogStatus: cat.status,
-             advisory: cat.advisory || "Air quality verified"
+             advisory: cat.advisory || "Air quality verified",
+             notifications: {
+               enabled: true,
+               leadTimeMins: 30,
+               smogSpikeAlert: true,
+               channel: 'push'
+             },
+             status: 'scheduled'
           };
 
           setPrePlanStops(prev => [...prev, newStop]);

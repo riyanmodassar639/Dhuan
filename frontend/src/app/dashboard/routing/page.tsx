@@ -353,7 +353,7 @@ export default function SmartRoutingPage() {
   // Notification Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Load planned trips from localStorage on client mount
+  // Load planned trips from localStorage on client mount with normalization
   useEffect(() => {
     setMounted(true);
     try {
@@ -361,7 +361,17 @@ export default function SmartRoutingPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setAllStops(parsed);
+          const normalized = parsed.map((p: any) => ({
+            ...p,
+            notifications: p.notifications || {
+              enabled: true,
+              leadTimeMins: 30,
+              smogSpikeAlert: true,
+              channel: 'push'
+            },
+            status: p.status || 'scheduled'
+          }));
+          setAllStops(normalized);
           return;
         }
       }
@@ -504,15 +514,21 @@ export default function SmartRoutingPage() {
     showToast(`Added "${newStop.name}" to ${selectedDay}'s schedule!`);
   };
 
-  // Toggle Notification for a Stop
+  // Toggle Notification for a Stop safely
   const toggleNotification = (id: string) => {
     const updated = allStops.map(s => {
       if (s.id === id) {
+        const notifs = s.notifications || {
+          enabled: true,
+          leadTimeMins: 30,
+          smogSpikeAlert: true,
+          channel: 'push'
+        };
         return {
           ...s,
           notifications: {
-            ...s.notifications,
-            enabled: !s.notifications.enabled
+            ...notifs,
+            enabled: !notifs.enabled
           }
         };
       }
@@ -521,14 +537,20 @@ export default function SmartRoutingPage() {
     saveStops(updated);
   };
 
-  // Update Notification Lead Time
+  // Update Notification Lead Time safely
   const updateLeadTime = (id: string, mins: number) => {
     const updated = allStops.map(s => {
       if (s.id === id) {
+        const notifs = s.notifications || {
+          enabled: true,
+          leadTimeMins: 30,
+          smogSpikeAlert: true,
+          channel: 'push'
+        };
         return {
           ...s,
           notifications: {
-            ...s.notifications,
+            ...notifs,
             leadTimeMins: mins
           }
         };
@@ -538,14 +560,20 @@ export default function SmartRoutingPage() {
     saveStops(updated);
   };
 
-  // Update Notification Channel
+  // Update Notification Channel safely
   const updateChannel = (id: string, channel: 'push' | 'whatsapp' | 'sms') => {
     const updated = allStops.map(s => {
       if (s.id === id) {
+        const notifs = s.notifications || {
+          enabled: true,
+          leadTimeMins: 30,
+          smogSpikeAlert: true,
+          channel: 'push'
+        };
         return {
           ...s,
           notifications: {
-            ...s.notifications,
+            ...notifs,
             channel
           }
         };
@@ -1000,18 +1028,18 @@ export default function SmartRoutingPage() {
                       <button
                         onClick={() => toggleNotification(stop.id)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-xs transition-colors ${
-                          stop.notifications.enabled
+                          stop.notifications?.enabled
                             ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
                         }`}
                         title="Toggle smog departure alerts"
                       >
                         <Bell className="w-3.5 h-3.5" />
-                        <span>{stop.notifications.enabled ? 'Alerts ON' : 'Alerts OFF'}</span>
+                        <span>{stop.notifications?.enabled ? 'Alerts ON' : 'Alerts OFF'}</span>
                       </button>
 
                       {/* Lead time selection */}
-                      {stop.notifications.enabled && (
+                      {stop.notifications?.enabled && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] font-bold text-slate-500">Notice:</span>
                           {[15, 30, 45].map(mins => (
@@ -1019,7 +1047,7 @@ export default function SmartRoutingPage() {
                               key={mins}
                               onClick={() => updateLeadTime(stop.id, mins)}
                               className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-colors ${
-                                stop.notifications.leadTimeMins === mins
+                                stop.notifications?.leadTimeMins === mins
                                   ? 'bg-slate-900 text-white'
                                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                               }`}
@@ -1031,12 +1059,12 @@ export default function SmartRoutingPage() {
                       )}
 
                       {/* Channel */}
-                      {stop.notifications.enabled && (
+                      {stop.notifications?.enabled && (
                         <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
                           <button
                             onClick={() => updateChannel(stop.id, 'push')}
                             className={`p-1.5 rounded-lg text-xs ${
-                              stop.notifications.channel === 'push'
+                              stop.notifications?.channel === 'push'
                                 ? 'bg-emerald-100 text-emerald-700 font-bold'
                                 : 'text-slate-400 hover:text-slate-600'
                             }`}
@@ -1047,7 +1075,7 @@ export default function SmartRoutingPage() {
                           <button
                             onClick={() => updateChannel(stop.id, 'whatsapp')}
                             className={`p-1.5 rounded-lg text-xs ${
-                              stop.notifications.channel === 'whatsapp'
+                              stop.notifications?.channel === 'whatsapp'
                                 ? 'bg-emerald-100 text-emerald-700 font-bold'
                                 : 'text-slate-400 hover:text-slate-600'
                             }`}
