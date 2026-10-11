@@ -32,11 +32,21 @@ const searchPinIcon = new L.DivIcon({
   iconAnchor: [16, 32]
 });
 
+// Standalone component for map click events to strictly adhere to React Rules of Hooks
+function MapEventsHandler({ onMapClick }: { onMapClick: (e: L.LeafletMouseEvent) => void }) {
+  useMapEvents({
+    click: onMapClick,
+  });
+  return null;
+}
+
 export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean }) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   
+  // Unique stable key per component mount to ensure Leaflet never reuses an unmounted DOM container
+  const [mapKey] = useState(() => `dhuan-map-${Math.random().toString(36).substring(2, 9)}`);
   const mapRef = useRef<L.Map | null>(null);
   const [hasCentered, setHasCentered] = useState(false);
 
@@ -312,19 +322,32 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
   useEffect(() => {
     setMounted(true);
+    let watchId: number | undefined;
     
     // Live Location Tracking
     if (typeof window !== 'undefined' && navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
+      watchId = navigator.geolocation.watchPosition(
         (position) => {
           setUserLocation([position.coords.latitude, position.coords.longitude]);
         },
         (error) => console.log("Geolocation error:", error),
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
       );
-      
-      return () => navigator.geolocation.clearWatch(watchId);
     }
+
+    return () => {
+      if (watchId !== undefined && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (mapRef.current) {
+        try {
+          mapRef.current.remove();
+        } catch {
+          // ignore already removed
+        }
+        mapRef.current = null;
+      }
+    };
   }, []);
 
   // Auto-center map on user's live location on first load
@@ -815,129 +838,124 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     }
   };
 
-  // Component to handle map clicks for Reverse Geocoding
-  const MapClickHandler = () => {
-    useMapEvents({
-      click: async (e) => {
-        const { lat, lng } = e.latlng;
-        
-        if (isSelectingOriginOnMap) {
-            setIsSelectingOriginOnMap(false);
-            setRouteOriginCoords([lat, lng]);
-            skipNextOriginSearch.current = true;
-            setUserAddress("Locating...");
-            setOriginInput("Locating...");
-            try {
-               const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
-               const data = await res.json();
-               if (data.features && data.features.length > 0) {
-                  const name = data.features[0].properties.name || data.features[0].properties.street || "Selected Location";
-                  setUserAddress(name);
-                  setOriginInput(name);
-               } else {
-                  setUserAddress("Selected Location");
-                  setOriginInput("Selected Location");
-               }
-            } catch {
-               setUserAddress("Selected Location");
-               setOriginInput("Selected Location");
-            }
-            if (selectedPlace) {
-               await fetchRoutesAndEnhance([lat, lng], [selectedPlace.lat, selectedPlace.lon]);
-            }
-            return;
-        }
-
-        if (isPrePlanMode) {
-           try {
-              const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
-              const data = await res.json();
-              let name = `Location (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
-              let address = name;
-              if (data.features && data.features.length > 0) {
-                 const prop = data.features[0].properties;
-                 name = prop.name || prop.street || name;
-                 address = [prop.name, prop.street, prop.city].filter(Boolean).join(', ') || name;
-              }
-
-              const aqi = getSpatialAqi(lat, lng);
-              const cat = getAqiCategory(aqi);
-              const defaultTimes = ["09:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:45 PM", "09:00 PM"];
-              const assignedTime = defaultTimes[prePlanStops.length % defaultTimes.length];
-
-              const newStop = {
-                 id: Date.now().toString(),
-                 name,
-                 address,
-                 lat,
-                 lng,
-                 time: assignedTime,
-                 day: prePlanDay,
-                 aqiForecast: aqi,
-                 smogStatus: cat.status,
-                 advisory: cat.advisory || "Air quality verified"
-              };
-
-              setPrePlanStops(prev => [...prev, newStop]);
-           } catch(e) {
-              console.error(e);
-           }
-           return;
-        }
-
-        if (isNavigating) {
-            // User tapped another road or off-route location while actively navigating -> Automatically recalculate route!
-            handleOffRoute([lat, lng]);
-            return;
-        }
-
-        if (isDirectionsMode) return; // Prevent changing destination while navigating/routing
-        
-        // Don't trigger if they are already searching or sliding
-        setIsSearching(true);
+  // Map click handler for reverse geocoding and waypoint creation
+  const handleMapClick = async (e: L.LeafletMouseEvent) => {
+    const { lat, lng } = e.latlng;
+    
+    if (isSelectingOriginOnMap) {
+        setIsSelectingOriginOnMap(false);
+        setRouteOriginCoords([lat, lng]);
+        skipNextOriginSearch.current = true;
+        setUserAddress("Locating...");
+        setOriginInput("Locating...");
         try {
-          // Reverse Geocode using Photon
+           const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
+           const data = await res.json();
+           if (data.features && data.features.length > 0) {
+              const name = data.features[0].properties.name || data.features[0].properties.street || "Selected Location";
+              setUserAddress(name);
+              setOriginInput(name);
+           } else {
+              setUserAddress("Selected Location");
+              setOriginInput("Selected Location");
+           }
+        } catch {
+           setUserAddress("Selected Location");
+           setOriginInput("Selected Location");
+        }
+        if (selectedPlace) {
+           await fetchRoutesAndEnhance([lat, lng], [selectedPlace.lat, selectedPlace.lon]);
+        }
+        return;
+    }
+
+    if (isPrePlanMode) {
+       try {
           const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
           const data = await res.json();
-          let placeName = `Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-          let displayName = placeName;
-          let placeId = Date.now();
-
+          let name = `Location (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
+          let address = name;
           if (data.features && data.features.length > 0) {
-            const f = data.features[0];
-            placeId = f.properties.osm_id || placeId;
-            displayName = [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || placeName;
-            placeName = f.properties.name || f.properties.street || "Pinned Location";
-          } else {
-             // Fallback to ArcGIS Reverse Geocoding
-             try {
-                const arcRes = await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=${lng},${lat}`);
-                const arcData = await arcRes.json();
-                if (arcData.address && arcData.address.Match_addr) {
-                   displayName = arcData.address.Match_addr;
-                   placeName = displayName.split(',')[0];
-                }
-             } catch(e) {}
+             const prop = data.features[0].properties;
+             name = prop.name || prop.street || name;
+             address = [prop.name, prop.street, prop.city].filter(Boolean).join(', ') || name;
           }
 
-          // Build place object and select it
-          const placeObj = {
-            place_id: placeId,
-            lat: lat,
-            lon: lng,
-            display_name: displayName,
-            name: placeName
+          const aqi = getSpatialAqi(lat, lng);
+          const cat = getAqiCategory(aqi);
+          const defaultTimes = ["09:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:45 PM", "09:00 PM"];
+          const assignedTime = defaultTimes[prePlanStops.length % defaultTimes.length];
+
+          const newStop = {
+             id: Date.now().toString(),
+             name,
+             address,
+             lat,
+             lng,
+             time: assignedTime,
+             day: prePlanDay,
+             aqiForecast: aqi,
+             smogStatus: cat.status,
+             advisory: cat.advisory || "Air quality verified"
           };
-          
-          handleSelectPlace(placeObj);
-          
-        } catch (err) {
-          console.error("Reverse geocoding error:", err);
-        }
-        setIsSearching(false);
+
+          setPrePlanStops(prev => [...prev, newStop]);
+       } catch(e) {
+          console.error(e);
+       }
+       return;
+    }
+
+    if (isNavigating) {
+        // User tapped another road or off-route location while actively navigating -> Automatically recalculate route!
+        handleOffRoute([lat, lng]);
+        return;
+    }
+
+    if (isDirectionsMode) return; // Prevent changing destination while navigating/routing
+    
+    // Don't trigger if they are already searching or sliding
+    setIsSearching(true);
+    try {
+      // Reverse Geocode using Photon
+      const res = await fetch(`https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`);
+      const data = await res.json();
+      let placeName = `Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      let displayName = placeName;
+      let placeId = Date.now();
+
+      if (data.features && data.features.length > 0) {
+        const f = data.features[0];
+        placeId = f.properties.osm_id || placeId;
+        displayName = [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ') || placeName;
+        placeName = f.properties.name || f.properties.street || "Pinned Location";
+      } else {
+         // Fallback to ArcGIS Reverse Geocoding
+         try {
+            const arcRes = await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=${lng},${lat}`);
+            const arcData = await arcRes.json();
+            if (arcData.address && arcData.address.Match_addr) {
+               displayName = arcData.address.Match_addr;
+               placeName = displayName.split(',')[0];
+            }
+         } catch(e) {}
       }
-    });
-    return null;
+
+      // Build place object and select it
+      const placeObj = {
+        place_id: placeId,
+        lat: lat,
+        lon: lng,
+        display_name: displayName,
+        name: placeName
+      };
+      
+      handleSelectPlace(placeObj);
+      
+    } catch (err) {
+      console.error("Reverse geocoding error:", err);
+    }
+    setIsSearching(false);
   };
 
   const fetchRoutesAndEnhance = async (
@@ -1212,6 +1230,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
       <div className="absolute inset-0">
         <MapContainer 
+          key={mapKey}
           center={position} 
           zoom={12} 
           scrollWheelZoom={true} 
@@ -1303,7 +1322,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             position={[st.lat, st.lng]}
             icon={L.divIcon({
               className: 'preplan-stop-marker',
-              html: `<div style="background: linear-gradient(135deg, #7c3aed, #4f46e5); border: 2.5px solid white; box-shadow: 0 6px 16px rgba(0,0,0,0.4); width: 32px; height: 32px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 14px;">
+              html: `<div style="background: linear-gradient(135deg, #059669, #047857); border: 2.5px solid white; box-shadow: 0 6px 16px rgba(0,0,0,0.35); width: 32px; height: 32px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 14px;">
                        ${sIdx + 1}
                      </div>`,
               iconSize: [32, 32],
@@ -1315,7 +1334,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               <div className="font-extrabold text-slate-900 text-sm">Stop {sIdx + 1}: {st.name}</div>
               <div className="text-xs text-slate-500 mt-0.5">{st.address}</div>
               <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-slate-100">
-                <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">⏰ {st.time}</span>
+                <span className="text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">⏰ {st.time}</span>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">AQI {st.aqiForecast}</span>
               </div>
             </Popup>
@@ -1428,7 +1447,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <Circle center={[31.5800, 74.4500]} pathOptions={{ stroke: false, fillColor: '#16a34a', fillOpacity: 0.7 }} radius={5000} />
             <Circle center={[31.5500, 74.4800]} pathOptions={{ stroke: false, fillColor: '#22c55e', fillOpacity: 0.6 }} radius={5500} />
         </Pane>
-        <MapClickHandler />
+        <MapEventsHandler onMapClick={handleMapClick} />
       </MapContainer>
 
       {/* Floating Turn-by-Turn Instruction Panel */}
@@ -2150,15 +2169,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       {isPrePlanMode && (
         <div className="absolute top-4 right-4 z-[3000] w-[calc(100%-32px)] sm:w-[380px] bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_16px_45px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col max-h-[85vh] animate-in slide-in-from-right-4 duration-300 overflow-hidden">
            {/* Header */}
-           <div className="p-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between shadow-sm">
+           <div className="p-4 bg-slate-900 border-b border-slate-800 text-white flex items-center justify-between shadow-sm">
               <div>
                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-purple-200" />
+                    <Calendar className="w-4 h-4 text-emerald-400" />
                     <span className="font-extrabold text-sm uppercase tracking-wider">{prePlanDay} Itinerary</span>
                  </div>
-                 <p className="text-[11px] text-purple-100 mt-0.5">Click map to pick destination stops</p>
+                 <p className="text-[11px] text-slate-400 mt-0.5">Click map to pick destination stops</p>
               </div>
-              <span className="bg-white/20 text-white font-black text-xs px-2.5 py-1 rounded-full border border-white/20 shadow-xs">
+              <span className="bg-emerald-500 text-slate-900 font-extrabold text-xs px-2.5 py-1 rounded-full shadow-xs">
                  {prePlanStops.length} Selected
               </span>
            </div>
@@ -2167,14 +2186,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            <div className="p-3 overflow-y-auto space-y-2.5 flex-1 divide-y divide-slate-100 max-h-[380px]">
               {prePlanStops.length === 0 ? (
                  <div className="text-center py-8 px-4 text-slate-400">
-                    <MapPin className="w-8 h-8 mx-auto mb-2 text-purple-400 animate-bounce" />
+                    <MapPin className="w-8 h-8 mx-auto mb-2 text-emerald-500 animate-bounce" />
                     <p className="text-xs font-bold text-slate-700">No destinations picked yet</p>
                     <p className="text-[11px] text-slate-400 mt-1">Tap roads, shops or landmarks on the map to add stops for {prePlanDay}.</p>
                  </div>
               ) : (
                  prePlanStops.map((st, idx) => (
                     <div key={st.id} className="pt-2.5 first:pt-0 flex items-start gap-2.5">
-                       <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center shrink-0 mt-1 shadow-xs">
+                       <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-black text-xs flex items-center justify-center shrink-0 mt-1 shadow-xs">
                           {idx + 1}
                        </div>
                        <div className="flex-1 min-w-0">

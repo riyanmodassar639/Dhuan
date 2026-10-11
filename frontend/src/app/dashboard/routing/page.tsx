@@ -623,7 +623,7 @@ export default function SmartRoutingPage() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="flex items-center gap-3 text-slate-500 font-bold">
-          <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
           Loading Smart Routing Itinerary...
         </div>
       </div>
@@ -648,8 +648,8 @@ export default function SmartRoutingPage() {
         {/* Header Section */}
         <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200/80 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative overflow-hidden">
           <div className="relative z-10 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200/60 text-purple-700 text-xs font-black tracking-wide uppercase mb-3">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black tracking-wide uppercase mb-3">
+              <Wind className="w-3.5 h-3.5 text-emerald-600" />
               Spatial AI Pre-Planning & Eco-Routing
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
@@ -665,11 +665,11 @@ export default function SmartRoutingPage() {
             {/* Pick from Live Map Button */}
             <Link
               href={`/dashboard/map?mode=preplan&day=${selectedDay}`}
-              className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm shadow-md hover:shadow-lg transition-all active:scale-95 group"
+              className="flex items-center gap-2 px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm shadow-md hover:shadow-lg transition-all active:scale-95 group"
             >
-              <MapPin className="w-4 h-4 text-purple-200 group-hover:scale-110 transition-transform" />
+              <MapPin className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
               <span>Add Destination from Map</span>
-              <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
             </Link>
 
             {/* Manual Add Button */}
@@ -685,7 +685,7 @@ export default function SmartRoutingPage() {
             {dayStops.filter(s => s.status === 'scheduled').length > 0 && (
               <Link
                 href={`/dashboard/map?mode=tour&day=${selectedDay}`}
-                className="flex items-center gap-2 px-4 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-sm shadow-sm transition-all active:scale-95"
+                className="flex items-center gap-2 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm shadow-sm transition-all active:scale-95"
               >
                 <Navigation className="w-4 h-4 fill-white" />
                 <span>Launch {selectedDay} Tour</span>
@@ -709,14 +709,14 @@ export default function SmartRoutingPage() {
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Calendar className={`w-4 h-4 ${isSelected ? 'text-purple-400' : 'text-slate-400'}`} />
+                <Calendar className={`w-4 h-4 ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`} />
                 <span>{day}</span>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full font-black ${
                     isSelected
-                      ? 'bg-purple-600 text-white'
+                      ? 'bg-emerald-500 text-slate-900'
                       : count > 0
-                      ? 'bg-purple-100 text-purple-700'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
                       : 'bg-slate-100 text-slate-400'
                   }`}
                 >
@@ -729,11 +729,12 @@ export default function SmartRoutingPage() {
 
         {/* AI Smog Advisor & Optimization Card */}
         {aiStats && aiStats.total > 0 && (
-          <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-purple-950 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
+          <div className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-[90px] group-hover:scale-110 transition-transform duration-700 pointer-events-none"></div>
             <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="space-y-2 max-w-2xl">
-                <div className="flex items-center gap-2 text-purple-300 font-extrabold text-xs uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 font-extrabold text-xs uppercase tracking-wider">
+                  <Wind className="w-3.5 h-3.5 text-emerald-400" />
                   AI Smog & Departure Window Optimization ({selectedDay})
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black tracking-tight">
@@ -749,16 +750,16 @@ export default function SmartRoutingPage() {
 
                 {/* Stat pills */}
                 <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 text-xs font-bold border border-white/10">
-                    <Clock className="w-3.5 h-3.5 text-purple-300" />
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-bold text-slate-300">
+                    <Clock className="w-3.5 h-3.5 text-emerald-400" />
                     {aiStats.total} Scheduled Stops
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 text-xs font-bold border border-white/10">
-                    <Wind className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-bold text-slate-300">
+                    <Wind className="w-3.5 h-3.5 text-yellow-400" />
                     Avg AQI: {aiStats.avgAqi}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 text-xs font-bold border border-white/10">
-                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-bold text-slate-300">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                     Smog Reduction: -{aiStats.exposureReductionPct}%
                   </span>
                 </div>
@@ -769,9 +770,9 @@ export default function SmartRoutingPage() {
                 {aiStats.hasMorningSpike && (
                   <button
                     onClick={handleApplyAiOptimization}
-                    className="flex items-center justify-center gap-2 px-5 py-3.5 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-xl font-black text-xs shadow-lg hover:shadow-emerald-500/20 transition-all active:scale-95"
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="w-4 h-4 text-slate-900" />
                     <span>Apply AI Clean Air Schedule</span>
                   </button>
                 )}
@@ -783,9 +784,9 @@ export default function SmartRoutingPage() {
                       } is approaching in 30m. AQI is ${dayStops[0]?.aqiForecast || 160}.`
                     );
                   }}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs border border-white/15 transition-colors"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 transition-colors"
                 >
-                  <Bell className="w-3.5 h-3.5 text-purple-300" />
+                  <Bell className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Send Test Smog Alert</span>
                 </button>
               </div>
@@ -834,7 +835,7 @@ export default function SmartRoutingPage() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Filter destination name..."
-                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500 transition-colors"
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-500 transition-colors"
               />
               {searchQuery && (
                 <button
@@ -860,7 +861,7 @@ export default function SmartRoutingPage() {
         {/* Chronological Stop Timeline */}
         {dayStops.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-sm space-y-4">
-            <div className="w-16 h-16 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mx-auto">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
               <MapPin className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-black text-slate-900">No destinations scheduled for {selectedDay}</h3>
@@ -870,9 +871,10 @@ export default function SmartRoutingPage() {
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <Link
                 href={`/dashboard/map?mode=preplan&day=${selectedDay}`}
-                className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs shadow-md transition-all"
+                className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2"
               >
-                Pick Destinations from Live Map
+                <MapPin className="w-4 h-4 text-emerald-400" />
+                <span>Pick Destinations from Live Map</span>
               </Link>
               <button
                 onClick={() => setIsAddModalOpen(true)}
@@ -907,7 +909,7 @@ export default function SmartRoutingPage() {
                   className={`bg-white rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
                     isCancelled
                       ? 'border-slate-200 opacity-60 bg-slate-50/50'
-                      : 'border-slate-200/80 hover:border-purple-200'
+                      : 'border-slate-200/80 hover:border-emerald-200'
                   }`}
                 >
                   <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -918,7 +920,7 @@ export default function SmartRoutingPage() {
                         className={`w-10 h-10 rounded-2xl font-black text-sm flex items-center justify-center shrink-0 shadow-xs ${
                           isCancelled
                             ? 'bg-slate-200 text-slate-500'
-                            : 'bg-purple-600 text-white'
+                            : 'bg-slate-900 text-white border border-slate-800'
                         }`}
                       >
                         {index + 1}
@@ -935,7 +937,7 @@ export default function SmartRoutingPage() {
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-black text-slate-800 transition-colors"
                             title="Click to edit departure time"
                           >
-                            <Clock className="w-3.5 h-3.5 text-purple-600" />
+                            <Clock className="w-3.5 h-3.5 text-emerald-600" />
                             <span>{stop.time}</span>
                           </button>
 
@@ -999,7 +1001,7 @@ export default function SmartRoutingPage() {
                         onClick={() => toggleNotification(stop.id)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-xs transition-colors ${
                           stop.notifications.enabled
-                            ? 'bg-purple-600 text-white shadow-xs'
+                            ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
                         }`}
                         title="Toggle smog departure alerts"
@@ -1035,7 +1037,7 @@ export default function SmartRoutingPage() {
                             onClick={() => updateChannel(stop.id, 'push')}
                             className={`p-1.5 rounded-lg text-xs ${
                               stop.notifications.channel === 'push'
-                                ? 'bg-purple-100 text-purple-700 font-bold'
+                                ? 'bg-emerald-100 text-emerald-700 font-bold'
                                 : 'text-slate-400 hover:text-slate-600'
                             }`}
                             title="Push Notification"
@@ -1065,7 +1067,7 @@ export default function SmartRoutingPage() {
                           href={`/dashboard/map?destLat=${stop.lat}&destLng=${stop.lng}&destName=${encodeURIComponent(
                             stop.name
                           )}`}
-                          className="flex items-center gap-1.5 px-3.5 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl font-bold text-xs transition-colors"
+                          className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors"
                           title="Navigate to destination now on live map"
                         >
                           <Navigation className="w-3.5 h-3.5" />
@@ -1132,10 +1134,10 @@ export default function SmartRoutingPage() {
                     value={photonQuery}
                     onChange={e => handlePhotonSearch(e.target.value)}
                     placeholder="Search e.g. Gulberg, DHA Phase 5, Mall Road..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-purple-600 transition-all"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
                   />
                   {isSearchingPhoton && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
                   )}
                 </div>
 
@@ -1153,7 +1155,7 @@ export default function SmartRoutingPage() {
                           setPhotonQuery(sug.name);
                           setPhotonSuggestions([]);
                         }}
-                        className="p-3 hover:bg-purple-50 cursor-pointer text-xs transition-colors"
+                        className="p-3 hover:bg-emerald-50 cursor-pointer text-xs transition-colors"
                       >
                         <p className="font-bold text-slate-900">{sug.name}</p>
                         <p className="text-[11px] text-slate-500 truncate">{sug.address}</p>
@@ -1174,7 +1176,7 @@ export default function SmartRoutingPage() {
                   onChange={e => setManualName(e.target.value)}
                   placeholder="e.g. Office HQ, Client Meeting, Liberty Market"
                   required
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-purple-600 transition-all"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
                 />
               </div>
 
@@ -1190,7 +1192,7 @@ export default function SmartRoutingPage() {
                     onChange={e => setManualTime(e.target.value)}
                     placeholder="e.g. 10:30 AM"
                     required
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-purple-600 transition-all"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
                   />
                 </div>
 
@@ -1202,7 +1204,7 @@ export default function SmartRoutingPage() {
                   <select
                     value={manualTag}
                     onChange={e => setManualTag(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-purple-600 transition-all"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
                   >
                     <option value="Work">Work</option>
                     <option value="Meeting">Meeting</option>
@@ -1237,7 +1239,7 @@ export default function SmartRoutingPage() {
                         onClick={() => setManualVehicle(v.key as any)}
                         className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold transition-all ${
                           isSel
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                             : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
@@ -1260,7 +1262,7 @@ export default function SmartRoutingPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
                 >
                   Save to Schedule
                 </button>
@@ -1286,7 +1288,7 @@ export default function SmartRoutingPage() {
                 value={newTimeVal}
                 onChange={e => setNewTimeVal(e.target.value)}
                 placeholder="e.g. 11:00 AM"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-purple-600 transition-all"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
               />
             </div>
 
@@ -1306,7 +1308,7 @@ export default function SmartRoutingPage() {
                     showToast('Departure time updated');
                   }
                 }}
-                className="px-5 py-2 bg-purple-600 text-white rounded-xl font-bold text-xs shadow-sm hover:bg-purple-700"
+                className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-sm hover:bg-emerald-700"
               >
                 Save
               </button>
