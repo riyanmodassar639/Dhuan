@@ -26,6 +26,7 @@ import {
   Sun
 } from 'lucide-react';
 import { ChatMessage } from '@/components/AskDhuanAssistant';
+import { getApiEndpoint } from '@/lib/api';
 
 // 6 Official Smog Severity Categories & Color Rules
 const getSmogBadgeForAqi = (aqi: number) => {
@@ -147,83 +148,7 @@ export default function AskDhuanPage() {
     setMessages([initialGreeting]);
   };
 
-  const generateSimulatedResponse = (query: string): ChatMessage => {
-    const q = query.toLowerCase();
-
-    if (q.includes('forecast') || q.includes('next') || q.includes('inversion') || q.includes('kal') || q.includes('today')) {
-      return {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: `### 24-Hour Smog Inversion Projection for Lahore\n\nOur atmospheric boundary model shows clear diurnal cycling:\n\n1. **Midday Window (11:00 – 17:00):** Ambient temperature warming expands vertical mixing depth to ~800m. AQI stays in **Moderate Haze (70–95)**.\n2. **Evening Transition (18:00 – 22:00):** Radiational cooling begins at ground level. A strong **thermal inversion lid** begins forming below 150m, trapping automotive exhaust and brick kiln particulates. AQI rises into **Smog Inversion Forming (105–140)**.\n3. **Nocturnal Peak (01:00 – 06:00):** Peak atmospheric density stagnation. Smog concentration reaches **Dense Smog Inversion (150–165 AQI)**.\n\n*Condition improves steadily after 09:30 AM once solar irradiance breaks the temperature inversion.*`,
-        timestamp: 'Just now',
-        smogTier: getSmogBadgeForAqi(155),
-        recommendations: [
-          'Schedule sports and outdoor activities strictly between 12:00 PM and 4:30 PM.',
-          'Operate bedroom HEPA air purifiers during 22:00 to 07:00 nocturnal peak.',
-          'Keep vehicle air conditioning on internal air recirculation mode.'
-        ],
-        suggestedPrompts: [
-          'Which areas in Lahore have the highest risk?',
-          'What are the best indoor air purifiers for smog?'
-        ]
-      };
-    }
-
-    if (q.includes('mask') || q.includes('safe') || q.includes('health') || q.includes('asthma') || q.includes('child')) {
-      return {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: `### Respiratory Defense & Health Guidance\n\nFine particulate matter (**PM2.5**) measures less than 2.5 microns—about 30 times smaller than a single human hair. It penetrates directly through nasal cilia into deep alveoli and enters the bloodstream.\n\n- **Mask Efficacy Breakdown:**\n  - **Cloth / Surgical Mask:** Only filters ~10–25% of fine toxic aerosol matter.\n  - **KN95 / N95 / FFP2:** Filters **>95%** when tightly sealed around the nose and jaw.\n- **Asthma & Bronchitis Vulnerability:** Inhalation of acidic sulfur dioxide ($SO_2$) and nitrogen oxides ($NO_x$) triggers acute airway inflammation and bronchospasm.\n- **Pediatric Safety:** Children inhale 50% more air per pound of body weight than adults; keep schools' outdoor recess indoor during inversions.`,
-        timestamp: 'Just now',
-        smogTier: getSmogBadgeForAqi(125),
-        recommendations: [
-          'Wear N95/FFP2 certified masks when outside for longer than 15 minutes.',
-          'Use saline nasal irrigation to clear sub-micron soot buildup at night.',
-          'Carry rescue inhalers (e.g. Salbutamol) if you have any history of respiratory allergy.'
-        ],
-        suggestedPrompts: [
-          'How does smog affect skin and eyes?',
-          'What indoor plants purify smog best?'
-        ]
-      };
-    }
-
-    if (q.includes('shahdara') || q.includes('area') || q.includes('sector') || q.includes('worst') || q.includes('hotspot')) {
-      return {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: `### Microclimate Sector Diagnostics\n\nOur Land-Use Regression model monitors 10 distinct Lahore urban sectors:\n\n- **Shahdara (GT Road Corridor):** Top alert sector due to continuous heavy freight diesel exhaust and riverbed thermal pooling.\n- **Kot Lakhpat Industrial Estate:** Concentrated industrial boiler emissions with stagnant surface wind speeds ($<5\\text{ km/h}$).\n- **Multan Road / Thokar Niaz Baig:** Severe intersection friction and regional bus terminal congestion.\n- **Gulberg & Mall Road:** Urban street canyon effect where multi-story buildings reduce cross-ventilation.\n- **DHA Phase 5 & Lahore Cantt:** Lowest average PM2.5 due to expansive tree cover and strictly controlled industrial zoning.`,
-        timestamp: 'Just now',
-        smogTier: getSmogBadgeForAqi(92),
-        recommendations: [
-          'Prefer Canal Bank Road or Ring Road over central arterial routes.',
-          'Avoid open motorbike travel on GT Road after 6:00 PM without protective eyewear and N95 mask.'
-        ],
-        suggestedPrompts: [
-          'Plan an eco-friendly low smog route',
-          'How does wind speed influence Shahdara smog?'
-        ]
-      };
-    }
-
-    return {
-      id: `ai-${Date.now()}`,
-      role: 'assistant',
-      content: `### Domain Analysis for: "${query}"\n\nLahore's smog is a seasonal crisis driven by a unique confluence of geography, thermal meteorology, crop residue burning across the Punjab basin, and local vehicular/industrial emissions.\n\n- **Atmospheric State:** Surface high-pressure ridges prevent vertical atmospheric venting, leaving pollutants trapped in the breathing layer.\n- **Real-Time Baseline:** Baseline AQI across central monitoring stations is **81 (Moderate Haze)**, but projected to rise during nocturnal boundary collapse.\n- **Action Protocol:** Keep indoor spaces sealed during early mornings and monitor real-time spatial updates on DHUAN.`,
-      timestamp: 'Just now',
-      smogTier: getSmogBadgeForAqi(81),
-      recommendations: [
-        'Stay well hydrated to aid natural mucosal airway defense.',
-        'Check hourly forecasts before scheduling morning commutes.'
-      ],
-      suggestedPrompts: [
-        'What causes the yellow-brown color of smog?',
-        'How does crop stubble burning reach Lahore?'
-      ]
-    };
-  };
-
-  const handleSend = (textToSend?: string) => {
+  const handleSend = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
     if (!text || isTyping) return;
 
@@ -238,11 +163,56 @@ export default function AskDhuanPage() {
     setInputText('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      const reply = generateSimulatedResponse(text);
+    try {
+      const history = messages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content
+      }));
+
+      const res = await fetch(getApiEndpoint('/dashboard/assistant/ask'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: text, history })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const category = data.smog_category || getSmogBadgeForAqi(81);
+
+      const reply: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: data.answer || "Atmospheric telemetry processed.",
+        timestamp: 'Just now',
+        smogTier: {
+          name: category.name || 'Moderate Haze',
+          aqi: category.aqi,
+          color: category.text || category.color || 'text-amber-800',
+          bg: category.bg || 'bg-amber-50',
+          border: category.border || 'border-amber-200'
+        },
+        recommendations: data.protective_protocols || [],
+        suggestedPrompts: data.suggested_prompts || []
+      };
+
       setMessages((prev) => [...prev, reply]);
+    } catch (err: any) {
+      console.error('[Ask DHUAN Page] API Error:', err);
+      const errorMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `### Telemetry Connection Notice\n\nUnable to reach the atmospheric AI core (${err.message || 'Network error'}). Please ensure the DHUAN backend and AI services are running.`,
+        timestamp: 'Just now',
+        smogTier: getSmogBadgeForAqi(81),
+        recommendations: ['Check local backend status or refresh the application.']
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 850);
+    }
   };
 
   return (

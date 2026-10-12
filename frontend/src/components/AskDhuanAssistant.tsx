@@ -23,6 +23,7 @@ import {
   ExternalLink,
   BrainCircuit
 } from 'lucide-react';
+import { getApiEndpoint } from '@/lib/api';
 
 export interface ChatMessage {
   id: string;
@@ -184,87 +185,8 @@ export default function AskDhuanAssistant({
     setMessages([initialGreeting]);
   };
 
-  // Simulated AI response engine for frontend prototyping
-  const generateSimulatedResponse = (query: string): ChatMessage => {
-    const q = query.toLowerCase();
-    const currentVal = liveAqi || 81;
-
-    if (q.includes('forecast') || q.includes('next') || q.includes('24h') || q.includes('hours') || q.includes('kal')) {
-      return {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: `### 24-Hour Atmospheric Outlook for ${cityName}\n\nOur inversion model indicates a significant **diurnal variation**:\n\n- **Daytime (12:00 – 17:00):** Solar radiative heating elevates the boundary layer, dispersing fine particulate matter into the upper troposphere. AQI remains near **${currentVal} (Moderate Haze)**.\n- **Late Evening (20:00 – 23:00):** Surface cooling triggers a rapid **nocturnal thermal inversion**, trapping vehicle exhaust and biomass smoke within 120m of ground level. AQI projected to climb to **115–130 (Smog Inversion Forming)**.\n- **Early Morning Peak (04:00 – 07:00):** Peak atmospheric density collapse. PM2.5 levels may peak near **155–165 AQI (Dense Smog Inversion)**.`,
-        timestamp: 'Just now',
-        smogTier: getSmogBadgeForAqi(155),
-        recommendations: [
-          'Postpone early morning outdoor workouts until after 10:00 AM when the inversion breaks.',
-          'Operate HEPA air filtration in bedrooms during nocturnal peak hours.',
-          'Close fresh air intake vents on vehicles during evening rush hours.'
-        ],
-        suggestedPrompts: [
-          'Which areas are safest during morning commute?',
-          'What are the best indoor air purifiers for smog?'
-        ]
-      };
-    }
-
-    if (q.includes('mask') || q.includes('precaution') || q.includes('health') || q.includes('safe') || q.includes('asthma') || q.includes('walk')) {
-      return {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: `### Health Advisory & Respiratory Protection\n\nWith current PM2.5 concentrations at **${((currentVal * 0.35)).toFixed(1)} µg/m³** (${Math.round((currentVal * 0.35) / 5)}x WHO Annual Limit):\n\n- **Standard Surgical/Cloth Masks:** Provide **<15% filtration efficiency** against sub-micron PM2.5 aerosol particles. They do not prevent smog lung infiltration.\n- **Recommended Standard:** Certified **N95, KN95, or FFP2 respirators** with tight perimeter facial seals, filtering >95% of fine toxic aerosol matter.\n- **Sensitive Demographics:** Individuals with bronchial asthma, cardiovascular disease, children under 10, and seniors should restrict strenuous physical exertion outdoors.`,
-        timestamp: 'Just now',
-        smogTier: getSmogBadgeForAqi(currentVal),
-        recommendations: [
-          'Wear a snug-fitting N95/KN95 mask whenever traveling outdoors.',
-          'Asthma patients should keep rescue bronchodilator inhalers easily accessible.',
-          'Rinse eyes with saline wash after extended outdoor exposure to remove acidic smog nitrates.'
-        ],
-        suggestedPrompts: [
-          'Can indoor plants help reduce PM2.5?',
-          'Is it safe to open windows in the afternoon?'
-        ]
-      };
-    }
-
-    if (q.includes('hotspot') || q.includes('area') || q.includes('zone') || q.includes('shahdara') || q.includes('worst') || q.includes('lahore')) {
-      return {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: `### Spatial Smog Sector Diagnostics\n\nOur microclimate regression across 10 official Lahore stations detects high pollutant accumulation near industrial and transit corridors:\n\n1. **Shahdara (GT Road Corridor):** ~90 AQI *(Heavy diesel freight particulate entrapment)*\n2. **Kot Lakhpat Industrial Complex:** ~88 AQI *(Industrial emissions + nocturnal low wind)*\n3. **Multan Road (Thokar Niaz Baig):** ~86 AQI *(Intercity transit hub congestion)*\n4. **Mall Road / Punjab Assembly:** ~82 AQI *(Dense urban vehicular background)*\n5. **DHA Phase 5 & Cantt:** ~75 AQI *(Comparatively lower local density with vegetative buffer)*`,
-        timestamp: 'Just now',
-        smogTier: getSmogBadgeForAqi(90),
-        recommendations: [
-          'Utilize Lahore Ring Road or Canal Road to bypass congested central choking points.',
-          'Avoid idling in heavy traffic on GT Road between 18:00 and 22:00.'
-        ],
-        suggestedPrompts: [
-          'Plan an eco-friendly low smog route',
-          'How does wind speed influence Shahdara smog?'
-        ]
-      };
-    }
-
-    // Default Atmospheric Inversion Physics response
-    return {
-      id: `ai-${Date.now()}`,
-      role: 'assistant',
-      content: `### Smog Dynamics Analysis for "${query}"\n\nIn the Lahore metropolitan basin, **smog is not just ordinary smoke or dust**; it is a complex photochemical mixture of airborne sulfates, nitrates, ammonium, and secondary organic aerosols entrapped by meteorological thermal inversions.\n\n- **Current Ground Telemetry:** Baseline AQI is **${currentVal}** (${getSmogBadgeForAqi(currentVal).name}).\n- **Dispersion Potential:** Low planetary boundary layer height traps pollutants near ground breathing zones.\n- **Recommended Posture:** Exercise caution, monitor hourly AQI shifts, and utilize the DHUAN Smart Route planner for commute planning.`,
-      timestamp: 'Just now',
-      smogTier: getSmogBadgeForAqi(currentVal),
-      recommendations: [
-        'Stay hydrated to assist mucosal respiratory clearance.',
-        'Check DHUAN hourly inversion widget before commuting.'
-      ],
-      suggestedPrompts: [
-        'What causes the yellow-brown color of smog?',
-        'How does crop stubble burning reach Lahore?'
-      ]
-    };
-  };
-
-  // Submit Handler
-  const handleSendMessage = (textToSend?: string) => {
+  // Real Grounded AI & SQLite Submission Handler
+  const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputText).trim();
     if (!query || isTyping) return;
 
@@ -279,12 +201,59 @@ export default function AskDhuanAssistant({
     setInputText('');
     setIsTyping(true);
 
-    // Simulate AI thinking & atmospheric calculation
-    setTimeout(() => {
-      const aiReply = generateSimulatedResponse(query);
+    try {
+      const history = messages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content
+      }));
+
+      const res = await fetch(getApiEndpoint('/dashboard/assistant/ask'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, history })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+
+      const data = await res.json();
+      const category = data.smog_category || getSmogBadgeForAqi(liveAqi || 81);
+
+      const aiReply: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: data.answer || "Atmospheric query processed.",
+        timestamp: 'Just now',
+        smogTier: {
+          name: category.name || 'Moderate Haze',
+          aqi: category.aqi,
+          color: category.text || category.color || 'text-amber-800',
+          bg: category.bg || 'bg-amber-50',
+          border: category.border || 'border-amber-200'
+        },
+        recommendations: data.protective_protocols || [],
+        suggestedPrompts: data.suggested_prompts || []
+      };
+
       setMessages((prev) => [...prev, aiReply]);
+    } catch (err: any) {
+      console.error('[Ask DHUAN] API Error:', err);
+      const errorReply: ChatMessage = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `### Telemetry Connection Notice\n\nUnable to reach the atmospheric AI core (${err.message || 'Network error'}). Please verify the DHUAN backend and AI service status.`,
+        timestamp: 'Just now',
+        smogTier: getSmogBadgeForAqi(liveAqi || 81),
+        recommendations: [
+          'Ensure background services are active.',
+          'Try refreshing the browser window.'
+        ]
+      };
+      setMessages((prev) => [...prev, errorReply]);
+    } finally {
       setIsTyping(false);
-    }, 900);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

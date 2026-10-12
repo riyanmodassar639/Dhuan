@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getDashboardOverviewData, fetchAndSyncLiveLahoreData } = require('../services/airQualityService');
+const { getDashboardOverviewData, fetchAndSyncLiveLahoreData, askDhuanAssistant } = require('../services/airQualityService');
 const { dbRun, dbGet } = require('../db/database');
 
 // GET /api/dashboard/overview - Complete dashboard metrics directly from SQL database
@@ -60,6 +60,21 @@ router.get('/hourly-forecast', async (req, res) => {
       hourlyForecast: data.hourlyForecast
     });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/dashboard/assistant/ask - Grounded AI assistant endpoint
+router.post('/assistant/ask', async (req, res) => {
+  try {
+    const { query, history } = req.body;
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ success: false, error: 'Query string is required' });
+    }
+    const response = await askDhuanAssistant(query, history || []);
+    res.json(response);
+  } catch (err) {
+    console.error('Error in assistant ask route:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

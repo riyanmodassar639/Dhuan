@@ -8,6 +8,7 @@ import sys
 # Ensure src is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from predict import LahoreSmogPredictor, calculate_us_aqi, get_aqi_category
+from assistant import SmogAssistantEngine
 
 app = FastAPI(
     title="DHUAN AI Core — Lahore Smog Intelligence Engine",
@@ -97,6 +98,51 @@ def predict_spatial_areas(req: SpatialAreasRequest):
             "engine": "DHUAN Spatial Land-Use Regression & Boundary Layer AI",
             "count": len(areas),
             "areas": areas
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AssistantAskRequest(BaseModel):
+    query: str
+    history: Optional[list] = []
+    current_aqi: Optional[int] = 81
+    current_pm25: Optional[float] = 25.2
+    city: Optional[str] = "Lahore"
+    context: Optional[dict] = None
+
+# Initialize assistant engine
+assistant_engine = SmogAssistantEngine()
+
+@app.post("/api/v1/assistant/ask")
+def assistant_ask(req: AssistantAskRequest):
+    global assistant_engine, predictor
+    if not assistant_engine:
+        assistant_engine = SmogAssistantEngine()
+    try:
+        ctx = req.context or {}
+        if not ctx.get('highAlertAreas') and predictor:
+            ctx['highAlertAreas'] = predictor.predict_spatial_areas(
+                current_pm25=req.current_pm25,
+                current_aqi=req.current_aqi
+            )
+        if not ctx.get('hourlyForecast') and predictor:
+            forecast_res = predictor.forecast_72h(
+                current_pm25=req.current_pm25,
+                current_aqi=req.current_aqi
+            )
+            ctx['hourlyForecast'] = forecast_res.get('hourly', [])
+
+        result = assistant_engine.evaluate_query(
+            query=req.query,
+            current_aqi=req.current_aqi,
+            current_pm25=req.current_pm25,
+            city=req.city,
+            context=ctx
+        )
+        return {
+            "success": True,
+            "engine": "DHUAN Domain-Trained Atmospheric AI & Inversion Engine",
+            **result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
