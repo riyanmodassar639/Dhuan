@@ -6,7 +6,6 @@ import {
   Activity, 
   Map as MapIcon, 
   ShieldAlert, 
-  Settings, 
   LogOut, 
   Wind,
   Menu,
@@ -31,7 +30,6 @@ export default function DashboardLayout({
     { name: 'Map View', href: '/dashboard/map', icon: MapPin },
     { name: 'Smart Routing', href: '/dashboard/routing', icon: MapIcon },
     { name: 'Health Profile', href: '/dashboard/health', icon: ShieldAlert },
-    { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
 
   return (
