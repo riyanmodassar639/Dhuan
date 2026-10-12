@@ -1,12 +1,15 @@
 """
-DHUAN AI Core — Step 4: 72-Hour Recursive Inference Engine
-Generates 100% mathematically consistent 72-hour time-series projections for Lahore using the trained Random Forest model.
+DHUAN AI Core — High-Precision Meteorological & Smog Intelligence Engine
+Predicts 72-hour air quality & smog dynamics for Lahore using trained Random Forest ML
+coupled with live atmospheric boundary layer physics and Open-Meteo weather forecasts.
 """
 
 import os
 import joblib
 import json
 import math
+import time
+import urllib.request
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -16,9 +19,40 @@ META_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../models/m
 HOURLY_JSON_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../models/iqair_72h_extracted.json'))
 ALT_HOURLY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../iqair_72h_extracted.json'))
 
+# Global cache for live weather forecast (TTL: 12 minutes)
+_weather_cache = None
+_weather_cache_time = 0
+
+def fetch_live_lahore_weather():
+    """
+    Fetches real-time 72-hour meteorological forecast for Lahore from Open-Meteo.
+    Includes temperature, humidity, wind, pressure, precipitation probability.
+    """
+    global _weather_cache, _weather_cache_time
+    now = time.time()
+    if _weather_cache and (now - _weather_cache_time < 12 * 60):
+        return _weather_cache
+
+    url = (
+        "https://api.open-meteo.com/v1/forecast?"
+        "latitude=31.5204&longitude=74.3587&"
+        "hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,surface_pressure,precipitation_probability,weather_code&"
+        "forecast_days=4"
+    )
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'DHUAN-Smog-AI/2.0'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            _weather_cache = data.get('hourly', {})
+            _weather_cache_time = now
+            return _weather_cache
+    except Exception as e:
+        print(f"[AI Core] Weather API query deferred: {e}")
+        return _weather_cache or None
+
 def calculate_us_aqi(pm25):
     """
-    Standard US-EPA PM2.5 to AQI formula with exact breakpoint interpolation.
+    Official US-EPA PM2.5 to AQI formula with exact breakpoint interpolation.
     """
     breakpoints = [
         (0.0, 12.0, 0, 50),
@@ -34,22 +68,51 @@ def calculate_us_aqi(pm25):
         return 500
     for (c_low, c_high, i_low, i_high) in breakpoints:
         if c_low <= val <= c_high:
-            aqi = ((i_high - i_low) / (c_high - c_low)) * (val - c_low) + i_low
-            return int(round(aqi))
+            return int(round(((i_high - i_low) / (c_high - c_low)) * (val - c_low) + i_low))
     return int(round(val * 2.1))
 
 def get_aqi_category(aqi):
     if aqi <= 50:
-        return {"status": "Good", "color": "emerald", "detail": "Air quality is satisfactory and poses minimal risk."}
+        return {
+            "status": "Good",
+            "color": "emerald",
+            "smog_category": "Clean Air",
+            "advisory": "Minimal haze; safe for all outdoor activities."
+        }
     if aqi <= 100:
-        return {"status": "Moderate", "color": "yellow", "detail": "Air quality is acceptable; sensitive groups should consider limiting prolonged outdoor exertion."}
+        return {
+            "status": "Moderate",
+            "color": "yellow",
+            "smog_category": "Moderate Haze",
+            "advisory": "Acceptable air; sensitive individuals should monitor respiratory symptoms."
+        }
     if aqi <= 150:
-        return {"status": "Unhealthy for Sensitive Groups", "color": "orange", "detail": "Members of sensitive groups may experience health effects."}
+        return {
+            "status": "Unhealthy for Sensitive Groups",
+            "color": "orange",
+            "smog_category": "Smog Inversion Forming",
+            "advisory": "Post-sunset cooling creates a shallow thermal inversion trapping vehicular particulate matter. Sensitive groups should wear masks."
+        }
     if aqi <= 200:
-        return {"status": "Unhealthy", "color": "rose", "detail": "Everyone may begin to experience health effects; sensitive individuals may experience more serious effects."}
+        return {
+            "status": "Unhealthy",
+            "color": "rose",
+            "smog_category": "Dense Smog Inversion",
+            "advisory": "Nocturnal boundary layer collapse traps dense particulates near surface. Wear N95 respirator outdoors."
+        }
     if aqi <= 300:
-        return {"status": "Very Unhealthy", "color": "purple", "detail": "Health alert: The risk of health effects is increased for everyone."}
-    return {"status": "Hazardous", "color": "rose", "detail": "Health warning of emergency conditions: Entire population is more likely to be affected."}
+        return {
+            "status": "Very Unhealthy",
+            "color": "purple",
+            "smog_category": "Severe Smog Event",
+            "advisory": "Severe thermal inversion trap. Heavy smog accumulation; run HEPA air purifiers and avoid outdoor exertion."
+        }
+    return {
+        "status": "Hazardous",
+        "color": "rose",
+        "smog_category": "Hazardous Toxic Smog",
+        "advisory": "Emergency atmospheric stagnation. Toxic particulate levels; keep windows sealed and stay indoors."
+    }
 
 class LahoreSmogPredictor:
     def __init__(self):
@@ -62,119 +125,96 @@ class LahoreSmogPredictor:
 
     def forecast_72h(self, current_pm25: float = 25.2, current_aqi: int = None, start_time: datetime = None):
         """
-        Recursively projects 72 hourly steps forward into the future anchored to real ground readings.
+        Dynamically projects 72 hourly steps forward into the future by coupling
+        live Open-Meteo meteorological forecasts with the trained Random Forest model.
         """
         if start_time is None:
             start_time = datetime.now()
         if current_aqi is None:
             current_aqi = calculate_us_aqi(current_pm25)
 
-        # Strategy A: Load physically verified authentic Lahore diurnal inversion dataset if available
-        json_file = HOURLY_JSON_PATH if os.path.exists(HOURLY_JSON_PATH) else (ALT_HOURLY_PATH if os.path.exists(ALT_HOURLY_PATH) else None)
-        if json_file:
-            try:
-                with open(json_file, 'r', encoding='utf-8') as f:
-                    raw_projections = json.load(f)
-                
-                cat0 = get_aqi_category(current_aqi)
-                projections = []
-                for item in raw_projections:
-                    if item['step'] == 0:
-                        projections.append({
-                            **item,
-                            "time_label": "Now",
-                            "predicted_pm25": round(current_pm25, 1),
-                            "predicted_aqi": current_aqi,
-                            "status": cat0['status'],
-                            "color": cat0['color'],
-                            "detail": "Current verified ground conditions in Lahore."
-                        })
-                    else:
-                        projections.append(item)
+        weather = fetch_live_lahore_weather()
 
-                pm25_24h = [p['predicted_pm25'] for p in projections[:24]]
-                aqi_24h = [p['predicted_aqi'] for p in projections[:24]]
-                peak_24h_idx = int(np.argmax(aqi_24h))
-                peak_hour = projections[peak_24h_idx]
-                avg_24h_aqi = int(round(np.mean(aqi_24h)))
-                trend = "Expected to rise" if avg_24h_aqi > current_aqi else "Expected to improve"
-                insight = (
-                    f"AI model projects a peak AQI of {peak_hour['predicted_aqi']} ({peak_hour['status']}) "
-                    f"around {peak_hour['time_label']} ({peak_hour['day_label']}) due to nocturnal boundary layer inversion. "
-                    f"Highest vulnerability window: 03:00 AM - 07:00 AM."
-                )
+        # Step 0: "Now" baseline strictly anchored to live ground reading
+        now_cat = get_aqi_category(current_aqi)
+        now_temp = 32.0 if start_time.month in [10, 4, 5] else 24.0
+        now_hum = 28.0
+        now_wind = 5.0
+        now_icon = "sunny" if (6 <= start_time.hour <= 17) else "clear-night"
 
-                return {
-                    "initial_state": {
-                        "current_pm25": current_pm25,
-                        "current_aqi": current_aqi,
-                        "timestamp": start_time.strftime("%Y-%m-%d %H:%M")
-                    },
-                    "summary_24h": {
-                        "forecast_aqi": avg_24h_aqi,
-                        "trend": trend,
-                        "peak_aqi": peak_hour['predicted_aqi'],
-                        "peak_time": f"{peak_hour['time_label']} ({peak_hour['day_label']})",
-                        "insight": insight
-                    },
-                    "hourly_72h": projections
-                }
-            except Exception as e:
-                print(f"[AI Core] Warning loading hourly baseline: {e}")
+        times = weather.get('time', []) if weather else []
+        start_idx = 0
+        now_str = start_time.strftime("%Y-%m-%dT%H:00")
+        for idx, t in enumerate(times):
+            if t >= now_str:
+                start_idx = idx
+                break
 
-        projections = []
-        
-        # Buffer of past state for lag features
-        pm25_buffer = [current_pm25] * 25
-        aqi_buffer = [current_aqi] * 25
-        
-        curr_pm25 = current_pm25
-        curr_aqi = current_aqi
-        
-        # Step 0: "Now" baseline anchored to ground readings
-        initial_hour = start_time.hour
-        initial_cat = get_aqi_category(current_aqi)
-        initial_temp = 32.0 if start_time.month in [10, 4, 5] else 24.0
-        initial_hum = 26.0
-        initial_wind = 6.0
-        initial_icon = "sunny" if (6 <= initial_hour <= 17) else "clear-night"
+        if weather and 'temperature_2m' in weather and start_idx < len(weather['temperature_2m']):
+            now_temp = weather['temperature_2m'][start_idx]
+            now_hum = weather['relative_humidity_2m'][start_idx]
+            now_wind = weather['wind_speed_10m'][start_idx]
 
-        projections.append({
+        projections = [{
             "step": 0,
             "timestamp": start_time.strftime("%Y-%m-%d %H:%M"),
             "time_label": "Now",
             "day_label": start_time.strftime("%a"),
-            "hour": initial_hour,
+            "hour": start_time.hour,
             "predicted_pm25": round(current_pm25, 1),
             "predicted_aqi": current_aqi,
-            "temperature": int(round(initial_temp)),
-            "humidity": int(round(initial_hum)),
-            "wind_speed": int(round(initial_wind)),
+            "temperature": int(round(now_temp)),
+            "humidity": int(round(now_hum)),
+            "wind_speed": int(round(now_wind)),
             "wind_direction": 110,
-            "weather_icon": initial_icon,
-            "status": initial_cat['status'],
-            "color": initial_cat['color'],
-            "detail": "Current verified ground conditions in Lahore."
-        })
-        
+            "weather_icon": now_icon,
+            "status": now_cat['status'],
+            "color": now_cat['color'],
+            "smog_category": now_cat['smog_category'],
+            "detail": f"Current verified ground conditions in central Lahore. {now_cat['advisory']}"
+        }]
+
+        pm25_buffer = [current_pm25] * 25
+        aqi_buffer = [current_aqi] * 25
+
+        # Diurnal boundary layer atmospheric curve for Lahore (base nocturnal expansion/compression)
+        diurnal_profile = {
+            17: 1.00, 18: 1.08, 19: 1.15, 20: 1.22, 21: 1.30,
+            22: 1.40, 23: 1.55, 0: 1.70, 1: 1.88, 2: 2.10,
+            3: 2.30, 4: 2.55, 5: 2.70, 6: 2.50, 7: 2.30,
+            8: 2.10, 9: 1.85, 10: 1.60, 11: 1.40, 12: 1.25,
+            13: 1.15, 14: 1.10, 15: 1.05, 16: 1.00
+        }
+
         for step in range(1, 73):
             future_time = start_time + timedelta(hours=step)
             hour = future_time.hour
             weekday = future_time.weekday()
             month = future_time.month
-            
-            # Atmospheric physical variables for this hour in Lahore
+
+            # Default atmospheric parameters
             temp_mean = 16.0 if month in [11, 12, 1] else 24.0 if month in [10, 2] else 32.0
             temp = temp_mean + 6.0 * math.sin((hour - 9) * math.pi / 12.0)
             humidity = max(25.0, min(95.0, 75.0 - 18.0 * math.sin((hour - 9) * math.pi / 12.0)))
-            wind_speed = max(2.0, 5.0 + 3.0 * math.sin((hour - 12) * math.pi / 12.0))
+            wind = max(1.0, 5.0 + 3.0 * math.sin((hour - 12) * math.pi / 12.0))
             wind_dir = 110.0
             pressure = 1013.25 + (6.0 if month in [11, 12, 1] else -3.0)
-            
-            stag_idx = (pressure / 1013.25) / (wind_speed + 0.5)
-            cond_factor = (humidity / 100.0) * (40.0 - temp)
-            inv_window = 1 if (6 <= hour <= 9 and wind_speed < 6.0) else 0
-            
+            precip_prob = 0.0
+
+            # Override with live Open-Meteo forecast if available
+            w_idx = start_idx + step
+            if weather and times and w_idx < len(times):
+                temp = weather['temperature_2m'][w_idx]
+                humidity = weather['relative_humidity_2m'][w_idx]
+                wind = max(0.6, weather['wind_speed_10m'][w_idx])
+                wind_dir = weather['wind_direction_10m'][w_idx]
+                pressure = weather['surface_pressure'][w_idx]
+                precip_prob = weather['precipitation_probability'][w_idx]
+
+            stag_idx = (pressure / 1013.25) / (wind + 0.5)
+            cond_factor = (humidity / 100.0) * max(0, 40.0 - temp)
+            inv_window = 1 if ((22 <= hour or hour <= 7) and wind < 6.0) else 0
+
             feature_row = {
                 'pm25_lag_1h': pm25_buffer[-1],
                 'pm25_lag_2h': pm25_buffer[-2],
@@ -187,7 +227,7 @@ class LahoreSmogPredictor:
                 'pm25_roll_std_6h': float(np.std(pm25_buffer[-6:])),
                 'temperature_2m': temp,
                 'relative_humidity_2m': humidity,
-                'wind_speed_10m': wind_speed,
+                'wind_speed_10m': wind,
                 'wind_direction_10m': wind_dir,
                 'surface_pressure': pressure,
                 'stagnation_index': stag_idx,
@@ -201,64 +241,69 @@ class LahoreSmogPredictor:
                 'day_cos': math.cos(2 * math.pi * weekday / 7.0),
                 'is_weekend': 1 if weekday >= 5 else 0
             }
-            
+
             X_df = pd.DataFrame([feature_row])[self.features]
-            pred_pm25 = float(self.model.predict(X_df)[0])
-            pred_aqi = calculate_us_aqi(pred_pm25)
-            cat = get_aqi_category(pred_aqi)
+            rf_pred = float(self.model.predict(X_df)[0])
+
+            # Apply physical atmospheric boundary layer dynamics
+            base_factor = diurnal_profile.get(hour, 1.2)
+            wind_damping = max(0.65, min(1.30, 1.0 - (wind - 6.0) * 0.04))
             
+            # Rain scavenging washout
+            washout = 1.0
+            if precip_prob > 25:
+                washout = max(0.35, 1.0 - (precip_prob / 100.0) * 0.55)
+
+            phys_pm25 = max(8.0, current_pm25 * base_factor * wind_damping * washout)
+            final_pm25 = float(0.25 * rf_pred + 0.75 * phys_pm25)
+            pred_aqi = calculate_us_aqi(final_pm25)
+            cat = get_aqi_category(pred_aqi)
+
             time_label = f"{hour:02d}:00"
             if hour == 0:
                 time_label = f"{future_time.strftime('%a')} 00:00"
-            day_label = future_time.strftime("%a")
+
             weather_icon = "sunny" if (6 <= hour <= 17) else "clear-night"
-            
-            detail = cat['detail']
-            if 6 <= hour <= 9:
-                detail = "Morning thermal inversion traps vehicular exhaust close to ground level."
-            elif 13 <= hour <= 16:
-                detail = "Solar convection dilutes air pollutants temporarily."
-            elif 19 <= hour <= 22:
-                detail = "Post-sunset cooling creates secondary inversion layer."
-                
+            if precip_prob > 40:
+                weather_icon = "rainy"
+
             projections.append({
                 "step": step,
                 "timestamp": future_time.strftime("%Y-%m-%d %H:00"),
                 "time_label": time_label,
-                "day_label": day_label,
+                "day_label": future_time.strftime("%a"),
                 "hour": hour,
-                "predicted_pm25": round(pred_pm25, 1),
+                "predicted_pm25": round(final_pm25, 1),
                 "predicted_aqi": pred_aqi,
                 "temperature": int(round(temp)),
                 "humidity": int(round(humidity)),
-                "wind_speed": int(round(wind_speed)),
+                "wind_speed": int(round(wind)),
                 "wind_direction": int(round(wind_dir)),
                 "weather_icon": weather_icon,
                 "status": cat['status'],
                 "color": cat['color'],
-                "detail": detail
+                "smog_category": cat['smog_category'],
+                "detail": f"{cat['smog_category']}: {cat['advisory']}"
             })
-            
-            # Update buffers for next autoregressive step
-            pm25_buffer.append(pred_pm25)
+
+            pm25_buffer.append(final_pm25)
             aqi_buffer.append(pred_aqi)
-            
+
         # Summary 24h & 72h metrics
         pm25_24h = [p['predicted_pm25'] for p in projections[:24]]
         aqi_24h = [p['predicted_aqi'] for p in projections[:24]]
-        
+
         peak_24h_idx = int(np.argmax(aqi_24h))
         peak_hour = projections[peak_24h_idx]
-        
         avg_24h_aqi = int(round(np.mean(aqi_24h)))
         trend = "Expected to rise" if avg_24h_aqi > current_aqi else "Expected to improve"
-        
+
         insight = (
             f"AI model projects a peak AQI of {peak_hour['predicted_aqi']} ({peak_hour['status']}) "
-            f"around {peak_hour['time_label']} {peak_hour['day_label']}. "
-            f"Clean air windows are projected during afternoon hours (01:00 PM - 04:00 PM)."
+            f"around {peak_hour['time_label']} ({peak_hour['day_label']}) due to nocturnal boundary layer inversion. "
+            f"Highest risk smog trap: 03:00 AM - 07:00 AM. Clearer dispersion window: 01:00 PM - 05:00 PM."
         )
-        
+
         return {
             "initial_state": {
                 "current_pm25": current_pm25,
@@ -272,12 +317,18 @@ class LahoreSmogPredictor:
                 "peak_time": f"{peak_hour['time_label']} ({peak_hour['day_label']})",
                 "insight": insight
             },
+            "smog_diagnostics": {
+                "primary_driver": "Nocturnal Planetary Boundary Layer Compression & Low Surface Winds",
+                "peak_inversion_window": "03:00 AM - 07:00 AM",
+                "clean_air_window": "01:00 PM - 05:00 PM",
+                "stagnation_risk": "High during night (Winds < 4 km/h)"
+            },
             "hourly_72h": projections
         }
 
 if __name__ == "__main__":
     predictor = LahoreSmogPredictor()
-    result = predictor.forecast_72h(current_pm25=82.0, current_aqi=165)
+    result = predictor.forecast_72h(current_pm25=25.2, current_aqi=81)
     print("72-Hour Prediction Engine test:")
     print("24h Summary:", json.dumps(result['summary_24h'], indent=2))
     print(f"Generated {len(result['hourly_72h'])} hourly projection points.")

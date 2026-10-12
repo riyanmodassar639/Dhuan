@@ -226,8 +226,8 @@ export default function HourlyForecastWidget({
             </div>
           </div>
           {selectedItem.detail && (
-            <div className="text-xs text-slate-300 bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-700/60 max-w-md">
-              <span className="text-emerald-400 font-semibold">AI Atmospheric Insight:</span> {selectedItem.detail}
+            <div className="text-xs text-slate-300 bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/60 max-w-md">
+              <span className="text-emerald-400 font-semibold">AI Smog & Inversion Insight:</span> {selectedItem.detail}
             </div>
           )}
         </div>
