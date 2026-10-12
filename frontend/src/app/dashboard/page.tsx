@@ -6,6 +6,7 @@ import Link from 'next/link';
 import ForecastChartWidget from '@/components/ForecastChart';
 import HealthGraphWidget from '@/components/HealthGraph';
 import HourlyForecastWidget, { HourlyForecastItem } from '@/components/HourlyForecastWidget';
+import { getApiEndpoint } from '@/lib/api';
 
 interface DashboardMetrics {
   city_name: string;
@@ -84,7 +85,7 @@ export default function DashboardOverview() {
   // Fetch verified data from Node.js + SQLite backend
   const fetchDashboardData = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/dashboard/overview');
+      const res = await fetch(getApiEndpoint('/dashboard/overview'));
       if (res.ok) {
         const data = await res.json();
         if (data.metrics) {
@@ -127,7 +128,7 @@ export default function DashboardOverview() {
   const handleSyncRealTime = async () => {
     setIsSyncing(true);
     try {
-      const res = await fetch('http://localhost:5000/api/dashboard/sync', { method: 'POST' });
+      const res = await fetch(getApiEndpoint('/dashboard/sync'), { method: 'POST' });
       if (res.ok) {
         await fetchDashboardData();
       }

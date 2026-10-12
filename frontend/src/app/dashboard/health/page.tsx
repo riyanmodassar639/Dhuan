@@ -51,6 +51,7 @@ import {
   ResponsiveContainer, 
   Legend 
 } from 'recharts';
+import { getApiEndpoint } from '@/lib/api';
 
 // Data types for health profile
 interface SymptomLog {
@@ -201,7 +202,7 @@ export default function HealthProfilePage() {
   useEffect(() => {
     setMounted(true);
     // Fetch live environmental metrics from SQLite backend
-    fetch('http://localhost:5000/api/dashboard/overview')
+    fetch(getApiEndpoint('/dashboard/overview'))
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.metrics) {

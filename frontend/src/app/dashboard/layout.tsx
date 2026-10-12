@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Footer from '@/components/Footer';
+import { getApiEndpoint } from '@/lib/api';
 
 export default function DashboardLayout({
   children,
@@ -29,7 +30,7 @@ export default function DashboardLayout({
   useEffect(() => {
     const fetchLive = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/dashboard/overview');
+        const res = await fetch(getApiEndpoint('/dashboard/overview'));
         if (res.ok) {
           const data = await res.json();
           if (data.metrics && typeof data.metrics.current_aqi === 'number') {
