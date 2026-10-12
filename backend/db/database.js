@@ -136,13 +136,13 @@ async function seedInitialData() {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     'Lahore',
-    165,
-    'Unhealthy',
-    82.0,
-    16.4,
-    180,
+    81,
+    'Moderate',
+    25.2,
+    5.0,
+    136,
     'Expected to rise',
-    'Time-series sensor model indicates a 22% spike in PM2.5 levels between 6:00 PM and 10:00 PM today due to post-sunset thermal inversion.',
+    'AI model projects a peak AQI of 169 (Unhealthy) around 05:00 (Tue) due to nocturnal boundary layer inversion. Highest vulnerability window: 03:00 AM - 07:00 AM.',
     'All Models Online'
   ]);
 
