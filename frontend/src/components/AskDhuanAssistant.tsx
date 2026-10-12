@@ -24,6 +24,7 @@ import {
   BrainCircuit
 } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
+import RichMessageRenderer from '@/components/RichMessageRenderer';
 
 export interface ChatMessage {
   id: string;
@@ -379,10 +380,8 @@ export default function AskDhuanAssistant({
                       </div>
                     )}
 
-                    {/* Markdown Body */}
-                    <div className={`space-y-2 whitespace-pre-line ${isUser ? 'text-white font-semibold text-[13px] sm:text-sm' : 'text-slate-800 font-normal'}`}>
-                      {msg.content}
-                    </div>
+                    {/* Rich Formatted Message Body */}
+                    <RichMessageRenderer content={msg.content} isUser={isUser} />
 
                     {/* Actionable Health Checklist (if provided) */}
                     {!isUser && msg.recommendations && msg.recommendations.length > 0 && (

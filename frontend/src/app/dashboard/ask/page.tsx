@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage } from '@/components/AskDhuanAssistant';
 import { getApiEndpoint } from '@/lib/api';
+import RichMessageRenderer from '@/components/RichMessageRenderer';
 
 // 6 Official Smog Severity Categories & Color Rules
 const getSmogBadgeForAqi = (aqi: number) => {
@@ -311,9 +312,7 @@ export default function AskDhuanPage() {
                         </div>
                       )}
 
-                      <div className={`space-y-2 whitespace-pre-line ${isUser ? 'text-white font-semibold text-[13px] sm:text-sm' : 'text-slate-800 font-normal'}`}>
-                        {msg.content}
-                      </div>
+                      <RichMessageRenderer content={msg.content} isUser={isUser} />
 
                       {!isUser && msg.recommendations && msg.recommendations.length > 0 && (
                         <div className="mt-4 pt-3 border-t border-slate-100">
