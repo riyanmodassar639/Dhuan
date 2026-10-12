@@ -132,7 +132,7 @@ export default function Dashboard() {
                 Access statistical models predicting AQI fluctuations across varying atmospheric conditions to schedule essential transit.
               </p>
               <div className="pt-2">
-                 <Link href="/register" className="inline-flex items-center gap-1.5 text-emerald-600 text-sm font-bold hover:text-emerald-700 transition-colors group">
+                 <Link href="/methodology" className="inline-flex items-center gap-1.5 text-emerald-600 text-sm font-bold hover:text-emerald-700 transition-colors group">
                    Read our AI Methodology <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                  </Link>
               </div>

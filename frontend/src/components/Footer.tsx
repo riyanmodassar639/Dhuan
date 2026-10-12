@@ -22,7 +22,7 @@ export default function Footer() {
           <h4 className="font-extrabold text-slate-900 mb-5 text-base tracking-tight">Product</h4>
           <ul className="space-y-3 text-sm text-slate-500 font-semibold">
             <li><Link href="/#features" className="hover:text-emerald-600 transition-colors">Features</Link></li>
-            <li><Link href="/register" className="hover:text-emerald-600 transition-colors">Live AQI Map</Link></li>
+            <li><Link href="/dashboard/map" className="hover:text-emerald-600 transition-colors">Live AQI Map</Link></li>
             <li><Link href="/register" className="hover:text-emerald-600 transition-colors">Mobile App <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">SOON</span></Link></li>
           </ul>
         </div>

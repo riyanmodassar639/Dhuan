@@ -91,9 +91,9 @@ export default function DashboardLayout({
                <div className="hidden sm:block h-8 w-px bg-slate-200 mx-1"></div>
 
                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 text-sm shrink-0">
+                  <Link href="/dashboard/health" title="View Health Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-slate-100 hover:bg-emerald-50 hover:border-emerald-300 border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:text-emerald-700 text-sm shrink-0 transition-colors">
                     A
-                  </div>
+                  </Link>
                   <Link href="/" className="hidden sm:block text-slate-400 hover:text-rose-600 transition-colors p-1" title="Log out">
                     <LogOut className="w-5 h-5" />
                   </Link>

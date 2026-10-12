@@ -3,22 +3,28 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const data = [
+const defaultData = [
   { day: 'Mon', exposure: 45, risk: 20 },
   { day: 'Tue', exposure: 82, risk: 55 },
-  { day: 'Wed', exposure: 120, risk: 85 }, // High smog day
+  { day: 'Wed', exposure: 120, risk: 85 },
   { day: 'Thu', exposure: 90, risk: 60 },
   { day: 'Fri', exposure: 65, risk: 35 },
   { day: 'Sat', exposure: 40, risk: 15 },
   { day: 'Sun', exposure: 50, risk: 25 },
 ];
 
-export default function HealthGraphWidget() {
+export default function HealthGraphWidget({ 
+  data: customData 
+}: { 
+  data?: Array<{ day: string; exposure: number; risk: number }> 
+}) {
+  const chartData = customData && customData.length > 0 ? customData : defaultData;
+
   return (
     <div className="h-[250px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
-          data={data}
+          data={chartData}
           margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
         >
           <defs>
