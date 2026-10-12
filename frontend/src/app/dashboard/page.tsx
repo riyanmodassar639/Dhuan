@@ -275,11 +275,11 @@ export default function DashboardOverview() {
       </div>
 
       {/* Row 1: Forecast & Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
         {/* Left Column: 72h Chart */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden h-full">
+        <div className="lg:col-span-2">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden">
              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                <div>
                  <div className="flex items-center gap-2">
@@ -310,8 +310,8 @@ export default function DashboardOverview() {
           </div>
         </div>
 
-        {/* Right Column: High Alert Areas & 24H Model */}
-        <div className="space-y-6 flex flex-col">
+        {/* Right Column: High Alert Areas */}
+        <div className="w-full">
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col">
              <div className="flex items-center justify-between gap-2 mb-2">
                 <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
@@ -407,19 +407,6 @@ export default function DashboardOverview() {
              <Link href="/dashboard/routing" className="mt-4 relative block w-full py-2.5 bg-slate-900 text-white text-center rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors shadow-xs">
                Plan Safe Route Around Alerts
              </Link>
-          </div>
-
-          {/* 24-Hour AI Model Update from SQL */}
-          <div className="bg-blue-50/50 rounded-3xl p-6 border border-blue-100 shadow-sm flex-1 flex flex-col justify-center">
-             <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-100 flex items-center justify-center shrink-0">
-                   <BrainCircuit className="w-5 h-5 text-blue-600" />
-                </div>
-                <h3 className="font-extrabold text-slate-900 leading-tight">Next 24 Hours Model</h3>
-             </div>
-             <p className="text-sm text-slate-600 leading-relaxed font-medium">
-               {metrics.model_insight}
-             </p>
           </div>
         </div>
       </div>
