@@ -598,7 +598,7 @@ async function askDhuanAssistant(query, history = []) {
     return {
       success: true,
       source: 'sqlite_ground_baseline',
-      answer: `### Lahore Live Smog Baseline (SQLite Synced)\n\n- **Current Smog Index:** **81 AQI** (${status.status})\n- **PM2.5 Level:** **25.2 µg/m³** (5.0x WHO Limit)\n\nAtmospheric boundary layer is currently stable. During evening hours, radiational cooling traps fine particulate matter near the ground.`,
+      answer: `### Lahore Live Smog Baseline (Live Synced)\n\n- **Current Smog Index:** **81 AQI** (${status.status})\n- **PM2.5 Level:** **25.2 µg/m³** (5.0x WHO Limit)\n\nAtmospheric boundary layer is currently stable. During evening hours, radiational cooling traps fine particulate matter near the ground.`,
       smog_category: {
         name: status.status,
         aqi: 81,

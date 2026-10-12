@@ -1,6 +1,6 @@
 """
 DHUAN AI Core — High-Precision Smog & Public Health Intelligence Assistant
-Strictly restricted to DHUAN platform services, real-time SQLite telemetry,
+Strictly restricted to DHUAN platform services, real-time telemetry,
 Open-Meteo boundary layers, and verified respiratory health guidelines.
 Answers are proportionate, concise, and beautifully formatted.
 """
@@ -306,7 +306,7 @@ class SmogAssistantEngine:
         if any(w in q for w in ['past 24', 'last 24', '24 hour result', '24 hours result', '24h result', 'history', 'pichlay 24', 'pichly 24', 'guzray 24', 'recorded history', 'past results', 'pichla record']):
             if is_roman_urdu:
                 answer = (
-                    "### Past 24 Hours Ground Record (SQLite)\n\n"
+                    "### Past 24 Hours Ground Record\n\n"
                     "- **Minimum Smog (Daytime):** **72 AQI** (Moderate Haze, solar convective mixing window)\n"
                     "- **Peak Inversion (Night):** **152 AQI** (Dense Smog Inversion, nocturnal boundary layer collapse)\n"
                     "- **24h Average PM2.5:** **26.4 µg/m³**\n\n"
@@ -314,7 +314,7 @@ class SmogAssistantEngine:
                 )
             else:
                 answer = (
-                    "### Past 24 Hours Ground Telemetry (SQLite)\n\n"
+                    "### Past 24 Hours Ground Telemetry\n\n"
                     "- **Lowest Recorded:** **72 AQI** (Moderate Haze, during midday solar convective mixing)\n"
                     "- **Highest Nocturnal Spike:** **152 AQI** (Dense Smog Inversion, during early morning stagnation)\n"
                     "- **Average 24h PM2.5:** **26.4 µg/m³**\n\n"

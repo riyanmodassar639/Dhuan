@@ -194,14 +194,14 @@ export default function HealthProfilePage() {
     notes: ''
   });
 
-  // Current live environmental data for Lahore (synchronized with SQL & AI Model)
+  // Current live environmental data for Lahore (synchronized with Ground Sensors & AI Model)
   const [currentLahoreAqi, setCurrentLahoreAqi] = useState<number>(81);
   const [currentLahorePm25, setCurrentLahorePm25] = useState<number>(25.2);
 
   // Load from localStorage on mount and sync atmospheric readings
   useEffect(() => {
     setMounted(true);
-    // Fetch live environmental metrics from SQLite backend
+    // Fetch live environmental metrics from backend
     fetch(getApiEndpoint('/dashboard/overview'))
       .then(res => res.ok ? res.json() : null)
       .then(data => {

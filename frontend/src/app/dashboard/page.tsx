@@ -89,7 +89,7 @@ export default function DashboardOverview() {
   const [hourlyForecast, setHourlyForecast] = useState<HourlyForecastItem[]>([]);
   const [historicalHourly, setHistoricalHourly] = useState<HourlyForecastItem[]>([]);
 
-  // Fetch verified data from Node.js + SQLite backend
+  // Fetch verified data from live backend
   const fetchDashboardData = async () => {
     try {
       const res = await fetch(getApiEndpoint('/dashboard/overview'));
@@ -131,7 +131,7 @@ export default function DashboardOverview() {
     }
   };
 
-  // Sync real-time atmospheric readings with SQL database
+  // Sync real-time atmospheric readings with backend
   const handleSyncRealTime = async () => {
     setIsSyncing(true);
     try {
@@ -175,26 +175,26 @@ export default function DashboardOverview() {
          </div>
 
          <div className="flex items-center gap-3">
-            {/* Live SQL Database Connection Status Badge */}
+            {/* Live Telemetry Connection Status Badge */}
             <div className={`flex items-center gap-2 text-xs font-bold px-3.5 py-2 rounded-xl shadow-xs border transition-colors ${
               isConnected 
                 ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800' 
                 : 'bg-slate-100 border-slate-200 text-slate-600'
             }`}>
               <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-              <span>{isConnected ? 'Database: SQLite Live Sync' : 'All Models Online'}</span>
+              <span>{isConnected ? 'Live Telemetry Sync' : 'All Models Online'}</span>
               {lastSyncTime && <span className="text-[10px] text-emerald-600 font-normal">({lastSyncTime})</span>}
             </div>
 
-            {/* Manual Sync Button */}
+            {/* Manual Refresh Button */}
             <button
               onClick={handleSyncRealTime}
               disabled={isSyncing}
-              title="Sync live atmospheric sensors with SQL Database"
+              title="Refresh live atmospheric sensors"
               className="flex items-center gap-1.5 text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-xl shadow-xs transition-all active:scale-95 disabled:opacity-50"
             >
               <RotateCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
-              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync SQL'}</span>
+              <span className="hidden sm:inline">{isSyncing ? 'Refreshing...' : 'Refresh'}</span>
             </button>
          </div>
       </div>
@@ -293,14 +293,14 @@ export default function DashboardOverview() {
                    Nocturnal thermal inversion & atmospheric boundary dynamics for {metrics.city_name}
                  </p>
                </div>
-               <div className="flex items-center gap-2">
-                 <span className="bg-emerald-50 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 shadow-xs">
-                   <Database className="w-3.5 h-3.5 text-emerald-600" />
-                   SQL Synced
-                 </span>
-               </div>
+                <div className="flex items-center gap-2">
+                  <span className="bg-emerald-50 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+                    <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                    Live Synced
+                  </span>
+                </div>
              </div>
-             {/* Forecast Chart Widget connected to SQLite Database & AI Core */}
+             {/* Forecast Chart Widget connected to Ground Telemetry & AI Core */}
              <ForecastChartWidget 
                currentAqi={metrics.current_aqi} 
                aiForecastData={aiForecast} 
@@ -320,7 +320,7 @@ export default function DashboardOverview() {
                 </h3>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  AI & SQL Synced
+                  AI & Ground Synced
                 </span>
              </div>
              <p className="text-xs font-medium text-slate-500 mb-3">
@@ -351,7 +351,7 @@ export default function DashboardOverview() {
                </button>
              </div>
              
-             {/* Dynamic High Alert Areas list from SQL */}
+             {/* Dynamic High Alert Areas list from Ground Telemetry */}
              <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
                 {(areaViewMode === 'top' ? highAlertAreas.slice(0, 5) : highAlertAreas).map((area) => {
                   const aqi = area.aqi;
@@ -419,13 +419,13 @@ export default function DashboardOverview() {
            <div className="flex items-center justify-between">
              <div>
                <h3 className="font-extrabold text-lg text-slate-900">Personal Health & Exposure Trend</h3>
-               <p className="text-sm text-slate-500 font-medium">Your daily PM2.5 exposure vs asthma risk (SQLite)</p>
+               <p className="text-sm text-slate-500 font-medium">Your daily PM2.5 exposure vs asthma risk</p>
              </div>
            </div>
            <HealthGraphWidget data={healthTrends} />
         </div>
 
-        {/* Right: Health Insights from SQL */}
+        {/* Right: Health Insights */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm h-full flex flex-col justify-between">
            <div>
              <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2">

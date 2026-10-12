@@ -175,7 +175,7 @@ export default function AskDhuanAssistant({
     setMessages([initialGreeting]);
   };
 
-  // Real Grounded AI & SQLite Submission Handler
+  // Real Grounded AI & Ground Telemetry Submission Handler
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputText).trim();
     if (!query || isTyping) return;
@@ -338,7 +338,7 @@ export default function AskDhuanAssistant({
             <span className="font-semibold text-amber-700">Moderate Haze</span>
           </div>
           <span className="text-[11px] text-slate-500 hidden sm:inline-block font-mono">
-            SQLite Synced
+            Live Ground Synced
           </span>
         </div>
 
@@ -508,7 +508,7 @@ export default function AskDhuanAssistant({
           </div>
           
           <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 px-1 font-medium">
-            <span>Powered by DHUAN Atmospheric Physics Model & SQLite Ground Baseline</span>
+            <span>Powered by DHUAN Atmospheric Physics Model & Ground Baseline</span>
             <span>Press Enter to send</span>
           </div>
         </div>

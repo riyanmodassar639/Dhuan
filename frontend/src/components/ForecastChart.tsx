@@ -15,6 +15,7 @@ import {
   AlertCircle, 
   Wind, 
   Database, 
+  Activity,
   Sparkles, 
   Clock, 
   Calendar, 
@@ -150,7 +151,7 @@ export default function ForecastChart({
     };
   }, [viewMode]);
 
-  // Preferred Future dataset: prioritize hourlyData (SQLite) or aiForecastData.hourly_72h (AI Core)
+  // Preferred Future dataset: prioritize hourlyData or aiForecastData.hourly_72h (AI Core)
   const rawHourlyList: HourlyForecastItem[] = useMemo(() => {
     if (hourlyData && hourlyData.length > 0) {
       return hourlyData;
@@ -174,7 +175,7 @@ export default function ForecastChart({
     return [];
   }, [hourlyData, aiForecastData]);
 
-  // Normalized Past 24h list from SQLite
+  // Normalized Past 24h list from Ground Telemetry
   const rawPastList: HourlyForecastItem[] = useMemo(() => {
     if (historicalData && historicalData.length > 0) {
       return historicalData;
@@ -237,7 +238,7 @@ export default function ForecastChart({
       wind_speed: item.wind_speed,
       status: item.status,
       type: 'historical',
-      detail: item.detail || 'Recorded ground observation from SQLite database.'
+      detail: item.detail || 'Recorded ground observation from central telemetry station.'
     }));
 
     // Anchor with current live reading at the end
@@ -439,9 +440,9 @@ export default function ForecastChart({
               }`}></span>
               <span className={isNow ? 'text-emerald-300 font-bold' : isHistorical ? 'text-amber-300' : 'text-blue-300'}>
                 {isNow 
-                  ? 'Live SQLite Ground Sensor' 
+                  ? 'Live Ground Sensor Telemetry' 
                   : isHistorical 
-                  ? 'Recorded History (SQLite)' 
+                  ? 'Recorded Ground History' 
                   : 'DHUAN AI Core Model'}
               </span>
             </span>
@@ -527,11 +528,11 @@ export default function ForecastChart({
           </button>
         </div>
 
-        {/* Right: SQLite + AI Core Live Connection Pill */}
+        {/* Right: Live Telemetry + AI Core Live Connection Pill */}
         <div className="flex items-center gap-2 text-[11px] font-bold self-start lg:self-auto">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 shadow-2xs">
-            <Database className="w-3.5 h-3.5 text-emerald-600" />
-            SQLite & AI Core Connected
+            <Activity className="w-3.5 h-3.5 text-emerald-600" />
+            Live Telemetry & AI Core Connected
           </span>
           <span className="hidden xl:inline-flex items-center gap-1 text-slate-400 font-medium">
             <Wind className="w-3 h-3 text-slate-400" />
@@ -620,9 +621,9 @@ export default function ForecastChart({
                     : 'text-blue-400'
                 }`}>
                   {activePoint.type === 'actual' 
-                    ? 'Live Ground Baseline (SQLite)' 
+                    ? 'Live Ground Baseline' 
                     : activePoint.type === 'historical' 
-                    ? 'Recorded History (SQLite)' 
+                    ? 'Recorded Ground History' 
                     : 'AI Boundary Layer Forecast'}
                 </span>
               </div>
@@ -646,7 +647,7 @@ export default function ForecastChart({
               {viewMode === 'timeline' 
                 ? 'Showing 48-Hour Combined Timeline: Past 24h recorded history (left) and Next 24h AI forecast (right).'
                 : viewMode === 'past24h'
-                ? 'Showing Past 24 Hours of recorded atmospheric ground telemetry from SQLite.'
+                ? 'Showing Past 24 Hours of recorded atmospheric ground telemetry.'
                 : 'AI model calibrated to live Open-Meteo telemetry and central Lahore ground monitors.'}
             </span>
           </span>
