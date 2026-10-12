@@ -119,6 +119,26 @@ async function initDatabase() {
     )
   `);
 
+  // 6. Historical Hourly Table (Last 24 hours of recorded air quality & weather)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS historical_hourly (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hours_ago INTEGER NOT NULL,
+      time_label TEXT NOT NULL,
+      day_label TEXT,
+      timestamp TEXT NOT NULL,
+      aqi INTEGER NOT NULL,
+      pm25 REAL NOT NULL,
+      temperature INTEGER,
+      humidity INTEGER,
+      wind_speed INTEGER,
+      status TEXT NOT NULL,
+      color TEXT NOT NULL,
+      detail TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed default authentic Lahore data if empty
   const metricsCount = await dbGet('SELECT COUNT(*) as count FROM dashboard_metrics');
   if (metricsCount.count === 0) {

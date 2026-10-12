@@ -79,6 +79,7 @@ export default function DashboardOverview() {
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [aiForecast, setAiForecast] = useState<any>(null);
   const [hourlyForecast, setHourlyForecast] = useState<HourlyForecastItem[]>([]);
+  const [historicalHourly, setHistoricalHourly] = useState<HourlyForecastItem[]>([]);
 
   // Fetch verified data from Node.js + SQLite backend
   const fetchDashboardData = async () => {
@@ -109,6 +110,9 @@ export default function DashboardOverview() {
           setHourlyForecast(data.hourlyForecast);
         } else if (data.aiForecast && data.aiForecast.hourly_72h) {
           setHourlyForecast(data.aiForecast.hourly_72h);
+        }
+        if (data.historicalHourly && data.historicalHourly.length > 0) {
+          setHistoricalHourly(data.historicalHourly);
         }
         setIsConnected(true);
         setLastSyncTime(new Date().toLocaleTimeString());
@@ -293,6 +297,7 @@ export default function DashboardOverview() {
                currentAqi={metrics.current_aqi} 
                aiForecastData={aiForecast} 
                hourlyData={hourlyForecast} 
+               historicalData={historicalHourly}
              />
           </div>
         </div>
