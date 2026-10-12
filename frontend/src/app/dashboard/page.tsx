@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BrainCircuit, Activity, AlertTriangle, MapPin, Navigation, Map as MapIcon, RotateCw, Database, CheckCircle2 } from 'lucide-react';
+import { BrainCircuit, Activity, AlertTriangle, MapPin, Navigation, Map as MapIcon, RotateCw, Database, CheckCircle2, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import ForecastChartWidget from '@/components/ForecastChart';
 import HealthGraphWidget from '@/components/HealthGraph';
@@ -268,15 +268,32 @@ export default function DashboardOverview() {
         {/* Left Column: 72h Chart */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden h-full">
-             <div className="flex items-center justify-between mb-6">
+             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                <div>
-                 <h3 className="font-extrabold text-lg text-slate-900">72-Hour AI Forecast</h3>
-                 <p className="text-sm text-slate-500 font-medium">Predicted AQI trends for Lahore</p>
+                 <div className="flex items-center gap-2">
+                   <h3 className="font-extrabold text-xl text-slate-900 tracking-tight">72-Hour AI Smog Forecast</h3>
+                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                     <Sparkles className="w-3 h-3" />
+                     Inversion Model
+                   </span>
+                 </div>
+                 <p className="text-sm text-slate-500 font-medium mt-0.5">
+                   Nocturnal thermal inversion & atmospheric boundary dynamics for {metrics.city_name}
+                 </p>
                </div>
-               <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-100">Live Prediction</span>
+               <div className="flex items-center gap-2">
+                 <span className="bg-emerald-50 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+                   <Database className="w-3.5 h-3.5 text-emerald-600" />
+                   SQL Synced
+                 </span>
+               </div>
              </div>
-             {/* Forecast Chart Widget */}
-             <ForecastChartWidget currentAqi={metrics.current_aqi} aiForecastData={aiForecast} />
+             {/* Forecast Chart Widget connected to SQLite Database & AI Core */}
+             <ForecastChartWidget 
+               currentAqi={metrics.current_aqi} 
+               aiForecastData={aiForecast} 
+               hourlyData={hourlyForecast} 
+             />
           </div>
         </div>
 
