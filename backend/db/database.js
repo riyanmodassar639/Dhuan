@@ -137,21 +137,21 @@ async function seedInitialData() {
   `, [
     'Lahore',
     81,
-    'Moderate',
+    'Moderate Haze',
     25.2,
     5.0,
-    136,
-    'Expected to rise',
-    'AI model projects a peak AQI of 169 (Unhealthy) around 05:00 (Tue) due to nocturnal boundary layer inversion. Highest vulnerability window: 03:00 AM - 07:00 AM.',
+    119,
+    'Smog Inversion Forming',
+    'AI model projects nocturnal boundary layer inversion peaking at 161 (Dense Smog Inversion) around 05:00 AM.',
     'All Models Online'
   ]);
 
   // Seed High Alert Areas in Lahore with real coordinates
   const areas = [
-    { name: 'Gulberg III', zone: 'G-3', aqi: 205, pm25: 102.5, status: 'Very Unhealthy', color: 'rose', lat: 31.5102, lng: 74.3441 },
-    { name: 'DHA Phase 5', zone: 'DHA-5', aqi: 198, pm25: 99.0, status: 'Unhealthy', color: 'rose', lat: 31.4678, lng: 74.4021 },
-    { name: 'Johar Town', zone: 'JT-B', aqi: 175, pm25: 87.5, status: 'Unhealthy', color: 'orange', lat: 31.4697, lng: 74.2728 },
-    { name: 'Mall Road', zone: 'MR-1', aqi: 182, pm25: 91.0, status: 'Unhealthy', color: 'orange', lat: 31.5580, lng: 74.3270 },
+    { name: 'Gulberg III', zone: 'G-3', aqi: 136, pm25: 50.4, status: 'Smog Inversion Forming', color: 'orange', lat: 31.5102, lng: 74.3441 },
+    { name: 'Shahdara', zone: 'SH-1', aqi: 120, pm25: 48.5, status: 'Smog Inversion Forming', color: 'orange', lat: 31.6211, lng: 74.2811 },
+    { name: 'Johar Town', zone: 'JT-B', aqi: 98, pm25: 34.6, status: 'Moderate Haze', color: 'amber', lat: 31.4697, lng: 74.2728 },
+    { name: 'Mall Road', zone: 'MR-1', aqi: 94, pm25: 32.8, status: 'Moderate Haze', color: 'amber', lat: 31.5580, lng: 74.3270 },
   ];
 
   for (const a of areas) {

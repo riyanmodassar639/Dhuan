@@ -147,10 +147,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   };
 
   const getAqiCategory = (aqi: number) => {
-    if (aqi > 300) return { status: 'Hazardous', color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', badgeBg: 'bg-rose-600', advisory: 'Severe smog spike. N95 respirator mandatory. Seal cabin.' };
-    if (aqi > 200) return { status: 'Very Unhealthy', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', badgeBg: 'bg-orange-500', advisory: 'High smog inversion. Use AC recirculation mode.' };
-    if (aqi > 150) return { status: 'Unhealthy', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', badgeBg: 'bg-amber-500', advisory: 'Elevated PM2.5. Vulnerable groups should limit outdoor time.' };
-    return { status: 'Moderate', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', badgeBg: 'bg-emerald-600', advisory: 'Air quality within acceptable range.' };
+    if (aqi > 300) return { status: 'Hazardous Toxic Smog', color: 'text-rose-950 font-black', bg: 'bg-rose-950/10', border: 'border-rose-600', badgeBg: 'bg-rose-950 text-rose-100 border border-rose-500 font-black', advisory: 'Severe health emergency. Hazardous toxic smog. Wear N95 respirator.' };
+    if (aqi > 200) return { status: 'Severe Smog Event', color: 'text-purple-700 font-extrabold', bg: 'bg-purple-50', border: 'border-purple-200', badgeBg: 'bg-purple-600 text-white', advisory: 'Emergency thermal inversion. Avoid outdoor exertion.' };
+    if (aqi > 150) return { status: 'Dense Smog Inversion', color: 'text-rose-600 font-extrabold', bg: 'bg-rose-50', border: 'border-rose-200', badgeBg: 'bg-rose-600 text-white', advisory: 'Nocturnal boundary layer collapse. Wear N95 respirator.' };
+    if (aqi > 100) return { status: 'Smog Inversion Forming', color: 'text-orange-600 font-extrabold', bg: 'bg-orange-50', border: 'border-orange-200', badgeBg: 'bg-orange-500 text-white', advisory: 'Evening cooling starts trapping pollutants.' };
+    if (aqi > 50) return { status: 'Moderate Haze', color: 'text-amber-800 font-extrabold', bg: 'bg-amber-50', border: 'border-amber-200', badgeBg: 'bg-amber-400 text-slate-900 font-bold', advisory: 'Urban dust and vehicular background.' };
+    return { status: 'Clean Air', color: 'text-emerald-700 font-extrabold', bg: 'bg-emerald-50', border: 'border-emerald-200', badgeBg: 'bg-emerald-500 text-white', advisory: 'Minimal haze; safe for outdoor activities.' };
   };
   
   // Custom Origin State for Directions

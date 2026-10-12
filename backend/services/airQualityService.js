@@ -2,15 +2,18 @@ const fs = require('fs');
 const path = require('path');
 const { dbGet, dbRun, dbAll } = require('../db/database');
 
-// Convert PM2.5 to US EPA AQI category
-function getAqiStatus(aqi) {
-  if (aqi <= 50) return { status: 'Good', color: 'emerald' };
-  if (aqi <= 100) return { status: 'Moderate', color: 'yellow' };
-  if (aqi <= 150) return { status: 'Unhealthy for Sensitive Groups', color: 'orange' };
-  if (aqi <= 200) return { status: 'Unhealthy', color: 'rose' };
-  if (aqi <= 300) return { status: 'Very Unhealthy', color: 'purple' };
-  return { status: 'Hazardous', color: 'rose' };
+// Convert PM2.5 / AQI to specialized Smog Severity categories and colors
+function getSmogStatus(aqi) {
+  if (aqi <= 50) return { status: 'Clean Air', color: 'emerald', description: 'Minimal haze; safe for outdoor activities' };
+  if (aqi <= 100) return { status: 'Moderate Haze', color: 'amber', description: 'Urban dust and vehicular background' };
+  if (aqi <= 150) return { status: 'Smog Inversion Forming', color: 'orange', description: 'Evening cooling starts trapping pollutants' };
+  if (aqi <= 200) return { status: 'Dense Smog Inversion', color: 'rose', description: 'Nocturnal boundary layer collapse' };
+  if (aqi <= 300) return { status: 'Severe Smog Event', color: 'purple', description: 'Emergency thermal inversion' };
+  return { status: 'Hazardous Toxic Smog', color: 'maroon', description: 'Severe health emergency' };
 }
+
+// Alias for backward compatibility
+const getAqiStatus = getSmogStatus;
 
 // In-memory cache for 72h AI predictions to ensure sub-millisecond response
 let aiForecastCache = null;
@@ -250,15 +253,15 @@ async function getDashboardOverviewData() {
   let currentAqi = 81;
   let currentPm25 = 25.2;
 
-  // Calibrate metrics if old uncalibrated averages persist in database
-  if (metrics && (metrics.pm25_level !== 25.2 || metrics.current_aqi !== 81)) {
+  // Calibrate metrics to specialized Smog tier if old generic labels persist
+  if (metrics && (metrics.pm25_level !== 25.2 || metrics.current_aqi !== 81 || metrics.current_status !== 'Moderate Haze')) {
     metrics.current_aqi = 81;
-    metrics.current_status = 'Moderate';
+    metrics.current_status = 'Moderate Haze';
     metrics.pm25_level = 25.2;
     metrics.who_multiplier = 5.0;
     await dbRun(`
       UPDATE dashboard_metrics
-      SET current_aqi = 81, current_status = 'Moderate', pm25_level = 25.2, who_multiplier = 5.0
+      SET current_aqi = 81, current_status = 'Moderate Haze', pm25_level = 25.2, who_multiplier = 5.0
       WHERE id = ?
     `, [metrics.id]);
   }
@@ -286,12 +289,12 @@ async function getDashboardOverviewData() {
     metrics: metrics || {
       city_name: 'Lahore',
       current_aqi: 81,
-      current_status: 'Moderate',
+      current_status: 'Moderate Haze',
       pm25_level: 25.2,
       who_multiplier: 5.0,
-      forecast_24h_aqi: 136,
-      forecast_24h_trend: 'Expected to rise',
-      model_insight: 'AI model projects a peak AQI of 169 (Unhealthy) around 05:00 (Tue) due to nocturnal boundary layer inversion. Highest vulnerability window: 03:00 AM - 07:00 AM.',
+      forecast_24h_aqi: 119,
+      forecast_24h_trend: 'Smog Inversion Forming',
+      model_insight: 'AI model projects a peak AQI of 161 (Dense Smog Inversion) around 05:00 (Tue) due to nocturnal boundary layer inversion.',
       system_status: 'All Models Online'
     },
     highAlertAreas: alertAreas || [],

@@ -47,7 +47,7 @@ export interface PlannedStop {
   tag?: string;           // "Work", "Meeting", "Shopping", "Medical", "Dining", "Fitness", "Home"
   vehicle?: 'car' | 'bike' | 'walk' | 'transit';
   aqiForecast: number;
-  smogStatus: 'Good' | 'Moderate' | 'Unhealthy' | 'Very Unhealthy' | 'Hazardous';
+  smogStatus: 'Clean Air' | 'Moderate Haze' | 'Smog Inversion Forming' | 'Dense Smog Inversion' | 'Severe Smog Event' | 'Hazardous Toxic Smog' | string;
   advisory?: string;
   notifications: {
     enabled: boolean;
@@ -81,7 +81,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Work',
     vehicle: 'car',
     aqiForecast: 245,
-    smogStatus: 'Very Unhealthy',
+    smogStatus: 'Severe Smog Event',
     advisory: 'Morning smog thermal inversion. Keep car AC on recirculation mode.',
     notifications: {
       enabled: true,
@@ -102,7 +102,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Meeting',
     vehicle: 'transit',
     aqiForecast: 210,
-    smogStatus: 'Very Unhealthy',
+    smogStatus: 'Severe Smog Event',
     advisory: 'Heavy morning congestion corridor. Metrobus AC line recommended.',
     notifications: {
       enabled: true,
@@ -123,7 +123,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Dining',
     vehicle: 'car',
     aqiForecast: 135,
-    smogStatus: 'Moderate',
+    smogStatus: 'Smog Inversion Forming',
     advisory: 'Air beginning to disperse with thermal rise. Moderate conditions.',
     notifications: {
       enabled: true,
@@ -144,7 +144,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Work',
     vehicle: 'car',
     aqiForecast: 115,
-    smogStatus: 'Moderate',
+    smogStatus: 'Smog Inversion Forming',
     advisory: 'Midday thermal mixing active. Safest air window of the day.',
     notifications: {
       enabled: true,
@@ -165,7 +165,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Shopping',
     vehicle: 'walk',
     aqiForecast: 108,
-    smogStatus: 'Moderate',
+    smogStatus: 'Smog Inversion Forming',
     advisory: 'Optimal window for brief outdoor movement.',
     notifications: {
       enabled: false,
@@ -186,7 +186,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Fitness',
     vehicle: 'car',
     aqiForecast: 122,
-    smogStatus: 'Moderate',
+    smogStatus: 'Smog Inversion Forming',
     advisory: 'Tree-lined green belt provides natural PM2.5 filtration.',
     notifications: {
       enabled: true,
@@ -207,7 +207,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Meeting',
     vehicle: 'car',
     aqiForecast: 185,
-    smogStatus: 'Unhealthy',
+    smogStatus: 'Dense Smog Inversion',
     advisory: 'Early evening temperature inversion beginning. Wear N95 mask.',
     notifications: {
       enabled: true,
@@ -228,7 +228,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Meeting',
     vehicle: 'car',
     aqiForecast: 230,
-    smogStatus: 'Very Unhealthy',
+    smogStatus: 'Severe Smog Event',
     advisory: 'Evening smog surge detected along Southern Ring Road corridor.',
     notifications: {
       enabled: true,
@@ -249,7 +249,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Shopping',
     vehicle: 'car',
     aqiForecast: 175,
-    smogStatus: 'Unhealthy',
+    smogStatus: 'Dense Smog Inversion',
     advisory: 'High vehicular emissions in commercial zone. Keep cabin sealed.',
     notifications: {
       enabled: true,
@@ -270,7 +270,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Home',
     vehicle: 'car',
     aqiForecast: 145,
-    smogStatus: 'Moderate',
+    smogStatus: 'Smog Inversion Forming',
     advisory: 'Traffic easing. Safe journey home.',
     notifications: {
       enabled: true,
@@ -292,7 +292,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Medical',
     vehicle: 'car',
     aqiForecast: 160,
-    smogStatus: 'Unhealthy',
+    smogStatus: 'Dense Smog Inversion',
     advisory: 'Hospital precinct with HEPA clean-room access.',
     notifications: {
       enabled: true,
@@ -313,7 +313,7 @@ const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
     tag: 'Shopping',
     vehicle: 'car',
     aqiForecast: 110,
-    smogStatus: 'Moderate',
+    smogStatus: 'Smog Inversion Forming',
     advisory: 'Indoor air filtered mall. Clean air haven.',
     notifications: {
       enabled: true,
@@ -614,7 +614,7 @@ export default function SmartRoutingPage() {
           ...s,
           time: '10:30 AM',
           aqiForecast: Math.max(95, s.aqiForecast - 80),
-          smogStatus: 'Moderate' as const,
+          smogStatus: 'Moderate Haze',
           advisory: 'AI Optimized: Shifted past morning inversion. -42% PM2.5 exposure.'
         };
       }
@@ -624,7 +624,7 @@ export default function SmartRoutingPage() {
           ...s,
           time: '08:30 PM',
           aqiForecast: Math.max(120, s.aqiForecast - 60),
-          smogStatus: 'Moderate' as const,
+          smogStatus: 'Smog Inversion Forming',
           advisory: 'AI Optimized: Shifted past evening peak rush.'
         };
       }
@@ -923,13 +923,17 @@ export default function SmartRoutingPage() {
             {dayStops.map((stop, index) => {
               const isCancelled = stop.status === 'cancelled';
               const aqiColorClass =
-                stop.aqiForecast < 100
+                stop.aqiForecast <= 50
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : stop.aqiForecast < 150
-                  ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                  : stop.aqiForecast < 200
-                  ? 'bg-orange-50 text-orange-700 border-orange-200'
-                  : 'bg-rose-50 text-rose-700 border-rose-200';
+                  : stop.aqiForecast <= 100
+                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                  : stop.aqiForecast <= 150
+                  ? 'bg-orange-50 text-orange-800 border-orange-300'
+                  : stop.aqiForecast <= 200
+                  ? 'bg-rose-50 text-rose-800 border-rose-300'
+                  : stop.aqiForecast <= 300
+                  ? 'bg-purple-50 text-purple-800 border-purple-300'
+                  : 'bg-rose-950 text-rose-200 border-rose-800';
 
               return (
                 <div

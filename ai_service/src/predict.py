@@ -74,44 +74,44 @@ def calculate_us_aqi(pm25):
 def get_aqi_category(aqi):
     if aqi <= 50:
         return {
-            "status": "Good",
+            "status": "Clean Air",
             "color": "emerald",
             "smog_category": "Clean Air",
-            "advisory": "Minimal haze; safe for all outdoor activities."
+            "advisory": "Minimal haze; safe for outdoor activities."
         }
     if aqi <= 100:
         return {
-            "status": "Moderate",
-            "color": "yellow",
+            "status": "Moderate Haze",
+            "color": "amber",
             "smog_category": "Moderate Haze",
-            "advisory": "Acceptable air; sensitive individuals should monitor respiratory symptoms."
+            "advisory": "Urban dust and vehicular background."
         }
     if aqi <= 150:
         return {
-            "status": "Unhealthy for Sensitive Groups",
+            "status": "Smog Inversion Forming",
             "color": "orange",
             "smog_category": "Smog Inversion Forming",
-            "advisory": "Post-sunset cooling creates a shallow thermal inversion trapping vehicular particulate matter. Sensitive groups should wear masks."
+            "advisory": "Evening cooling starts trapping pollutants."
         }
     if aqi <= 200:
         return {
-            "status": "Unhealthy",
+            "status": "Dense Smog Inversion",
             "color": "rose",
             "smog_category": "Dense Smog Inversion",
-            "advisory": "Nocturnal boundary layer collapse traps dense particulates near surface. Wear N95 respirator outdoors."
+            "advisory": "Nocturnal boundary layer collapse."
         }
     if aqi <= 300:
         return {
-            "status": "Very Unhealthy",
+            "status": "Severe Smog Event",
             "color": "purple",
             "smog_category": "Severe Smog Event",
-            "advisory": "Severe thermal inversion trap. Heavy smog accumulation; run HEPA air purifiers and avoid outdoor exertion."
+            "advisory": "Emergency thermal inversion."
         }
     return {
-        "status": "Hazardous",
-        "color": "rose",
+        "status": "Hazardous Toxic Smog",
+        "color": "maroon",
         "smog_category": "Hazardous Toxic Smog",
-        "advisory": "Emergency atmospheric stagnation. Toxic particulate levels; keep windows sealed and stay indoors."
+        "advisory": "Severe health emergency."
     }
 
 class LahoreSmogPredictor:

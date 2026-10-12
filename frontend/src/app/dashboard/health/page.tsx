@@ -193,13 +193,24 @@ export default function HealthProfilePage() {
     notes: ''
   });
 
-  // Current live environmental data for Lahore
-  const currentLahoreAqi = 165;
-  const currentLahorePm25 = 82; // ug/m3
+  // Current live environmental data for Lahore (synchronized with SQL & AI Model)
+  const [currentLahoreAqi, setCurrentLahoreAqi] = useState<number>(81);
+  const [currentLahorePm25, setCurrentLahorePm25] = useState<number>(25.2);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount and sync atmospheric readings
   useEffect(() => {
     setMounted(true);
+    // Fetch live environmental metrics from SQLite backend
+    fetch('http://localhost:5000/api/dashboard/overview')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.metrics) {
+          if (typeof data.metrics.current_aqi === 'number') setCurrentLahoreAqi(data.metrics.current_aqi);
+          if (typeof data.metrics.pm25_level === 'number') setCurrentLahorePm25(data.metrics.pm25_level);
+        }
+      })
+      .catch(() => {});
+
     try {
       const saved = localStorage.getItem('dhuan_user_health_profile');
       if (saved) {

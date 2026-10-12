@@ -42,20 +42,20 @@ export default function DashboardOverview() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     city_name: 'Lahore',
     current_aqi: 81,
-    current_status: 'Moderate',
+    current_status: 'Moderate Haze',
     pm25_level: 25.2,
     who_multiplier: 5.0,
-    forecast_24h_aqi: 95,
-    forecast_24h_trend: 'Expected to rise',
-    model_insight: 'AI model projects diurnal variation with elevated levels during evening traffic inversion (07:00 PM - 10:00 PM).',
+    forecast_24h_aqi: 119,
+    forecast_24h_trend: 'Smog Inversion Forming',
+    model_insight: 'AI model projects a peak AQI of 161 (Dense Smog Inversion) around 05:00 (Tue) due to nocturnal boundary layer inversion.',
     system_status: 'All Models Online'
   });
 
   const [highAlertAreas, setHighAlertAreas] = useState<HighAlertArea[]>([
-    { id: 1, name: 'Gulberg III', zone_code: 'G-3', aqi: 136, pm25: 11.9, status: 'Unhealthy for Sensitive Groups', color_tier: 'orange' },
-    { id: 2, name: 'Shahdara', zone_code: 'SH-1', aqi: 120, pm25: 48.5, status: 'Unhealthy for Sensitive Groups', color_tier: 'orange' },
-    { id: 3, name: 'Multan Road', zone_code: 'MR-2', aqi: 94, pm25: 32.4, status: 'Moderate', color_tier: 'yellow' },
-    { id: 4, name: 'DHA Phase 6', zone_code: 'DHA-6', aqi: 84, pm25: 28.2, status: 'Moderate', color_tier: 'yellow' },
+    { id: 1, name: 'Gulberg III', zone_code: 'G-3', aqi: 136, pm25: 11.9, status: 'Smog Inversion Forming', color_tier: 'orange' },
+    { id: 2, name: 'Shahdara', zone_code: 'SH-1', aqi: 120, pm25: 48.5, status: 'Smog Inversion Forming', color_tier: 'orange' },
+    { id: 3, name: 'Multan Road', zone_code: 'MR-2', aqi: 94, pm25: 32.4, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 4, name: 'DHA Phase 6', zone_code: 'DHA-6', aqi: 84, pm25: 28.2, status: 'Moderate Haze', color_tier: 'amber' },
   ]);
 
   const [healthTrends, setHealthTrends] = useState<Array<{ day: string; exposure: number; risk: number }>>([]);
@@ -69,7 +69,7 @@ export default function DashboardOverview() {
     {
       id: 2,
       title: 'Outdoor Exercise',
-      description: 'Not recommended until tomorrow morning when AQI is expected to drop below 100.',
+      description: 'Not recommended until tomorrow afternoon when inversion disperses.',
       type: 'exercise'
     }
   ]);
@@ -140,8 +140,9 @@ export default function DashboardOverview() {
     return () => clearInterval(interval);
   }, []);
 
-  // Determine color badge based on official US-EPA AQI categories
-  const getAqiColor = (aqi: number) => {
+  // Determine color badge based on DHUAN Smog Severity tiers
+  const getSmogColor = (aqi: number) => {
+    if (aqi > 300) return { bg: 'bg-rose-950', text: 'text-rose-400', ring: 'text-rose-500' };
     if (aqi > 200) return { bg: 'bg-purple-50', text: 'text-purple-600', ring: 'text-purple-500' };
     if (aqi > 150) return { bg: 'bg-rose-50', text: 'text-rose-600', ring: 'text-rose-500' };
     if (aqi > 100) return { bg: 'bg-orange-50', text: 'text-orange-600', ring: 'text-orange-500' };
@@ -149,7 +150,7 @@ export default function DashboardOverview() {
     return { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'text-emerald-500' };
   };
 
-  const aqiColors = getAqiColor(metrics.current_aqi);
+  const aqiColors = getSmogColor(metrics.current_aqi);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -189,10 +190,10 @@ export default function DashboardOverview() {
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         
-        {/* Stat 1: Live AQI */}
+        {/* Stat 1: Live Smog Index */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-500">Live AQI ({metrics.city_name})</h3>
+            <h3 className="text-sm font-bold text-slate-500">Live Smog Index ({metrics.city_name})</h3>
             <div className={`w-8 h-8 rounded-full ${aqiColors.bg} flex items-center justify-center`}>
                <Activity className={`w-4 h-4 ${aqiColors.text}`} />
             </div>
@@ -219,17 +220,17 @@ export default function DashboardOverview() {
           </div>
         </div>
 
-        {/* Stat 3: 24h AI Forecast */}
+        {/* Stat 3: 24h AI Smog Forecast */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-500">AI Forecast (24h)</h3>
-            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-               <BrainCircuit className="w-4 h-4 text-blue-600" />
+            <h3 className="text-sm font-bold text-slate-500">AI Smog Forecast (24h)</h3>
+            <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center">
+               <BrainCircuit className="w-4 h-4 text-orange-600" />
             </div>
           </div>
           <div>
             <div className="text-3xl font-extrabold text-slate-900">{metrics.forecast_24h_aqi}</div>
-            <p className="text-xs font-bold text-blue-500 mt-1">{metrics.forecast_24h_trend}</p>
+            <p className="text-xs font-bold text-orange-500 mt-1">{metrics.forecast_24h_trend}</p>
           </div>
         </div>
       </div>
@@ -291,22 +292,42 @@ export default function DashboardOverview() {
              {/* Dynamic High Alert Areas list from SQL */}
              <div className="space-y-3">
                 {highAlertAreas.map((area) => {
-                  const isRose = area.color_tier === 'rose' || area.color_tier === 'purple';
-                  const isOrange = area.color_tier === 'orange';
-                  const dotColor = isRose ? 'bg-rose-500' : isOrange ? 'bg-orange-500' : 'bg-amber-500';
-                  const badgeColor = isRose 
-                    ? 'text-rose-600 bg-rose-50' 
+                  const isMaroon = area.color_tier === 'maroon' || area.aqi > 300;
+                  const isPurple = area.color_tier === 'purple' || (area.aqi > 200 && area.aqi <= 300);
+                  const isRose = area.color_tier === 'rose' || (area.aqi > 150 && area.aqi <= 200);
+                  const isOrange = area.color_tier === 'orange' || (area.aqi > 100 && area.aqi <= 150);
+                  
+                  const dotColor = isMaroon 
+                    ? 'bg-rose-950' 
+                    : isPurple 
+                    ? 'bg-purple-600' 
+                    : isRose 
+                    ? 'bg-rose-600' 
                     : isOrange 
-                    ? 'text-orange-600 bg-orange-50' 
-                    : 'text-amber-700 bg-amber-50';
+                    ? 'bg-orange-500' 
+                    : 'bg-amber-500';
+
+                  const badgeColor = isMaroon
+                    ? 'text-rose-200 bg-rose-950 border border-rose-700'
+                    : isPurple
+                    ? 'text-purple-700 bg-purple-50 border border-purple-200'
+                    : isRose 
+                    ? 'text-rose-700 bg-rose-50 border border-rose-200' 
+                    : isOrange 
+                    ? 'text-orange-700 bg-orange-50 border border-orange-200' 
+                    : 'text-amber-800 bg-amber-50 border border-amber-200';
+
                   return (
-                    <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                       <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full animate-pulse ${dotColor}`}></div>
-                          <span className="text-sm font-bold text-slate-700">{area.name}</span>
+                    <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50/80 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
+                       <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-2.5 h-2.5 rounded-full shrink-0 animate-pulse ${dotColor}`}></div>
+                          <div className="truncate">
+                            <span className="text-sm font-bold text-slate-800 block truncate">{area.name}</span>
+                            <span className="text-[10px] font-semibold text-slate-400 block -mt-0.5">{area.status}</span>
+                          </div>
                        </div>
-                       <span className={`text-xs font-bold px-2 py-1 rounded-md ${badgeColor}`}>
-                         AQI {area.aqi}
+                       <span className={`text-xs font-extrabold px-2.5 py-1 rounded-lg shrink-0 ${badgeColor}`}>
+                         {area.aqi}
                        </span>
                     </div>
                   );

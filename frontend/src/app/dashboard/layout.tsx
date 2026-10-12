@@ -97,18 +97,37 @@ export default function DashboardLayout({
 
             {/* Right side Profile (Mobile + Desktop) */}
             <div className="flex items-center gap-2 sm:gap-4 shrink-0 ml-1">
-               {/* AQI Mini Badge (Desktop Only) */}
+               {/* Smog Severity Mini Badge (Desktop Only) */}
                {(() => {
                  const aqi = liveAqi !== null ? liveAqi : 81;
-                 const isGood = aqi <= 50;
-                 const isModerate = aqi <= 100;
-                 const isSensitive = aqi <= 150;
-                 const badgeBg = isGood ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : isModerate ? 'bg-amber-50 border-amber-200 text-amber-800' : isSensitive ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-rose-50 border-rose-200 text-rose-800';
-                 const dotBg = isGood ? 'bg-emerald-500' : isModerate ? 'bg-amber-500' : isSensitive ? 'bg-orange-500' : 'bg-rose-500';
+                 let label = 'Clean Air';
+                 let badgeBg = 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                 let dotBg = 'bg-emerald-500';
+                 if (aqi > 300) {
+                   label = 'Hazardous Toxic Smog';
+                   badgeBg = 'bg-rose-950 border-rose-800 text-rose-100';
+                   dotBg = 'bg-rose-500';
+                 } else if (aqi > 200) {
+                   label = 'Severe Smog Event';
+                   badgeBg = 'bg-purple-50 border-purple-200 text-purple-800';
+                   dotBg = 'bg-purple-600';
+                 } else if (aqi > 150) {
+                   label = 'Dense Smog Inversion';
+                   badgeBg = 'bg-rose-50 border-rose-200 text-rose-800';
+                   dotBg = 'bg-rose-600';
+                 } else if (aqi > 100) {
+                   label = 'Smog Inversion Forming';
+                   badgeBg = 'bg-orange-50 border-orange-200 text-orange-800';
+                   dotBg = 'bg-orange-500';
+                 } else if (aqi > 50) {
+                   label = 'Moderate Haze';
+                   badgeBg = 'bg-amber-50 border-amber-200 text-amber-800';
+                   dotBg = 'bg-amber-500';
+                 }
                  return (
                    <div className={`hidden lg:flex items-center gap-2 border px-3 py-1.5 rounded-full shadow-xs ${badgeBg}`}>
                       <div className={`w-2 h-2 rounded-full animate-pulse ${dotBg}`}></div>
-                      <span className="text-xs font-bold">Lahore AQI: {liveAqi !== null ? liveAqi : '81'}</span>
+                      <span className="text-xs font-bold">Lahore Smog: {liveAqi !== null ? liveAqi : '81'} &bull; {label}</span>
                    </div>
                  );
                })()}
