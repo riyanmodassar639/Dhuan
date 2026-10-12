@@ -271,18 +271,22 @@ async function syncSpatialAreasToSql(pm25 = 25.2, aqi = 81) {
     console.log('[SQL Sync] AI spatial prediction query deferred, applying calibrated dispersion:', err.message);
   }
 
-  // Robust calibrated fallback matching authentic ground sectors
+  // Robust calibrated fallback matching authentic ground zones across all of Lahore
   const baselineStations = [
-    { name: 'Shahdara (GT Road)', zone: 'SH-GT', w: 1.22, lat: 31.6250, lng: 74.2780 },
-    { name: 'Kot Lakhpat Industrial', zone: 'KL-IND', w: 1.18, lat: 31.4500, lng: 74.3300 },
-    { name: 'Multan Road (Thokar)', zone: 'MR-TNB', w: 1.14, lat: 31.4700, lng: 74.2400 },
-    { name: 'US Consulate (Empress Rd)', zone: 'US-CONS', w: 1.00, lat: 31.5626, lng: 74.3361 },
-    { name: 'Gulberg (Syed Maratib Ali)', zone: 'GL-SMA', w: 1.01, lat: 31.5122, lng: 74.3475 },
-    { name: 'Mall Road (Anarkali)', zone: 'MR-ANK', w: 0.97, lat: 31.5580, lng: 74.3270 },
-    { name: 'Barki Road (Paragon)', zone: 'BR-PGN', w: 0.95, lat: 31.5359, lng: 74.4352 },
-    { name: 'Johar Town (Doctor\'s Hospital)', zone: 'JT-DH', w: 0.93, lat: 31.4697, lng: 74.2728 },
-    { name: 'Model Town (A-Block)', zone: 'MT-A', w: 0.89, lat: 31.4850, lng: 74.3200 },
-    { name: 'DHA Phase 6 (Bedian Rd)', zone: 'DHA-6', w: 0.86, lat: 31.4559, lng: 74.4638 }
+    { name: 'Shahdara (GT Road)', zone: 'SH-GT', w: 1.22, lat: 31.6280, lng: 74.2820 },
+    { name: 'Kot Lakhpat Industrial', zone: 'KL-IND', w: 1.18, lat: 31.4380, lng: 74.3380 },
+    { name: 'Multan Road (Thokar)', zone: 'MR-TNB', w: 1.14, lat: 31.4420, lng: 74.2120 },
+    { name: 'Sabzazar (Bund Road)', zone: 'SB-BND', w: 1.11, lat: 31.5260, lng: 74.2480 },
+    { name: 'Kahna (Ferozepur South)', zone: 'KH-FZP', w: 1.09, lat: 31.3680, lng: 74.3650 },
+    { name: 'Wagha & Manawan (GT East)', zone: 'WG-MNW', w: 1.05, lat: 31.5950, lng: 74.4780 },
+    { name: 'Gulberg (Syed Maratib Ali)', zone: 'GL-SMA', w: 1.01, lat: 31.5150, lng: 74.3480 },
+    { name: 'US Consulate (Empress Rd)', zone: 'US-CONS', w: 1.00, lat: 31.5560, lng: 74.3620 },
+    { name: 'Mall Road (Anarkali)', zone: 'MR-ANK', w: 0.97, lat: 31.5720, lng: 74.3080 },
+    { name: 'Barki Road (Paragon)', zone: 'BR-PGN', w: 0.95, lat: 31.5280, lng: 74.4420 },
+    { name: 'Johar Town (Doctor\'s Hospital)', zone: 'JT-DH', w: 0.93, lat: 31.4697, lng: 74.2760 },
+    { name: 'Model Town (A-Block)', zone: 'MT-A', w: 0.89, lat: 31.4820, lng: 74.3220 },
+    { name: 'Bahria Town & Raiwind', zone: 'BT-RWD', w: 0.88, lat: 31.3620, lng: 74.1980 },
+    { name: 'DHA Phase 6 (Bedian Rd)', zone: 'DHA-6', w: 0.86, lat: 31.4520, lng: 74.4650 }
   ];
 
   await dbRun('DELETE FROM high_alert_areas');
@@ -312,8 +316,8 @@ async function getDashboardOverviewData() {
   let currentAqi = 81;
   let currentPm25 = 25.2;
 
-  // Refresh alert areas if empty or if containing legacy stale numbers (> 140 when city is 81)
-  if (!alertAreas || alertAreas.length === 0 || alertAreas[0].aqi > 140) {
+  // Refresh alert areas if empty, fewer than 14 stations, or containing legacy stale numbers
+  if (!alertAreas || alertAreas.length < 14 || alertAreas[0].aqi > 140) {
     alertAreas = await syncSpatialAreasToSql(currentPm25, currentAqi);
   }
 

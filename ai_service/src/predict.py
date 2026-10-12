@@ -336,13 +336,13 @@ class LahoreSmogPredictor:
         if current_aqi is None:
             current_aqi = calculate_us_aqi(current_pm25)
 
-        # Baseline Lahore stations with geospatial and land-use emission coefficients
+        # Baseline Lahore stations with geospatial and land-use emission coefficients covering all of Lahore
         stations_config = [
             {
                 "name": "Shahdara (GT Road)",
                 "zone_code": "SH-GT",
-                "lat": 31.6250,
-                "lng": 74.2780,
+                "lat": 31.6280,
+                "lng": 74.2820,
                 "weight": 1.22,
                 "sector": "Northern Transit & Heavy Diesel Belt",
                 "characteristic": "Heavy diesel freight transit & Ravi basin inversion trap"
@@ -350,8 +350,8 @@ class LahoreSmogPredictor:
             {
                 "name": "Kot Lakhpat Industrial",
                 "zone_code": "KL-IND",
-                "lat": 31.4500,
-                "lng": 74.3300,
+                "lat": 31.4380,
+                "lng": 74.3380,
                 "weight": 1.18,
                 "sector": "Industrial & Manufacturing Corridor",
                 "characteristic": "Heavy industrial manufacturing & intense freight traffic"
@@ -359,44 +359,71 @@ class LahoreSmogPredictor:
             {
                 "name": "Multan Road (Thokar)",
                 "zone_code": "MR-TNB",
-                "lat": 31.4700,
-                "lng": 74.2400,
+                "lat": 31.4420,
+                "lng": 74.2120,
                 "weight": 1.14,
                 "sector": "South-Western Transport Gateway",
                 "characteristic": "Intercity bus terminal & major highway bypass"
             },
             {
-                "name": "US Consulate (Empress Rd)",
-                "zone_code": "US-CONS",
-                "lat": 31.5626,
-                "lng": 74.3361,
-                "weight": 1.00,
-                "sector": "Central Urban Reference Station",
-                "characteristic": "Official reference ground station in central Lahore"
+                "name": "Sabzazar (Bund Road)",
+                "zone_code": "SB-BND",
+                "lat": 31.5260,
+                "lng": 74.2480,
+                "weight": 1.11,
+                "sector": "Western Ring & Ravi Transit Belt",
+                "characteristic": "Heavy intercity truck corridor along Bund Road & River Ravi"
+            },
+            {
+                "name": "Kahna (Ferozepur South)",
+                "zone_code": "KH-FZP",
+                "lat": 31.3680,
+                "lng": 74.3650,
+                "weight": 1.09,
+                "sector": "Southern Industrial & Arterial Corridor",
+                "characteristic": "Southern Ferozepur Road industrial belt & brick kiln fringe"
+            },
+            {
+                "name": "Wagha & Manawan (GT East)",
+                "zone_code": "WG-MNW",
+                "lat": 31.5950,
+                "lng": 74.4780,
+                "weight": 1.05,
+                "sector": "Eastern Border & GT Road Corridor",
+                "characteristic": "Cross-border freight corridor & eastern agricultural plain"
             },
             {
                 "name": "Gulberg (Syed Maratib Ali)",
                 "zone_code": "GL-SMA",
-                "lat": 31.5122,
-                "lng": 74.3475,
+                "lat": 31.5150,
+                "lng": 74.3480,
                 "weight": 1.01,
                 "sector": "Commercial Core & Business District",
                 "characteristic": "High commercial volume & stop-and-go commuter traffic"
             },
             {
+                "name": "US Consulate (Empress Rd)",
+                "zone_code": "US-CONS",
+                "lat": 31.5560,
+                "lng": 74.3620,
+                "weight": 1.00,
+                "sector": "Central Urban Reference Station",
+                "characteristic": "Official reference ground station in central Lahore"
+            },
+            {
                 "name": "Mall Road (Anarkali)",
                 "zone_code": "MR-ANK",
-                "lat": 31.5580,
-                "lng": 74.3270,
+                "lat": 31.5720,
+                "lng": 74.3080,
                 "weight": 0.97,
-                "sector": "Civic & Government Center",
+                "sector": "Civic & Heritage Center",
                 "characteristic": "Regulated urban traffic with mature tree canopy"
             },
             {
                 "name": "Barki Road (Paragon)",
                 "zone_code": "BR-PGN",
-                "lat": 31.5359,
-                "lng": 74.4352,
+                "lat": 31.5280,
+                "lng": 74.4420,
                 "weight": 0.95,
                 "sector": "Eastern Suburban & Peri-Urban",
                 "characteristic": "Peri-urban development with agricultural fringe"
@@ -405,7 +432,7 @@ class LahoreSmogPredictor:
                 "name": "Johar Town (Doctor's Hospital)",
                 "zone_code": "JT-DH",
                 "lat": 31.4697,
-                "lng": 74.2728,
+                "lng": 74.2760,
                 "weight": 0.93,
                 "sector": "Residential & Medical Avenue",
                 "characteristic": "Wide suburban residential avenues & mixed commerce"
@@ -413,17 +440,26 @@ class LahoreSmogPredictor:
             {
                 "name": "Model Town (A-Block)",
                 "zone_code": "MT-A",
-                "lat": 31.4850,
-                "lng": 74.3200,
+                "lat": 31.4820,
+                "lng": 74.3220,
                 "weight": 0.89,
                 "sector": "Green Residential Park Town",
                 "characteristic": "Dense vegetation canopy & protected circular residential belt"
             },
             {
+                "name": "Bahria Town & Raiwind",
+                "zone_code": "BT-RWD",
+                "lat": 31.3620,
+                "lng": 74.1980,
+                "weight": 0.88,
+                "sector": "Southern Planned Residential Belt",
+                "characteristic": "Open landscaped avenues in southern Lahore perimeter"
+            },
+            {
                 "name": "DHA Phase 6 (Bedian Rd)",
                 "zone_code": "DHA-6",
-                "lat": 31.4559,
-                "lng": 74.4638,
+                "lat": 31.4520,
+                "lng": 74.4650,
                 "weight": 0.86,
                 "sector": "Low-Density Planned Community",
                 "characteristic": "Modern wide avenues with reduced localized emissions"

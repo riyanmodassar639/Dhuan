@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline, useMap, ImageOverlay, Polygon } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { 
@@ -29,7 +29,7 @@ export interface GroundStation {
   advisory?: string;
 }
 
-// 10 Official Lahore Monitoring Stations with Microclimate Regression Weights
+// 14 Official Lahore Monitoring Stations covering the entire Lahore Metropolitan District
 export const DEFAULT_STATIONS: GroundStation[] = [
   {
     id: 1,
@@ -39,8 +39,8 @@ export const DEFAULT_STATIONS: GroundStation[] = [
     pm25: 30.7,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.6250,
-    lng: 74.2780,
+    lat: 31.6280,
+    lng: 74.2820,
     sector: 'Northern Transit & Heavy Diesel Belt',
     detail: 'Heavy diesel freight transit & Ravi basin inversion trap',
     advisory: 'Urban dust and heavy freight emissions. Standard outdoor caution.'
@@ -53,8 +53,8 @@ export const DEFAULT_STATIONS: GroundStation[] = [
     pm25: 29.7,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.4500,
-    lng: 74.3300,
+    lat: 31.4380,
+    lng: 74.3380,
     sector: 'Industrial & Manufacturing Corridor',
     detail: 'Heavy industrial manufacturing & intense freight traffic',
     advisory: 'Elevated particulate density near factories. Limit prolonged exposure.'
@@ -67,70 +67,112 @@ export const DEFAULT_STATIONS: GroundStation[] = [
     pm25: 28.7,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.4700,
-    lng: 74.2400,
+    lat: 31.4420,
+    lng: 74.2120,
     sector: 'South-Western Transport Gateway',
     detail: 'Intercity bus terminal & major highway bypass',
     advisory: 'Exhaust accumulation near transit junction. Keep vehicle windows up.'
   },
   {
     id: 4,
-    name: 'US Consulate (Empress Rd)',
-    zone_code: 'US-CONS',
-    aqi: 79,
-    pm25: 25.2,
+    name: 'Sabzazar (Bund Road)',
+    zone_code: 'SB-BND',
+    aqi: 85,
+    pm25: 28.0,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.5626,
-    lng: 74.3361,
-    sector: 'Central Urban Reference Station',
-    detail: 'Official reference ground station in central Lahore',
-    advisory: 'Central baseline conditions. General outdoor activities permissible.'
+    lat: 31.5260,
+    lng: 74.2480,
+    sector: 'Western Ring & Ravi Transit Belt',
+    detail: 'Heavy intercity truck corridor along Bund Road & River Ravi',
+    advisory: 'Elevated vehicular particulate concentration along western ring.'
   },
   {
     id: 5,
+    name: 'Kahna (Ferozepur South)',
+    zone_code: 'KH-FZP',
+    aqi: 84,
+    pm25: 27.5,
+    status: 'Moderate Haze',
+    color_tier: 'amber',
+    lat: 31.3680,
+    lng: 74.3650,
+    sector: 'Southern Industrial & Arterial Corridor',
+    detail: 'Southern Ferozepur Road industrial belt & peri-urban fringe',
+    advisory: 'Higher particulate trapping along southern industrial corridor.'
+  },
+  {
+    id: 6,
+    name: 'Wagha & Manawan (GT East)',
+    zone_code: 'WG-MNW',
+    aqi: 82,
+    pm25: 26.5,
+    status: 'Moderate Haze',
+    color_tier: 'amber',
+    lat: 31.5950,
+    lng: 74.4780,
+    sector: 'Eastern Border & GT Road Corridor',
+    detail: 'Cross-border freight corridor & eastern agricultural plain',
+    advisory: 'Moderate dust and freight exhaust along eastern GT Road.'
+  },
+  {
+    id: 7,
     name: 'Gulberg (Syed Maratib Ali)',
     zone_code: 'GL-SMA',
     aqi: 79,
     pm25: 25.5,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.5122,
-    lng: 74.3475,
+    lat: 31.5150,
+    lng: 74.3480,
     sector: 'Commercial Core & Business District',
     detail: 'High commercial volume & stop-and-go commuter traffic',
     advisory: 'Moderate traffic haze during peak rush hours.'
   },
   {
-    id: 6,
+    id: 8,
+    name: 'US Consulate (Empress Rd)',
+    zone_code: 'US-CONS',
+    aqi: 79,
+    pm25: 25.2,
+    status: 'Moderate Haze',
+    color_tier: 'amber',
+    lat: 31.5560,
+    lng: 74.3620,
+    sector: 'Central Urban Reference Station',
+    detail: 'Official reference ground station in central Lahore',
+    advisory: 'Central baseline conditions. General outdoor activities permissible.'
+  },
+  {
+    id: 9,
     name: 'Mall Road (Anarkali)',
     zone_code: 'MR-ANK',
     aqi: 77,
     pm25: 24.4,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.5580,
-    lng: 74.3270,
-    sector: 'Civic & Government Center',
+    lat: 31.5720,
+    lng: 74.3080,
+    sector: 'Civic & Heritage Center',
     detail: 'Regulated urban traffic with mature tree canopy',
     advisory: 'Stable daytime air quality protected by civic tree canopy.'
   },
   {
-    id: 7,
+    id: 10,
     name: 'Barki Road (Paragon)',
     zone_code: 'BR-PGN',
     aqi: 76,
     pm25: 23.9,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.5359,
-    lng: 74.4352,
+    lat: 31.5280,
+    lng: 74.4420,
     sector: 'Eastern Suburban & Peri-Urban',
     detail: 'Peri-urban development with agricultural fringe',
     advisory: 'Clean open dispersion during daytime convective hours.'
   },
   {
-    id: 8,
+    id: 11,
     name: 'Johar Town (Doctor\'s Hospital)',
     zone_code: 'JT-DH',
     aqi: 75,
@@ -138,71 +180,132 @@ export const DEFAULT_STATIONS: GroundStation[] = [
     status: 'Moderate Haze',
     color_tier: 'amber',
     lat: 31.4697,
-    lng: 74.2728,
+    lng: 74.2760,
     sector: 'Residential & Medical Avenue',
     detail: 'Wide suburban residential avenues & mixed commerce',
     advisory: 'Suburban residential baseline. Safe for regular commute.'
   },
   {
-    id: 9,
+    id: 12,
     name: 'Model Town (A-Block)',
     zone_code: 'MT-A',
     aqi: 73,
     pm25: 22.4,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.4850,
-    lng: 74.3200,
+    lat: 31.4820,
+    lng: 74.3220,
     sector: 'Green Residential Park Town',
     detail: 'Dense vegetation canopy & protected circular residential belt',
     advisory: 'Protected green belt filter providing cleaner microclimate.'
   },
   {
-    id: 10,
+    id: 13,
+    name: 'Bahria Town & Raiwind',
+    zone_code: 'BT-RWD',
+    aqi: 72,
+    pm25: 22.2,
+    status: 'Moderate Haze',
+    color_tier: 'amber',
+    lat: 31.3620,
+    lng: 74.1980,
+    sector: 'Southern Planned Residential Belt',
+    detail: 'Open landscaped avenues in southern Lahore perimeter',
+    advisory: 'Cleaner southern suburban microclimate with low industrial density.'
+  },
+  {
+    id: 14,
     name: 'DHA Phase 6 (Bedian Rd)',
     zone_code: 'DHA-6',
     aqi: 71,
     pm25: 21.7,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.4559,
-    lng: 74.4638,
+    lat: 31.4520,
+    lng: 74.4650,
     sector: 'Low-Density Planned Community',
     detail: 'Modern wide avenues with reduced localized emissions',
     advisory: 'Lowest particulate density in metropolitan perimeter.'
   }
 ];
 
-// Comprehensive Regional Grid Nodes to guarantee 100% continuous coverage across all Lahore metropolitan zones
-export const REGIONAL_COVERAGE_NODES = [
-  { id: 'node-sbz', name: 'Sabzazar & Bund Road Corridor', lat: 31.5280, lng: 74.2520 },
-  { id: 'node-thk', name: 'Thokar & Westwood Corridor', lat: 31.4680, lng: 74.2250 },
-  { id: 'node-bhr', name: 'Bahria Town & Raiwind Corridor', lat: 31.3700, lng: 74.1950 },
-  { id: 'node-lkc', name: 'Lake City & Kahna South Corridor', lat: 31.3850, lng: 74.2950 },
-  { id: 'node-val', name: 'Valencia & Wapda Town Belt', lat: 31.4180, lng: 74.2650 },
-  { id: 'node-gjm', name: 'Gajju Matah & Ferozepur South', lat: 31.3950, lng: 74.3700 },
-  { id: 'node-dha7', name: 'DHA Phase 7/8 & Bedian Fringe', lat: 31.4250, lng: 74.4550 },
-  { id: 'node-wgh', name: 'Barki & Wagha Border Corridor', lat: 31.5750, lng: 74.5150 },
-  { id: 'node-jll', name: 'Jallo Park & Batapur Corridor', lat: 31.5950, lng: 74.4650 },
-  { id: 'node-mnw', name: 'Manawan & GT Road East Belt', lat: 31.6250, lng: 74.4350 },
-  { id: 'node-shn', name: 'Shahdara North & Ravi River Bank', lat: 31.6450, lng: 74.2750 },
-  { id: 'node-bdb', name: 'Badami Bagh & Northern Bypass', lat: 31.6150, lng: 74.3450 },
+// Exact Administrative & Geographic Boundary Polygon of Lahore District
+// Strictly follows River Ravi (NW/West), GT Road border south of Kala Shah Kaku (North),
+// Pakistan-India International Border from Wagha to Bedian (East), and Raiwind/Kahna/Sundar border (South)
+export const LAHORE_BOUNDARY_POLYGON: [number, number][] = [
+  // North (Shahdara, Kot Abdul Malik East, Lakhodher, Manawan North)
+  [31.648, 74.262],
+  [31.656, 74.295],
+  [31.658, 74.338],
+  [31.654, 74.385],
+  [31.646, 74.435],
+  [31.635, 74.482],
+  // East (Strictly along Pakistan-India International Border: Wagha, Dograi, Barki, Hudiara, Padhana, Bedian)
+  [31.608, 74.522],
+  [31.580, 74.518],
+  [31.552, 74.512],
+  [31.522, 74.506],
+  [31.490, 74.510],
+  [31.458, 74.504],
+  [31.425, 74.492],
+  [31.392, 74.472],
+  // South (Bedian South, Central Park, Kahna, Sua Asil, Raiwind, Sundar)
+  [31.362, 74.435],
+  [31.338, 74.390],
+  [31.320, 74.340],
+  [31.298, 74.285],
+  [31.295, 74.235],
+  [31.312, 74.185],
+  [31.340, 74.155],
+  // West & North-West (Along River Ravi corridor: Mohlanwal, Chung, Thokar West, Sabzazar, Sagiyan, Shahdara)
+  [31.378, 74.162],
+  [31.415, 74.180],
+  [31.452, 74.202],
+  [31.490, 74.218],
+  [31.528, 74.232],
+  [31.565, 74.242],
+  [31.608, 74.250],
 ];
 
-export const getStationRadius = (zoneCode: string) => {
-  switch (zoneCode) {
-    case 'SH-GT': return 12000;
-    case 'KL-IND': return 11000;
-    case 'MR-TNB': return 10500;
-    case 'BR-PGN': return 11000;
-    case 'DHA-6': return 11500;
-    case 'JT-DH': return 9500;
-    case 'US-CONS': return 9000;
-    case 'GL-SMA': return 9000;
-    case 'MR-ANK': return 8500;
-    case 'MT-A': return 8500;
-    default: return 9500;
+export const LAHORE_HEATMAP_BOUNDS: [[number, number], [number, number]] = [
+  [31.285, 74.145],
+  [31.668, 74.532]
+];
+
+// Continuous, high-contrast RGBA color interpolation for per-pixel AI spatial smog rendering
+export const getHeatmapRgba = (aqi: number): [number, number, number, number] => {
+  const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * Math.max(0, Math.min(1, t)));
+  if (aqi <= 50) {
+    const t = aqi / 50;
+    return [lerp(16, 132, t), lerp(185, 204, t), lerp(129, 22, t), 115];
   }
+  if (aqi <= 75) {
+    // Low-Moderate residential zones (71-75 AQI): Soft Yellow-Green to Lemon Gold
+    const t = (aqi - 50) / 25;
+    return [lerp(148, 248, t), lerp(212, 200, t), lerp(32, 20, t), lerp(118, 134, t)];
+  }
+  if (aqi <= 83) {
+    // Mid-Moderate urban zones (76-83 AQI): Lemon Gold to Warm Amber
+    const t = (aqi - 75) / 8;
+    return [lerp(248, 245, t), lerp(200, 135, t), lerp(20, 14, t), lerp(134, 152, t)];
+  }
+  if (aqi <= 100) {
+    // Upper-Moderate industrial/transit hotspots (84-100 AQI): Warm Amber to Deep Industrial Orange-Red
+    const t = (aqi - 83) / 17;
+    return [lerp(245, 226, t), lerp(135, 58, t), lerp(14, 18, t), lerp(152, 175, t)];
+  }
+  if (aqi <= 150) {
+    // Smog Inversion Forming (101-150 AQI): Deep Orange-Red to Crimson Rose
+    const t = (aqi - 100) / 50;
+    return [lerp(226, 225, t), lerp(58, 29, t), lerp(18, 72, t), 182];
+  }
+  if (aqi <= 200) {
+    // Dense Smog Inversion (151-200 AQI): Crimson Rose to Severe Purple
+    const t = (aqi - 150) / 50;
+    return [lerp(225, 147, t), lerp(29, 51, t), lerp(72, 234, t), 192];
+  }
+  const t = Math.min(1, (aqi - 200) / 100);
+  return [lerp(147, 136, t), lerp(51, 19, t), lerp(234, 55, t), 205];
 };
 
 export const getAqiColor = (aqi: number) => {
@@ -210,7 +313,8 @@ export const getAqiColor = (aqi: number) => {
   if (aqi > 200) return '#7e22ce'; // Severe Purple
   if (aqi > 150) return '#e11d48'; // Dense Smog Rose
   if (aqi > 100) return '#ea580c'; // Inversion Forming Orange
-  if (aqi > 50) return '#d97706'; // Moderate Haze Amber
+  if (aqi > 83) return '#ea580c';  // Upper-Moderate Industrial Haze
+  if (aqi > 50) return '#d97706';  // Moderate Haze Amber
   return '#10b981'; // Clean Air Emerald
 };
 
@@ -238,10 +342,13 @@ const searchPinIcon = new L.DivIcon({
   iconAnchor: [16, 32]
 });
 
-// Standalone component for map click events to strictly adhere to React Rules of Hooks
-function MapEventsHandler({ onMapClick }: { onMapClick: (e: L.LeafletMouseEvent) => void }) {
-  useMapEvents({
+// Standalone component for map click & zoom events to strictly adhere to React Rules of Hooks
+function MapEventsHandler({ onMapClick, onZoomChange }: { onMapClick: (e: L.LeafletMouseEvent) => void; onZoomChange?: (zoom: number) => void }) {
+  const map = useMapEvents({
     click: onMapClick,
+    zoomend: () => {
+      if (onZoomChange) onZoomChange(map.getZoom());
+    }
   });
   return null;
 }
@@ -319,6 +426,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [selectedStation, setSelectedStation] = useState<GroundStation | null>(null);
   const [showSmogLayer, setShowSmogLayer] = useState(true);
   const [showStationsLayer, setShowStationsLayer] = useState(true);
+  const [smogOverlayUrl, setSmogOverlayUrl] = useState<string>("");
+  const [mapZoom, setMapZoom] = useState<number>(12);
 
   // Live Journey Environment & Smog state during Navigation
   const [navCurrentArea, setNavCurrentArea] = useState<string>("Current Corridor");
@@ -397,7 +506,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return () => clearInterval(interval);
   }, [fetchTelemetry]);
 
-  // High-Precision Spatial IDW Interpolation across all 10 AI Monitoring Stations
+  // High-Precision Spatial IDW Interpolation across all 14 AI Monitoring Stations
   const getSpatialAqi = useCallback((lat: number, lng: number): number => {
     const list = stations && stations.length > 0 ? stations : DEFAULT_STATIONS;
     let sumWeight = 0;
@@ -413,7 +522,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       }
 
       const distKm = Math.max(0.2, distM / 1000);
-      const weight = 1 / (distKm * distKm);
+      const weight = 1 / Math.pow(distKm, 2.5);
       sumWeight += weight;
       sumWeightedAqi += s.aqi * weight;
     }
@@ -437,7 +546,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       }
 
       const distKm = Math.max(0.2, distM / 1000);
-      const weight = 1 / (distKm * distKm);
+      const weight = 1 / Math.pow(distKm, 2.5);
       sumWeight += weight;
       sumWeightedPm25 += s.pm25 * weight;
     }
@@ -445,6 +554,68 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     if (sumWeight === 0) return cityPm25;
     return Math.round((sumWeightedPm25 / sumWeight) * 10) / 10;
   }, [stations, cityPm25]);
+
+  // Generate high-resolution per-pixel AI Spatial Smog Heatmap strictly clipped to Lahore District Boundary Polygon
+  useEffect(() => {
+    if (typeof window === 'undefined' || !mounted) return;
+    try {
+      const gridW = 160;
+      const gridH = 160;
+      const rawCanvas = document.createElement('canvas');
+      rawCanvas.width = gridW;
+      rawCanvas.height = gridH;
+      const rawCtx = rawCanvas.getContext('2d');
+      if (!rawCtx) return;
+
+      const [[minLat, minLng], [maxLat, maxLng]] = LAHORE_HEATMAP_BOUNDS;
+      const imgData = rawCtx.createImageData(gridW, gridH);
+      const data = imgData.data;
+
+      for (let py = 0; py < gridH; py++) {
+        const lat = maxLat - (py / (gridH - 1)) * (maxLat - minLat);
+        for (let px = 0; px < gridW; px++) {
+          const lng = minLng + (px / (gridW - 1)) * (maxLng - minLng);
+          const aqi = getSpatialAqi(lat, lng);
+          const [r, g, b, a] = getHeatmapRgba(aqi);
+          const idx = (py * gridW + px) * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = a;
+        }
+      }
+      rawCtx.putImageData(imgData, 0, 0);
+
+      const outW = 600;
+      const outH = 600;
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = outW;
+      outCanvas.height = outH;
+      const outCtx = outCanvas.getContext('2d');
+      if (!outCtx) return;
+
+      outCtx.save();
+      outCtx.beginPath();
+      LAHORE_BOUNDARY_POLYGON.forEach(([pLat, pLng], i) => {
+        const x = ((pLng - minLng) / (maxLng - minLng)) * outW;
+        const y = ((maxLat - pLat) / (maxLat - minLat)) * outH;
+        if (i === 0) outCtx.moveTo(x, y);
+        else outCtx.lineTo(x, y);
+      });
+      outCtx.closePath();
+      outCtx.clip();
+
+      outCtx.imageSmoothingEnabled = true;
+      outCtx.imageSmoothingQuality = 'high';
+      outCtx.filter = 'blur(8px)';
+      outCtx.drawImage(rawCanvas, 0, 0, outW, outH);
+      outCtx.restore();
+
+      setSmogOverlayUrl(outCanvas.toDataURL('image/png'));
+    } catch (err) {
+      console.error('Error generating Lahore spatial smog overlay:', err);
+    }
+  }, [mounted, stations, cityBaselineAqi, getSpatialAqi]);
 
   const getAqiCategory = (aqi: number) => {
     if (aqi > 300) return { status: 'Hazardous Toxic Smog', color: 'text-rose-950 font-black', bg: 'bg-rose-950/10', border: 'border-rose-600', badgeBg: 'bg-rose-950 text-rose-100 border border-rose-500 font-black', advisory: 'Severe health emergency. Hazardous toxic smog. Wear N95 respirator.' };
@@ -1789,74 +1960,40 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           )
         )}
 
-        {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer (100% Full Metropolitan Coverage) */}
+        {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer (100% Clipped to Lahore District Boundary) */}
         {showSmogLayer && (
-          <Pane name="smogLayer" style={{ filter: 'blur(36px)', opacity: 0.70, pointerEvents: 'none', zIndex: 400 }}>
-            {/* 1. Base Atmospheric Planetary Boundary Layer Wash (guarantees zero blank/uncolored streets) */}
-            <Circle 
-              center={[31.5204, 74.3587]} 
-              radius={35000} 
-              pathOptions={{ stroke: false, fillColor: getAqiColor(cityBaselineAqi), fillOpacity: 0.40 }} 
+          <Pane name="smogLayer" style={{ pointerEvents: 'none', zIndex: 400 }}>
+            {smogOverlayUrl && (
+              <ImageOverlay
+                url={smogOverlayUrl}
+                bounds={LAHORE_HEATMAP_BOUNDS}
+                opacity={0.88}
+                zIndex={400}
+              />
+            )}
+            <Polygon
+              positions={LAHORE_BOUNDARY_POLYGON}
+              pathOptions={{
+                color: '#d97706',
+                weight: 1.5,
+                opacity: 0.45,
+                dashArray: '6, 6',
+                fill: false
+              }}
             />
-
-            {/* 2. Official 10 Stations Multi-Tier Dispersion Plumes */}
-            {stations.map((st) => {
-              const fillColor = getAqiColor(st.aqi);
-              const radius = getStationRadius(st.zone_code);
-              return (
-                <span key={`smog-dispersion-${st.zone_code}`}>
-                  {/* Concentrated Epicenter Plume */}
-                  <Circle 
-                    center={[st.lat, st.lng]} 
-                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.72 }} 
-                    radius={radius * 0.45} 
-                  />
-                  {/* Core Dispersion Plume */}
-                  <Circle 
-                    center={[st.lat, st.lng]} 
-                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.55 }} 
-                    radius={radius * 0.85} 
-                  />
-                  {/* Outer Convective Dispersion Plume */}
-                  <Circle 
-                    center={[st.lat, st.lng]} 
-                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.42 }} 
-                    radius={radius * 1.35} 
-                  />
-                </span>
-              );
-            })}
-
-            {/* 3. Regional AI Spatial Interpolation Nodes across Metropolitan Peripheries */}
-            {REGIONAL_COVERAGE_NODES.map((node) => {
-              const nodeAqi = getSpatialAqi(node.lat, node.lng);
-              const nodeColor = getAqiColor(nodeAqi);
-              return (
-                <span key={`smog-node-${node.id}`}>
-                  <Circle 
-                    center={[node.lat, node.lng]} 
-                    pathOptions={{ stroke: false, fillColor: nodeColor, fillOpacity: 0.48 }} 
-                    radius={8500} 
-                  />
-                  <Circle 
-                    center={[node.lat, node.lng]} 
-                    pathOptions={{ stroke: false, fillColor: nodeColor, fillOpacity: 0.35 }} 
-                    radius={13000} 
-                  />
-                </span>
-              );
-            })}
           </Pane>
         )}
 
-        {/* 10 Official Lahore Monitoring Station Interactive Markers */}
+        {/* 14 Official Lahore Monitoring Station Interactive Markers */}
         {showStationsLayer && stations.map((st) => {
           const aqi = st.aqi;
           const isMaroon = aqi > 300;
           const isPurple = aqi > 200 && aqi <= 300;
           const isRose = aqi > 150 && aqi <= 200;
           const isOrange = aqi > 100 && aqi <= 150;
-          const isAmber = aqi > 50 && aqi <= 100;
+          const isHighAmber = aqi >= 84 && aqi <= 100;
+          const isMidAmber = aqi >= 76 && aqi <= 83;
+          const isLowAmber = aqi > 50 && aqi <= 75;
           
           const badgeStyle = isMaroon 
             ? 'background: #881337; color: #ffe4e6; border: 1px solid #be123c;'
@@ -1866,12 +2003,18 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             ? 'background: #e11d48; color: #ffffff; border: 1px solid #f43f5e;'
             : isOrange 
             ? 'background: #ea580c; color: #ffffff; border: 1px solid #fb923c;'
-            : isAmber 
+            : isHighAmber
+            ? 'background: #ea580c; color: #ffffff; border: 1px solid #fb923c;'
+            : isMidAmber 
             ? 'background: #d97706; color: #ffffff; border: 1px solid #f59e0b;'
+            : isLowAmber
+            ? 'background: #ca8a04; color: #ffffff; border: 1px solid #eab308;'
             : 'background: #059669; color: #ffffff; border: 1px solid #10b981;';
 
-          const dotColor = isMaroon ? '#f43f5e' : isPurple ? '#c084fc' : isRose ? '#fb7185' : isOrange ? '#fb923c' : isAmber ? '#fbbf24' : '#34d399';
+          const dotColor = isMaroon ? '#f43f5e' : isPurple ? '#c084fc' : isRose ? '#fb7185' : (isOrange || isHighAmber) ? '#fb923c' : isMidAmber ? '#fbbf24' : isLowAmber ? '#a3e635' : '#34d399';
           const isSelected = selectedStation?.zone_code === st.zone_code;
+          const isCompact = mapZoom <= 11 && !isSelected;
+          const shortName = st.name.split(' (')[0].replace(' & Raiwind', '').replace(' & Manawan', '');
 
           return (
             <Marker
@@ -1881,15 +2024,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                 className: 'station-div-marker',
                 html: `
                   <div style="cursor: pointer; transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'}; transition: transform 0.2s ease;">
-                    <div style="display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.94); color: white; backdrop-filter: blur(8px); padding: 4px 10px; border-radius: 9999px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); border: ${isSelected ? '2px solid #10b981' : '1px solid rgba(71, 85, 105, 0.7)'};">
-                      <span style="width: 8px; height: 8px; border-radius: 9999px; background-color: ${dotColor}; flex-shrink: 0; box-shadow: 0 0 8px ${dotColor};"></span>
-                      <span style="font-size: 11px; font-weight: 800; color: #f1f5f9; white-space: nowrap;">${st.name.split(' (')[0]}</span>
-                      <span style="font-size: 10px; font-weight: 900; padding: 2px 6px; border-radius: 6px; ${badgeStyle}">${aqi}</span>
+                    <div style="display: inline-flex; align-items: center; gap: ${isCompact ? '4px' : '6px'}; background: rgba(15, 23, 42, 0.94); color: white; backdrop-filter: blur(8px); padding: ${isCompact ? '2px 7px' : '4px 10px'}; border-radius: 9999px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); border: ${isSelected ? '2px solid #10b981' : '1px solid rgba(71, 85, 105, 0.7)'}; white-space: nowrap;">
+                      <span style="width: ${isCompact ? '6px' : '8px'}; height: ${isCompact ? '6px' : '8px'}; border-radius: 9999px; background-color: ${dotColor}; flex-shrink: 0; box-shadow: 0 0 8px ${dotColor};"></span>
+                      <span style="font-size: ${isCompact ? '9.5px' : '11px'}; font-weight: 800; color: #f1f5f9; white-space: nowrap;">${shortName}</span>
+                      <span style="font-size: ${isCompact ? '9px' : '10px'}; font-weight: 900; padding: ${isCompact ? '1px 4px' : '2px 6px'}; border-radius: 5px; ${badgeStyle}">${aqi}</span>
                     </div>
                   </div>
                 `,
-                iconSize: [130, 32],
-                iconAnchor: [65, 16]
+                iconSize: isCompact ? [96, 24] : [130, 32],
+                iconAnchor: isCompact ? [48, 12] : [65, 16]
               })}
               eventHandlers={{
                 click: () => {
@@ -1899,11 +2042,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   }
                 }
               }}
-              zIndexOffset={1200}
+              zIndexOffset={isSelected ? 1500 : 1200}
             />
           );
         })}
-        <MapEventsHandler onMapClick={handleMapClick} />
+        <MapEventsHandler onMapClick={handleMapClick} onZoomChange={setMapZoom} />
       </MapContainer>
 
       {/* Floating Turn-by-Turn Instruction Panel */}
@@ -2053,7 +2196,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <span>{showSmogLayer ? 'Smog Layer ON' : 'Smog Layer OFF'}</span>
           </button>
 
-          {/* Toggle 10 Stations Markers */}
+          {/* Toggle Official Lahore Stations Markers */}
           <button
             onClick={() => setShowStationsLayer(prev => !prev)}
             title={showStationsLayer ? "Hide Station Badges" : "Show Station Badges"}
@@ -2064,7 +2207,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             }`}
           >
             <Radio className="w-3.5 h-3.5 text-emerald-400" />
-            <span>10 Stations</span>
+            <span>{stations.length} Stations</span>
           </button>
 
 
