@@ -40,20 +40,21 @@ interface HealthInsight {
 export default function DashboardOverview() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     city_name: 'Lahore',
-    current_aqi: 165,
-    current_status: 'Unhealthy',
-    pm25_level: 82.0,
-    who_multiplier: 16.4,
-    forecast_24h_aqi: 180,
+    current_aqi: 81,
+    current_status: 'Moderate',
+    pm25_level: 25.2,
+    who_multiplier: 5.0,
+    forecast_24h_aqi: 95,
     forecast_24h_trend: 'Expected to rise',
-    model_insight: 'Time-series sensor model indicates a 22% spike in PM2.5 levels between 6:00 PM and 10:00 PM today.',
+    model_insight: 'AI model projects diurnal variation with elevated levels during evening traffic inversion (07:00 PM - 10:00 PM).',
     system_status: 'All Models Online'
   });
 
   const [highAlertAreas, setHighAlertAreas] = useState<HighAlertArea[]>([
-    { id: 1, name: 'Gulberg III', zone_code: 'G-3', aqi: 205, pm25: 102.5, status: 'Very Unhealthy', color_tier: 'rose' },
-    { id: 2, name: 'DHA Phase 5', zone_code: 'DHA-5', aqi: 198, pm25: 99.0, status: 'Unhealthy', color_tier: 'rose' },
-    { id: 3, name: 'Johar Town', zone_code: 'JT-B', aqi: 175, pm25: 87.5, status: 'Unhealthy', color_tier: 'orange' },
+    { id: 1, name: 'Gulberg III', zone_code: 'G-3', aqi: 136, pm25: 11.9, status: 'Unhealthy for Sensitive Groups', color_tier: 'orange' },
+    { id: 2, name: 'Shahdara', zone_code: 'SH-1', aqi: 120, pm25: 48.5, status: 'Unhealthy for Sensitive Groups', color_tier: 'orange' },
+    { id: 3, name: 'Multan Road', zone_code: 'MR-2', aqi: 94, pm25: 32.4, status: 'Moderate', color_tier: 'yellow' },
+    { id: 4, name: 'DHA Phase 6', zone_code: 'DHA-6', aqi: 84, pm25: 28.2, status: 'Moderate', color_tier: 'yellow' },
   ]);
 
   const [healthTrends, setHealthTrends] = useState<Array<{ day: string; exposure: number; risk: number }>>([]);
@@ -132,11 +133,12 @@ export default function DashboardOverview() {
     return () => clearInterval(interval);
   }, []);
 
-  // Determine color badge based on AQI level
+  // Determine color badge based on official US-EPA AQI categories
   const getAqiColor = (aqi: number) => {
-    if (aqi > 200) return { bg: 'bg-rose-50', text: 'text-rose-600', ring: 'text-rose-500' };
-    if (aqi > 150) return { bg: 'bg-yellow-50', text: 'text-yellow-600', ring: 'text-yellow-500' };
+    if (aqi > 200) return { bg: 'bg-purple-50', text: 'text-purple-600', ring: 'text-purple-500' };
+    if (aqi > 150) return { bg: 'bg-rose-50', text: 'text-rose-600', ring: 'text-rose-500' };
     if (aqi > 100) return { bg: 'bg-orange-50', text: 'text-orange-600', ring: 'text-orange-500' };
+    if (aqi > 50) return { bg: 'bg-amber-50', text: 'text-amber-600', ring: 'text-amber-500' };
     return { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'text-emerald-500' };
   };
 
@@ -275,19 +277,27 @@ export default function DashboardOverview() {
              
              {/* Dynamic High Alert Areas list from SQL */}
              <div className="space-y-3">
-                {highAlertAreas.map((area) => (
-                  <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                     <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full animate-pulse ${area.color_tier === 'rose' ? 'bg-rose-500' : 'bg-orange-500'}`}></div>
-                        <span className="text-sm font-bold text-slate-700">{area.name}</span>
-                     </div>
-                     <span className={`text-xs font-bold px-2 py-1 rounded-md ${
-                       area.color_tier === 'rose' ? 'text-rose-600 bg-rose-50' : 'text-orange-600 bg-orange-50'
-                     }`}>
-                       AQI {area.aqi}
-                     </span>
-                  </div>
-                ))}
+                {highAlertAreas.map((area) => {
+                  const isRose = area.color_tier === 'rose' || area.color_tier === 'purple';
+                  const isOrange = area.color_tier === 'orange';
+                  const dotColor = isRose ? 'bg-rose-500' : isOrange ? 'bg-orange-500' : 'bg-amber-500';
+                  const badgeColor = isRose 
+                    ? 'text-rose-600 bg-rose-50' 
+                    : isOrange 
+                    ? 'text-orange-600 bg-orange-50' 
+                    : 'text-amber-700 bg-amber-50';
+                  return (
+                    <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                       <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full animate-pulse ${dotColor}`}></div>
+                          <span className="text-sm font-bold text-slate-700">{area.name}</span>
+                       </div>
+                       <span className={`text-xs font-bold px-2 py-1 rounded-md ${badgeColor}`}>
+                         AQI {area.aqi}
+                       </span>
+                    </div>
+                  );
+                })}
              </div>
              
              <Link href="/dashboard/routing" className="mt-5 relative block w-full py-2.5 bg-slate-900 text-white text-center rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors">

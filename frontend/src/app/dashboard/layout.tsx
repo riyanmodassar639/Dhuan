@@ -98,10 +98,20 @@ export default function DashboardLayout({
             {/* Right side Profile (Mobile + Desktop) */}
             <div className="flex items-center gap-2 sm:gap-4 shrink-0 ml-1">
                {/* AQI Mini Badge (Desktop Only) */}
-               <div className="hidden lg:flex items-center gap-2 bg-yellow-50 border border-yellow-100 px-3 py-1.5 rounded-full shadow-sm">
-                  <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-                  <span className="text-xs font-bold text-yellow-700">Lahore AQI: {liveAqi !== null ? liveAqi : '101'}</span>
-               </div>
+               {(() => {
+                 const aqi = liveAqi !== null ? liveAqi : 81;
+                 const isGood = aqi <= 50;
+                 const isModerate = aqi <= 100;
+                 const isSensitive = aqi <= 150;
+                 const badgeBg = isGood ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : isModerate ? 'bg-amber-50 border-amber-200 text-amber-800' : isSensitive ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-rose-50 border-rose-200 text-rose-800';
+                 const dotBg = isGood ? 'bg-emerald-500' : isModerate ? 'bg-amber-500' : isSensitive ? 'bg-orange-500' : 'bg-rose-500';
+                 return (
+                   <div className={`hidden lg:flex items-center gap-2 border px-3 py-1.5 rounded-full shadow-xs ${badgeBg}`}>
+                      <div className={`w-2 h-2 rounded-full animate-pulse ${dotBg}`}></div>
+                      <span className="text-xs font-bold">Lahore AQI: {liveAqi !== null ? liveAqi : '81'}</span>
+                   </div>
+                 );
+               })()}
                
                <button className="hidden sm:block p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors relative">
                  <Bell className="w-5 h-5" />
