@@ -52,11 +52,18 @@ export default function DashboardOverview() {
     system_status: 'All Models Online'
   });
 
+  const [areaViewMode, setAreaViewMode] = useState<'top' | 'all'>('top');
   const [highAlertAreas, setHighAlertAreas] = useState<HighAlertArea[]>([
-    { id: 1, name: 'Gulberg III', zone_code: 'G-3', aqi: 136, pm25: 11.9, status: 'Smog Inversion Forming', color_tier: 'orange' },
-    { id: 2, name: 'Shahdara', zone_code: 'SH-1', aqi: 120, pm25: 48.5, status: 'Smog Inversion Forming', color_tier: 'orange' },
-    { id: 3, name: 'Multan Road', zone_code: 'MR-2', aqi: 94, pm25: 32.4, status: 'Moderate Haze', color_tier: 'amber' },
-    { id: 4, name: 'DHA Phase 6', zone_code: 'DHA-6', aqi: 84, pm25: 28.2, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 1, name: 'Shahdara (GT Road)', zone_code: 'SH-GT', aqi: 90, pm25: 30.7, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 2, name: 'Kot Lakhpat Industrial', zone_code: 'KL-IND', aqi: 88, pm25: 29.7, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 3, name: 'Multan Road (Thokar)', zone_code: 'MR-TNB', aqi: 86, pm25: 28.7, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 4, name: 'US Consulate (Empress Rd)', zone_code: 'US-CONS', aqi: 79, pm25: 25.2, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 5, name: 'Gulberg (Syed Maratib Ali)', zone_code: 'GL-SMA', aqi: 79, pm25: 25.5, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 6, name: 'Mall Road (Anarkali)', zone_code: 'MR-ANK', aqi: 77, pm25: 24.4, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 7, name: 'Barki Road (Paragon)', zone_code: 'BR-PGN', aqi: 76, pm25: 23.9, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 8, name: 'Johar Town (Doctor\'s Hospital)', zone_code: 'JT-DH', aqi: 75, pm25: 23.4, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 9, name: 'Model Town (A-Block)', zone_code: 'MT-A', aqi: 73, pm25: 22.4, status: 'Moderate Haze', color_tier: 'amber' },
+    { id: 10, name: 'DHA Phase 6 (Bedian Rd)', zone_code: 'DHA-6', aqi: 71, pm25: 21.7, status: 'Moderate Haze', color_tier: 'amber' }
   ]);
 
   const [healthTrends, setHealthTrends] = useState<Array<{ day: string; exposure: number; risk: number }>>([]);
@@ -305,20 +312,54 @@ export default function DashboardOverview() {
 
         {/* Right Column: High Alert Areas & 24H Model */}
         <div className="space-y-6 flex flex-col">
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-             <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2">
-               <MapPin className="w-5 h-5 text-rose-500" />
-               High Alert Areas (SQL Database)
-             </h3>
-             <p className="text-xs font-medium text-slate-500 mb-4">Currently recording severe smog levels. Avoid travel if possible.</p>
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col">
+             <div className="flex items-center justify-between gap-2 mb-2">
+                <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-rose-500" />
+                  High Alert Areas
+                </h3>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  AI & SQL Synced
+                </span>
+             </div>
+             <p className="text-xs font-medium text-slate-500 mb-3">
+               Spatial microclimate regression across 10 official Lahore monitoring zones.
+             </p>
+
+             {/* Filter Tabs: Top 5 High Alerts vs All 10 Stations */}
+             <div className="flex items-center p-1 bg-slate-100 rounded-xl mb-3 text-xs font-bold">
+               <button
+                 onClick={() => setAreaViewMode('top')}
+                 className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                   areaViewMode === 'top'
+                     ? 'bg-white text-slate-900 shadow-xs'
+                     : 'text-slate-600 hover:text-slate-900'
+                 }`}
+               >
+                 Top Alerts (5)
+               </button>
+               <button
+                 onClick={() => setAreaViewMode('all')}
+                 className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                   areaViewMode === 'all'
+                     ? 'bg-white text-slate-900 shadow-xs'
+                     : 'text-slate-600 hover:text-slate-900'
+                 }`}
+               >
+                 All Stations ({highAlertAreas.length})
+               </button>
+             </div>
              
              {/* Dynamic High Alert Areas list from SQL */}
-             <div className="space-y-3">
-                {highAlertAreas.map((area) => {
-                  const isMaroon = area.color_tier === 'maroon' || area.aqi > 300;
-                  const isPurple = area.color_tier === 'purple' || (area.aqi > 200 && area.aqi <= 300);
-                  const isRose = area.color_tier === 'rose' || (area.aqi > 150 && area.aqi <= 200);
-                  const isOrange = area.color_tier === 'orange' || (area.aqi > 100 && area.aqi <= 150);
+             <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
+                {(areaViewMode === 'top' ? highAlertAreas.slice(0, 5) : highAlertAreas).map((area) => {
+                  const aqi = area.aqi;
+                  const isMaroon = aqi > 300;
+                  const isPurple = aqi > 200 && aqi <= 300;
+                  const isRose = aqi > 150 && aqi <= 200;
+                  const isOrange = aqi > 100 && aqi <= 150;
+                  const isAmber = aqi > 50 && aqi <= 100;
                   
                   const dotColor = isMaroon 
                     ? 'bg-rose-950' 
@@ -328,36 +369,42 @@ export default function DashboardOverview() {
                     ? 'bg-rose-600' 
                     : isOrange 
                     ? 'bg-orange-500' 
-                    : 'bg-amber-500';
+                    : isAmber 
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500';
 
                   const badgeColor = isMaroon
-                    ? 'text-rose-200 bg-rose-950 border border-rose-700'
+                    ? 'text-rose-100 bg-rose-950 border border-rose-800'
                     : isPurple
                     ? 'text-purple-700 bg-purple-50 border border-purple-200'
                     : isRose 
                     ? 'text-rose-700 bg-rose-50 border border-rose-200' 
                     : isOrange 
                     ? 'text-orange-700 bg-orange-50 border border-orange-200' 
-                    : 'text-amber-800 bg-amber-50 border border-amber-200';
+                    : isAmber
+                    ? 'text-amber-800 bg-amber-50 border border-amber-200'
+                    : 'text-emerald-700 bg-emerald-50 border border-emerald-200';
 
                   return (
-                    <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50/80 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
+                    <div key={area.id || area.name} className="flex items-center justify-between p-2.5 bg-slate-50/90 rounded-xl border border-slate-100 hover:border-slate-300 transition-all hover:bg-white group">
                        <div className="flex items-center gap-2.5 min-w-0">
                           <div className={`w-2.5 h-2.5 rounded-full shrink-0 animate-pulse ${dotColor}`}></div>
                           <div className="truncate">
-                            <span className="text-sm font-bold text-slate-800 block truncate">{area.name}</span>
-                            <span className="text-[10px] font-semibold text-slate-400 block -mt-0.5">{area.status}</span>
+                            <span className="text-sm font-bold text-slate-800 block truncate group-hover:text-slate-900">{area.name}</span>
+                            <span className="text-[11px] font-medium text-slate-400 block -mt-0.5">
+                              {area.status} • <span className="font-semibold text-slate-600">{area.pm25} µg/m³</span>
+                            </span>
                           </div>
                        </div>
                        <span className={`text-xs font-extrabold px-2.5 py-1 rounded-lg shrink-0 ${badgeColor}`}>
-                         {area.aqi}
+                         {area.aqi} AQI
                        </span>
                     </div>
                   );
                 })}
              </div>
              
-             <Link href="/dashboard/routing" className="mt-5 relative block w-full py-2.5 bg-slate-900 text-white text-center rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors">
+             <Link href="/dashboard/routing" className="mt-4 relative block w-full py-2.5 bg-slate-900 text-white text-center rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors shadow-xs">
                Plan Safe Route Around Alerts
              </Link>
           </div>

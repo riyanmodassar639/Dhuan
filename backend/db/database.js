@@ -168,10 +168,16 @@ async function seedInitialData() {
 
   // Seed High Alert Areas in Lahore with real coordinates
   const areas = [
-    { name: 'Gulberg III', zone: 'G-3', aqi: 136, pm25: 50.4, status: 'Smog Inversion Forming', color: 'orange', lat: 31.5102, lng: 74.3441 },
-    { name: 'Shahdara', zone: 'SH-1', aqi: 120, pm25: 48.5, status: 'Smog Inversion Forming', color: 'orange', lat: 31.6211, lng: 74.2811 },
-    { name: 'Johar Town', zone: 'JT-B', aqi: 98, pm25: 34.6, status: 'Moderate Haze', color: 'amber', lat: 31.4697, lng: 74.2728 },
-    { name: 'Mall Road', zone: 'MR-1', aqi: 94, pm25: 32.8, status: 'Moderate Haze', color: 'amber', lat: 31.5580, lng: 74.3270 },
+    { name: 'Shahdara (GT Road)', zone: 'SH-GT', aqi: 90, pm25: 30.7, status: 'Moderate Haze', color: 'amber', lat: 31.6250, lng: 74.2780 },
+    { name: 'Kot Lakhpat Industrial', zone: 'KL-IND', aqi: 88, pm25: 29.7, status: 'Moderate Haze', color: 'amber', lat: 31.4500, lng: 74.3300 },
+    { name: 'Multan Road (Thokar)', zone: 'MR-TNB', aqi: 86, pm25: 28.7, status: 'Moderate Haze', color: 'amber', lat: 31.4700, lng: 74.2400 },
+    { name: 'US Consulate (Empress Rd)', zone: 'US-CONS', aqi: 79, pm25: 25.2, status: 'Moderate Haze', color: 'amber', lat: 31.5626, lng: 74.3361 },
+    { name: 'Gulberg (Syed Maratib Ali)', zone: 'GL-SMA', aqi: 79, pm25: 25.5, status: 'Moderate Haze', color: 'amber', lat: 31.5122, lng: 74.3475 },
+    { name: 'Mall Road (Anarkali)', zone: 'MR-ANK', aqi: 77, pm25: 24.4, status: 'Moderate Haze', color: 'amber', lat: 31.5580, lng: 74.3270 },
+    { name: 'Barki Road (Paragon)', zone: 'BR-PGN', aqi: 76, pm25: 23.9, status: 'Moderate Haze', color: 'amber', lat: 31.5359, lng: 74.4352 },
+    { name: 'Johar Town (Doctor\'s Hospital)', zone: 'JT-DH', aqi: 75, pm25: 23.4, status: 'Moderate Haze', color: 'amber', lat: 31.4697, lng: 74.2728 },
+    { name: 'Model Town (A-Block)', zone: 'MT-A', aqi: 73, pm25: 22.4, status: 'Moderate Haze', color: 'amber', lat: 31.4850, lng: 74.3200 },
+    { name: 'DHA Phase 6 (Bedian Rd)', zone: 'DHA-6', aqi: 71, pm25: 21.7, status: 'Moderate Haze', color: 'amber', lat: 31.4559, lng: 74.4638 },
   ];
 
   for (const a of areas) {

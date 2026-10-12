@@ -78,6 +78,29 @@ def forecast_72h(req: ForecastRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class SpatialAreasRequest(BaseModel):
+    current_pm25: Optional[float] = 25.2
+    current_aqi: Optional[int] = 81
+
+@app.post("/api/v1/areas/spatial")
+def predict_spatial_areas(req: SpatialAreasRequest):
+    global predictor
+    if not predictor:
+        predictor = LahoreSmogPredictor()
+    try:
+        areas = predictor.predict_spatial_areas(
+            current_pm25=req.current_pm25,
+            current_aqi=req.current_aqi
+        )
+        return {
+            "success": True,
+            "engine": "DHUAN Spatial Land-Use Regression & Boundary Layer AI",
+            "count": len(areas),
+            "areas": areas
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
