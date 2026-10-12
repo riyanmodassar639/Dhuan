@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMapEvents, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, AlertTriangle, Calendar, Bell } from 'lucide-react';
@@ -40,6 +40,17 @@ function MapEventsHandler({ onMapClick }: { onMapClick: (e: L.LeafletMouseEvent)
   return null;
 }
 
+// Map instance capture helper to safely store Leaflet map reference without calling remove()
+function MapReadyHandler({ onMapReady }: { onMapReady: (map: L.Map) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    if (map) {
+      onMapReady(map);
+    }
+  }, [map, onMapReady]);
+  return null;
+}
+
 export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean }) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -48,6 +59,9 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   // Unique stable key per component mount to ensure Leaflet never reuses an unmounted DOM container
   const [mapKey] = useState(() => `dhuan-map-${Math.random().toString(36).substring(2, 9)}`);
   const mapRef = useRef<L.Map | null>(null);
+  const handleMapReady = useCallback((mapInstance: L.Map) => {
+    mapRef.current = mapInstance;
+  }, []);
   const [hasCentered, setHasCentered] = useState(false);
 
   // Pre-Plan Itinerary Mode (Triggered from Smart Routing page)
@@ -339,14 +353,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       if (watchId !== undefined && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId);
       }
-      if (mapRef.current) {
-        try {
-          mapRef.current.remove();
-        } catch {
-          // ignore already removed
-        }
-        mapRef.current = null;
-      }
+      mapRef.current = null;
     };
   }, []);
 
@@ -1240,6 +1247,17 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     await handleOffRoute([detourLat, detourLng]);
   };
 
+  if (!mounted) {
+    return (
+      <div className={`w-full h-full flex-1 relative z-0 flex items-center justify-center bg-slate-50 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl border border-slate-200'}`}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs font-bold text-slate-500">Loading Map...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`w-full h-full flex-1 relative z-0 ${fullScreen ? '' : 'min-h-[500px] lg:min-h-[600px] rounded-2xl overflow-hidden shadow-sm border border-slate-200'}`}>
       <div className="absolute inset-0">
@@ -1250,8 +1268,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           scrollWheelZoom={true} 
           zoomControl={false}
           style={{ height: '100%', width: '100%' }}
-          ref={mapRef}
         >
+          <MapReadyHandler onMapReady={handleMapReady} />
           {/* Google Maps Style Tiles (English Labels) */}
           <TileLayer
             url="https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
