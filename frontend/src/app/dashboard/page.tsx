@@ -75,6 +75,7 @@ export default function DashboardOverview() {
   const [isConnected, setIsConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
+  const [aiForecast, setAiForecast] = useState<any>(null);
 
   // Fetch verified data from Node.js + SQLite backend
   const fetchDashboardData = async () => {
@@ -97,6 +98,9 @@ export default function DashboardOverview() {
         }
         if (data.healthInsights && data.healthInsights.length > 0) {
           setHealthInsights(data.healthInsights);
+        }
+        if (data.aiForecast) {
+          setAiForecast(data.aiForecast);
         }
         setIsConnected(true);
         setLastSyncTime(new Date().toLocaleTimeString());
@@ -256,7 +260,7 @@ export default function DashboardOverview() {
                <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-100">Live Prediction</span>
              </div>
              {/* Forecast Chart Widget */}
-             <ForecastChartWidget />
+             <ForecastChartWidget currentAqi={metrics.current_aqi} aiForecastData={aiForecast} />
           </div>
         </div>
 

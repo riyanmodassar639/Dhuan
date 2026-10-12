@@ -1,0 +1,41 @@
+{
+  "model_type": "RandomForestRegressor",
+  "n_estimators": 120,
+  "features": [
+    "pm25_lag_1h",
+    "pm25_lag_2h",
+    "pm25_lag_3h",
+    "pm25_lag_24h",
+    "aqi_lag_1h",
+    "aqi_lag_24h",
+    "pm25_roll_mean_6h",
+    "pm25_roll_mean_24h",
+    "pm25_roll_std_6h",
+    "temperature_2m",
+    "relative_humidity_2m",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "surface_pressure",
+    "stagnation_index",
+    "smog_condensation_factor",
+    "inversion_window",
+    "hour_sin",
+    "hour_cos",
+    "month_sin",
+    "month_cos",
+    "day_sin",
+    "day_cos",
+    "is_weekend"
+  ],
+  "target": "pm2_5",
+  "metrics": {
+    "r2_score": 0.996,
+    "mae": 2.32,
+    "rmse": 3.02,
+    "accuracy_within_10ug": 99.77,
+    "accuracy_within_20ug": 100.0
+  },
+  "trained_samples": 6988,
+  "test_samples": 1748,
+  "saved_at": "2026-10-12T15:03:41.540594"
+}

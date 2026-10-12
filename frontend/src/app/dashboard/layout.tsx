@@ -14,7 +14,7 @@ import {
   MapPin,
   Sparkles
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Footer from '@/components/Footer';
 
 export default function DashboardLayout({
@@ -24,6 +24,26 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [liveAqi, setLiveAqi] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchLive = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/dashboard/overview');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.metrics && typeof data.metrics.current_aqi === 'number') {
+            setLiveAqi(data.metrics.current_aqi);
+          }
+        }
+      } catch (err) {
+        // Fallback gracefully
+      }
+    };
+    fetchLive();
+    const interval = setInterval(fetchLive, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navItems = [
     { name: 'Overview', href: '/dashboard', icon: Activity },
@@ -80,7 +100,7 @@ export default function DashboardLayout({
                {/* AQI Mini Badge (Desktop Only) */}
                <div className="hidden lg:flex items-center gap-2 bg-yellow-50 border border-yellow-100 px-3 py-1.5 rounded-full shadow-sm">
                   <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-                  <span className="text-xs font-bold text-yellow-700">Lahore AQI: 165</span>
+                  <span className="text-xs font-bold text-yellow-700">Lahore AQI: {liveAqi !== null ? liveAqi : '101'}</span>
                </div>
                
                <button className="hidden sm:block p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors relative">

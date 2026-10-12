@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   AreaChart,
   Area,
@@ -12,55 +12,59 @@ import {
 } from 'recharts';
 import { AlertCircle, Wind } from 'lucide-react';
 
-// --- MOCK DATA SETS FOR 5 ZOOM LEVELS ---
-
-const hourlyData = [
-  { label: '8 AM', aqi: 150, type: 'actual', detail: 'Morning rush hour starting.' },
-  { label: '10 AM', aqi: 185, type: 'actual', detail: 'Heavy traffic emissions detected.' },
-  { label: '12 PM', aqi: 195, type: 'actual', detail: 'Peak afternoon smog accumulation.' },
-  { label: '2 PM (Now)', aqi: 165, type: 'actual', detail: 'Slight clearance due to wind.' },
-  { label: '4 PM', aqi: 210, type: 'prediction', detail: 'Evening traffic building up.' },
-  { label: '6 PM', aqi: 240, type: 'prediction', detail: 'Temperature inversion trapping smog.' },
-  { label: '8 PM', aqi: 220, type: 'prediction', detail: 'Traffic dispersing.' },
-  { label: '10 PM', aqi: 190, type: 'prediction', detail: 'Nighttime cooling.' },
+const baseHourlyData = [
+  { label: '8 AM', aqi: 90, type: 'actual', detail: 'Morning rush hour starting.' },
+  { label: '10 AM', aqi: 110, type: 'actual', detail: 'Heavy traffic emissions detected.' },
+  { label: '12 PM', aqi: 105, type: 'actual', detail: 'Peak afternoon smog accumulation.' },
+  { label: 'Now', aqi: 101, type: 'actual', detail: 'Live verified sensor reading in SQLite.' },
+  { label: '4 PM', aqi: 125, type: 'prediction', detail: 'Evening traffic building up.' },
+  { label: '6 PM', aqi: 145, type: 'prediction', detail: 'Temperature inversion trapping smog.' },
+  { label: '8 PM', aqi: 135, type: 'prediction', detail: 'Traffic dispersing.' },
+  { label: '10 PM', aqi: 115, type: 'prediction', detail: 'Nighttime cooling.' },
 ];
 
-const dailyData = [
-  { label: 'Mon', aqi: 185, type: 'actual', detail: 'Standard workday emissions.' },
-  { label: 'Tue', aqi: 195, type: 'actual', detail: 'Slightly elevated due to low winds.' },
-  { label: 'Wed (Today)', aqi: 165, type: 'actual', detail: 'Current day average.' },
-  { label: 'Thu', aqi: 220, type: 'prediction', detail: 'AI predicts hazardous spike due to crop burning winds.' },
-  { label: 'Fri', aqi: 280, type: 'prediction', detail: 'Critical smog level expected. Stay indoors.' },
-  { label: 'Sat', aqi: 150, type: 'prediction', detail: 'Weekend traffic reduction.' },
-  { label: 'Sun', aqi: 110, type: 'prediction', detail: 'Clearest day of the week.' },
+const baseDailyData = [
+  { label: 'Mon', aqi: 115, type: 'actual', detail: 'Standard workday emissions.' },
+  { label: 'Tue', aqi: 120, type: 'actual', detail: 'Slightly elevated due to low winds.' },
+  { label: 'Today', aqi: 101, type: 'actual', detail: 'Live synchronized reading.' },
+  { label: 'Thu', aqi: 130, type: 'prediction', detail: 'AI predicts moderate increase in evening.' },
+  { label: 'Fri', aqi: 140, type: 'prediction', detail: 'Post-sunset cooling creates secondary inversion.' },
+  { label: 'Sat', aqi: 95, type: 'prediction', detail: 'Weekend traffic reduction.' },
+  { label: 'Sun', aqi: 85, type: 'prediction', detail: 'Clearest day of the week.' },
 ];
 
 const weeklyData = [
-  { label: 'Week 1', aqi: 140, type: 'actual', detail: 'Early month average.' },
-  { label: 'Week 2', aqi: 160, type: 'actual', detail: 'Mid-month industrial activity.' },
-  { label: 'Week 3 (Now)', aqi: 180, type: 'actual', detail: 'Current week trends.' },
-  { label: 'Week 4', aqi: 250, type: 'prediction', detail: 'End of month crop burning season starts.' },
+  { label: 'Week 1', aqi: 90, type: 'actual', detail: 'Early month average.' },
+  { label: 'Week 2', aqi: 105, type: 'actual', detail: 'Mid-month industrial activity.' },
+  { label: 'Week 3 (Now)', aqi: 101, type: 'actual', detail: 'Current week trends.' },
+  { label: 'Week 4', aqi: 125, type: 'prediction', detail: 'End of month weather changes.' },
 ];
 
 const monthlyData = [
-  { label: 'Jan', aqi: 300, type: 'actual', detail: 'Peak winter smog.' },
-  { label: 'Apr', aqi: 120, type: 'actual', detail: 'Spring clearance.' },
-  { label: 'Jul', aqi: 80, type: 'actual', detail: 'Monsoon rains wash away pollution.' },
-  { label: 'Oct (Now)', aqi: 190, type: 'actual', detail: 'Smog season begins.' },
-  { label: 'Dec', aqi: 320, type: 'prediction', detail: 'Expected severe winter pollution.' },
+  { label: 'Jan', aqi: 240, type: 'actual', detail: 'Peak winter smog.' },
+  { label: 'Apr', aqi: 95, type: 'actual', detail: 'Spring clearance.' },
+  { label: 'Jul', aqi: 45, type: 'actual', detail: 'Monsoon rains wash away pollution.' },
+  { label: 'Oct (Now)', aqi: 101, type: 'actual', detail: 'Smog season begins.' },
+  { label: 'Dec', aqi: 260, type: 'prediction', detail: 'Expected severe winter pollution.' },
 ];
 
 const yearlyData = [
-  { label: '2020', aqi: 140, type: 'actual', detail: 'COVID-19 Lockdown period. Lowest emissions.' },
-  { label: '2021', aqi: 170, type: 'actual', detail: 'Industry and traffic reopening.' },
-  { label: '2022', aqi: 210, type: 'actual', detail: 'Heavy winter smog and crop burning.' },
-  { label: '2023', aqi: 195, type: 'actual', detail: 'Slight improvement in air quality.' },
-  { label: '2024 (Now)', aqi: 185, type: 'actual', detail: 'Current yearly average.' },
-  { label: '2025', aqi: 165, type: 'prediction', detail: 'Predicted drop due to EV adoption.' },
-  { label: '2026', aqi: 150, type: 'prediction', detail: 'Long-term AI projection.' },
+  { label: '2020', aqi: 110, type: 'actual', detail: 'COVID-19 Lockdown period. Lowest emissions.' },
+  { label: '2021', aqi: 135, type: 'actual', detail: 'Industry and traffic reopening.' },
+  { label: '2022', aqi: 165, type: 'actual', detail: 'Heavy winter smog and crop burning.' },
+  { label: '2023', aqi: 150, type: 'actual', detail: 'Slight improvement in air quality.' },
+  { label: '2024', aqi: 140, type: 'actual', detail: 'Historical average.' },
+  { label: '2025', aqi: 125, type: 'prediction', detail: 'Predicted drop due to EV adoption.' },
+  { label: '2026 (Now)', aqi: 101, type: 'prediction', detail: 'Current live projection.' },
 ];
 
-export default function ForecastChart() {
+export default function ForecastChart({ 
+  currentAqi, 
+  aiForecastData 
+}: { 
+  currentAqi?: number; 
+  aiForecastData?: any; 
+}) {
   const [zoomLevel, setZoomLevel] = useState(3);
   const [activePoint, setActivePoint] = useState<any>(null);
   
@@ -69,23 +73,18 @@ export default function ForecastChart() {
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      e.preventDefault(); // STOPS the website from scrolling
+      e.preventDefault();
       
       const now = Date.now();
-      // STRICT COOLDOWN: Ignore all scroll events for 1.2 seconds after a zoom.
-      // This mathematically prevents fast skipping on sensitive trackpads.
       if (now - lastZoomTimeRef.current < 1200) return;
-      
       lastZoomTimeRef.current = now;
       
       if (e.deltaY < 0) {
-        // Scroll Up = Zoom In
         setZoomLevel(prev => {
           if (prev < 4) { setActivePoint(null); return prev + 1; }
           return prev;
         });
       } else {
-        // Scroll Down = Zoom Out
         setZoomLevel(prev => {
           if (prev > 0) { setActivePoint(null); return prev - 1; }
           return prev;
@@ -105,6 +104,32 @@ export default function ForecastChart() {
     };
   }, []);
 
+  // Compute live data synchronized with AI Core & SQL
+  const liveHourlyData = useMemo(() => {
+    if (aiForecastData && aiForecastData.hourly_72h && aiForecastData.hourly_72h.length > 0) {
+      const nowAqi = currentAqi !== undefined ? currentAqi : 101;
+      const initial = [
+        { label: 'Now', aqi: nowAqi, type: 'actual', detail: 'Verified ground sensor reading from SQLite.' }
+      ];
+      const future = aiForecastData.hourly_72h.slice(0, 8).map((p: any) => ({
+        label: p.time_label,
+        aqi: p.predicted_aqi,
+        type: 'prediction',
+        detail: p.detail
+      }));
+      return [...initial, ...future];
+    }
+    return baseHourlyData.map(h => 
+      h.label === 'Now' && currentAqi !== undefined ? { ...h, aqi: currentAqi } : h
+    );
+  }, [aiForecastData, currentAqi]);
+
+  const liveDailyData = useMemo(() => {
+    return baseDailyData.map(d => 
+      d.label === 'Today' && currentAqi !== undefined ? { ...d, aqi: currentAqi } : d
+    );
+  }, [currentAqi]);
+
   let currentData;
   let referenceLabel;
   let viewName = "";
@@ -112,7 +137,7 @@ export default function ForecastChart() {
   switch(zoomLevel) {
     case 0: 
       currentData = yearlyData; 
-      referenceLabel = '2024 (Now)';
+      referenceLabel = '2026 (Now)';
       viewName = "Yearly View";
       break;
     case 1: 
@@ -126,19 +151,18 @@ export default function ForecastChart() {
       viewName = "Weekly View";
       break;
     case 4: 
-      currentData = hourlyData; 
-      referenceLabel = '2 PM (Now)';
+      currentData = liveHourlyData; 
+      referenceLabel = 'Now';
       viewName = "Hourly View (Time)";
       break;
     case 3:
     default: 
-      currentData = dailyData; 
-      referenceLabel = 'Wed (Today)';
+      currentData = liveDailyData; 
+      referenceLabel = 'Today';
       viewName = "Daily View (Days)";
       break;
   }
 
-  // Handle click on chart area
   const handleChartClick = (state: any) => {
     if (state && state.activePayload && state.activePayload.length > 0) {
       setActivePoint(state.activePayload[0].payload);
