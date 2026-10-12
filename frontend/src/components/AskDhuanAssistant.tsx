@@ -146,19 +146,8 @@ export default function AskDhuanAssistant({
   const initialGreeting: ChatMessage = {
     id: 'welcome-msg',
     role: 'assistant',
-    content: `Assalam-o-Alaikum! I am **DHUAN AI**, your dedicated atmospheric smog intelligence and public health advisor for **${cityName}**.\n\nI continuously evaluate live microclimate telemetry, nocturnal boundary layer inversion physics, and PM2.5 dispersion across 10 central monitoring sectors to help keep your lungs safe.\n\nHow can I assist you with today's atmospheric conditions?`,
-    timestamp: 'Just now',
-    smogTier: getSmogBadgeForAqi(liveAqi || 81),
-    recommendations: [
-      'Check nocturnal inversion schedule before planning outdoor runs.',
-      'Keep certified N95 or KN95 masks in vehicle or bag.',
-      'Seal windows during 21:00 to 08:00 temperature inversions.'
-    ],
-    suggestedPrompts: [
-      'Is it safe for morning exercise tomorrow?',
-      'Which routes have the lowest smog right now?',
-      'How does smog affect asthma patients?'
-    ]
+    content: `Assalam-o-Alaikum! Welcome to **DHUAN AI** — your dedicated atmospheric smog & environmental health advisor for **${cityName}**.\n\nI can assist you with:\n- Lahore Live Smog Index & ground AQI\n- Past 24 hours recorded history\n- 72-hour AI thermal inversion forecasts\n- High-alert sector monitoring zones\n- Low-exposure safe commute routes\n- Respiratory health & certified mask standards\n\nHow can I assist you with the dashboard or atmospheric conditions today?`,
+    timestamp: 'Just now'
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>([initialGreeting]);
@@ -218,22 +207,22 @@ export default function AskDhuanAssistant({
       }
 
       const data = await res.json();
-      const category = data.smog_category || getSmogBadgeForAqi(liveAqi || 81);
+      const category = data.smog_category;
 
       const aiReply: ChatMessage = {
         id: `ai-${Date.now()}`,
         role: 'assistant',
         content: data.answer || "Atmospheric query processed.",
         timestamp: 'Just now',
-        smogTier: {
+        smogTier: category ? {
           name: category.name || 'Moderate Haze',
           aqi: category.aqi,
           color: category.text || category.color || 'text-amber-800',
           bg: category.bg || 'bg-amber-50',
           border: category.border || 'border-amber-200'
-        },
+        } : undefined,
         recommendations: data.protective_protocols || [],
-        suggestedPrompts: data.suggested_prompts || []
+        suggestedPrompts: []
       };
 
       setMessages((prev) => [...prev, aiReply]);
@@ -391,7 +380,7 @@ export default function AskDhuanAssistant({
                     )}
 
                     {/* Markdown Body */}
-                    <div className="space-y-2 whitespace-pre-line font-normal text-slate-800">
+                    <div className={`space-y-2 whitespace-pre-line ${isUser ? 'text-white font-semibold text-[13px] sm:text-sm' : 'text-slate-800 font-normal'}`}>
                       {msg.content}
                     </div>
 
@@ -411,23 +400,6 @@ export default function AskDhuanAssistant({
                         </ul>
                       </div>
                     )}
-
-                    {/* Follow-up Prompts */}
-                    {!isUser && msg.suggestedPrompts && msg.suggestedPrompts.length > 0 && (
-                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-wrap gap-1.5">
-                        {msg.suggestedPrompts.map((prompt, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleSendMessage(prompt)}
-                            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-colors border border-emerald-200 flex items-center gap-1 text-left"
-                          >
-                            <span>{prompt}</span>
-                            <ChevronRight className="w-3 h-3 shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
                   </div>
 
                   {/* Message Footer Info */}
