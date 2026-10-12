@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Footer from '@/components/Footer';
+import AskDhuanAssistant from '@/components/AskDhuanAssistant';
 import { getApiEndpoint } from '@/lib/api';
 
 export default function DashboardLayout({
@@ -26,6 +27,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [liveAqi, setLiveAqi] = useState<number | null>(null);
+  const [isAskDhuanOpen, setIsAskDhuanOpen] = useState(false);
 
   useEffect(() => {
     const fetchLive = async () => {
@@ -51,6 +53,7 @@ export default function DashboardLayout({
     { name: 'Map View', href: '/dashboard/map', icon: MapPin },
     { name: 'Smart Routing', href: '/dashboard/routing', icon: MapIcon },
     { name: 'Health Profile', href: '/dashboard/health', icon: ShieldAlert },
+    { name: 'Ask DHUAN', href: '/dashboard/ask', icon: Sparkles },
   ];
 
   return (
@@ -170,18 +173,30 @@ export default function DashboardLayout({
         </div>
       )}
 
-      {/* Floating DHUAN Assistant Button - Reset position to standard bottom */}
+      {/* Floating DHUAN Assistant Button */}
       <div className="fixed bottom-6 right-6 z-[100] group">
          <div className="absolute inset-0 bg-emerald-500 rounded-2xl blur opacity-40 group-hover:opacity-70 group-hover:scale-110 transition-all duration-500 animate-pulse"></div>
          <button 
-           className="relative flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-2xl hover:bg-slate-800 transition-transform hover:-translate-y-1 hover:scale-105 border border-slate-700/50 focus:outline-none focus:ring-4 focus:ring-emerald-500/30"
-           aria-label="Chat with DHUAN"
-           title="Chat with DHUAN"
+           onClick={() => setIsAskDhuanOpen((prev) => !prev)}
+           className="relative flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-2xl hover:bg-slate-800 transition-transform hover:-translate-y-1 hover:scale-105 border border-slate-700/50 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 cursor-pointer"
+           aria-label="Chat with DHUAN AI"
+           title="Ask DHUAN Smog AI Assistant"
          >
            <Wind className="w-5 h-5 text-emerald-400" />
            <span className="font-extrabold text-sm tracking-wide hidden md:block">Ask DHUAN</span>
+           {isAskDhuanOpen && (
+             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+           )}
          </button>
       </div>
+
+      {/* Ask DHUAN AI Assistant Drawer / Modal */}
+      <AskDhuanAssistant 
+        isOpen={isAskDhuanOpen} 
+        onClose={() => setIsAskDhuanOpen(false)} 
+        liveAqi={liveAqi} 
+        cityName="Lahore" 
+      />
 
     </div>
   );
