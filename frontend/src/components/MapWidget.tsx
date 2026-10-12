@@ -9,8 +9,7 @@ import {
   Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, 
   Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, 
   Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, 
-  AlertTriangle, Calendar, Bell, Layers, RotateCw, Eye, EyeOff, Radio, Sparkles, 
-  SlidersHorizontal, ChevronRight, ChevronDown 
+  AlertTriangle, Calendar, Bell, Layers, RotateCw, Eye, EyeOff, Radio, Sparkles
 } from 'lucide-react';
 import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 import { getApiEndpoint } from '@/lib/api';
@@ -174,19 +173,35 @@ export const DEFAULT_STATIONS: GroundStation[] = [
   }
 ];
 
+// Comprehensive Regional Grid Nodes to guarantee 100% continuous coverage across all Lahore metropolitan zones
+export const REGIONAL_COVERAGE_NODES = [
+  { id: 'node-sbz', name: 'Sabzazar & Bund Road Corridor', lat: 31.5280, lng: 74.2520 },
+  { id: 'node-thk', name: 'Thokar & Westwood Corridor', lat: 31.4680, lng: 74.2250 },
+  { id: 'node-bhr', name: 'Bahria Town & Raiwind Corridor', lat: 31.3700, lng: 74.1950 },
+  { id: 'node-lkc', name: 'Lake City & Kahna South Corridor', lat: 31.3850, lng: 74.2950 },
+  { id: 'node-val', name: 'Valencia & Wapda Town Belt', lat: 31.4180, lng: 74.2650 },
+  { id: 'node-gjm', name: 'Gajju Matah & Ferozepur South', lat: 31.3950, lng: 74.3700 },
+  { id: 'node-dha7', name: 'DHA Phase 7/8 & Bedian Fringe', lat: 31.4250, lng: 74.4550 },
+  { id: 'node-wgh', name: 'Barki & Wagha Border Corridor', lat: 31.5750, lng: 74.5150 },
+  { id: 'node-jll', name: 'Jallo Park & Batapur Corridor', lat: 31.5950, lng: 74.4650 },
+  { id: 'node-mnw', name: 'Manawan & GT Road East Belt', lat: 31.6250, lng: 74.4350 },
+  { id: 'node-shn', name: 'Shahdara North & Ravi River Bank', lat: 31.6450, lng: 74.2750 },
+  { id: 'node-bdb', name: 'Badami Bagh & Northern Bypass', lat: 31.6150, lng: 74.3450 },
+];
+
 export const getStationRadius = (zoneCode: string) => {
   switch (zoneCode) {
-    case 'SH-GT': return 4800;
-    case 'KL-IND': return 4500;
-    case 'MR-TNB': return 4200;
-    case 'BR-PGN': return 4500;
-    case 'DHA-6': return 4600;
-    case 'JT-DH': return 3800;
-    case 'US-CONS': return 3600;
-    case 'GL-SMA': return 3600;
-    case 'MR-ANK': return 3400;
-    case 'MT-A': return 3400;
-    default: return 3800;
+    case 'SH-GT': return 12000;
+    case 'KL-IND': return 11000;
+    case 'MR-TNB': return 10500;
+    case 'BR-PGN': return 11000;
+    case 'DHA-6': return 11500;
+    case 'JT-DH': return 9500;
+    case 'US-CONS': return 9000;
+    case 'GL-SMA': return 9000;
+    case 'MR-ANK': return 8500;
+    case 'MT-A': return 8500;
+    default: return 9500;
   }
 };
 
@@ -304,7 +319,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [selectedStation, setSelectedStation] = useState<GroundStation | null>(null);
   const [showSmogLayer, setShowSmogLayer] = useState(true);
   const [showStationsLayer, setShowStationsLayer] = useState(true);
-  const [isStationDrawerOpen, setIsStationDrawerOpen] = useState(false);
 
   // Live Journey Environment & Smog state during Navigation
   const [navCurrentArea, setNavCurrentArea] = useState<string>("Current Corridor");
@@ -346,7 +360,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               color_tier: area.color_tier,
               lat: area.lat,
               lng: area.lng,
-              sector: area.sector || def?.sector || 'Official Lahore Monitoring Sector',
+              sector: area.sector || def?.sector || 'Official Lahore Monitoring Zone',
               detail: area.detail || def?.detail || 'Station telemetry calibrated to Open-Meteo & AI boundary layers.',
               advisory: area.advisory || def?.advisory || 'Standard air quality precautions.'
             };
@@ -929,7 +943,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            if (!curAreaName || curAreaName === "Main Route" || curAreaName === "Connecting Corridor") {
               if (curLat > 31.54) curAreaName = "Mall Road Expressway";
               else if (curLat > 31.50) curAreaName = "Canal Bank Corridor";
-              else if (curLng > 74.37) curAreaName = "Defence Road Sector";
+              else if (curLng > 74.37) curAreaName = "Defence Road Corridor";
               else curAreaName = "Ferozepur Road Arterial";
            }
            setNavCurrentArea(curAreaName);
@@ -961,9 +975,9 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            let upcomingName = selectedPlace?.name ? `${selectedPlace.name} Corridor` : "Destination Vicinity";
            if (aheadIdx < routeCoords.length - 2) {
               if (aheadCoord[1] > 31.54) upcomingName = "Mall Road Junction";
-              else if (aheadCoord[1] > 31.50) upcomingName = "Canal Bank Road Sector";
+              else if (aheadCoord[1] > 31.50) upcomingName = "Canal Bank Road Corridor";
               else if (aheadCoord[0] > 74.37) upcomingName = "Ring Road Interchange";
-              else upcomingName = "Ferozepur Underpass Sector";
+              else upcomingName = "Ferozepur Underpass Corridor";
            }
            setNavUpcomingArea(upcomingName);
 
@@ -1775,23 +1789,59 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           )
         )}
 
-        {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer */}
+        {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer (100% Full Metropolitan Coverage) */}
         {showSmogLayer && (
-          <Pane name="smogLayer" style={{ filter: 'blur(30px)', opacity: 0.62, pointerEvents: 'none', zIndex: 400 }}>
+          <Pane name="smogLayer" style={{ filter: 'blur(36px)', opacity: 0.70, pointerEvents: 'none', zIndex: 400 }}>
+            {/* 1. Base Atmospheric Planetary Boundary Layer Wash (guarantees zero blank/uncolored streets) */}
+            <Circle 
+              center={[31.5204, 74.3587]} 
+              radius={35000} 
+              pathOptions={{ stroke: false, fillColor: getAqiColor(cityBaselineAqi), fillOpacity: 0.40 }} 
+            />
+
+            {/* 2. Official 10 Stations Multi-Tier Dispersion Plumes */}
             {stations.map((st) => {
               const fillColor = getAqiColor(st.aqi);
               const radius = getStationRadius(st.zone_code);
               return (
                 <span key={`smog-dispersion-${st.zone_code}`}>
+                  {/* Concentrated Epicenter Plume */}
                   <Circle 
                     center={[st.lat, st.lng]} 
-                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.82 }} 
-                    radius={radius * 0.55} 
+                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.72 }} 
+                    radius={radius * 0.45} 
+                  />
+                  {/* Core Dispersion Plume */}
+                  <Circle 
+                    center={[st.lat, st.lng]} 
+                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.55 }} 
+                    radius={radius * 0.85} 
+                  />
+                  {/* Outer Convective Dispersion Plume */}
+                  <Circle 
+                    center={[st.lat, st.lng]} 
+                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.42 }} 
+                    radius={radius * 1.35} 
+                  />
+                </span>
+              );
+            })}
+
+            {/* 3. Regional AI Spatial Interpolation Nodes across Metropolitan Peripheries */}
+            {REGIONAL_COVERAGE_NODES.map((node) => {
+              const nodeAqi = getSpatialAqi(node.lat, node.lng);
+              const nodeColor = getAqiColor(nodeAqi);
+              return (
+                <span key={`smog-node-${node.id}`}>
+                  <Circle 
+                    center={[node.lat, node.lng]} 
+                    pathOptions={{ stroke: false, fillColor: nodeColor, fillOpacity: 0.48 }} 
+                    radius={8500} 
                   />
                   <Circle 
-                    center={[st.lat, st.lng]} 
-                    pathOptions={{ stroke: false, fillColor, fillOpacity: 0.52 }} 
-                    radius={radius} 
+                    center={[node.lat, node.lng]} 
+                    pathOptions={{ stroke: false, fillColor: nodeColor, fillOpacity: 0.35 }} 
+                    radius={13000} 
                   />
                 </span>
               );
@@ -2017,19 +2067,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <span>10 Stations</span>
           </button>
 
-          {/* Station List Quick Jump Drawer Toggle */}
-          <button
-            onClick={() => setIsStationDrawerOpen(prev => !prev)}
-            title="View all 10 monitoring stations"
-            className={`px-3 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-[0_4px_16px_rgba(0,0,0,0.12)] border active:scale-95 ${
-              isStationDrawerOpen 
-                ? 'bg-purple-600 text-white border-purple-500' 
-                : 'bg-white/95 backdrop-blur-md text-slate-700 hover:text-slate-900 border-slate-200'
-            }`}
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span>Sectors ({stations.length})</span>
-          </button>
 
           {/* Manual Refresh Button */}
           <button
@@ -2043,58 +2080,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
-      {/* Station List Quick Jump Drawer */}
-      {isStationDrawerOpen && !isNavigating && !isDirectionsMode && (
-        <div className="absolute top-16 right-4 z-[2100] w-80 bg-white/95 backdrop-blur-md rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-slate-200 overflow-hidden animate-in slide-in-from-top-3 duration-200">
-          <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span className="font-extrabold text-xs uppercase tracking-wider">AI Ground Stations (10)</span>
-            </div>
-            <button 
-              onClick={() => setIsStationDrawerOpen(false)}
-              className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
 
-          <div className="p-2 max-h-[380px] overflow-y-auto space-y-1 divide-y divide-slate-100">
-            {stations.map((st) => (
-              <div
-                key={`drawer-station-${st.zone_code}`}
-                onClick={() => {
-                  setSelectedStation(st);
-                  setIsStationDrawerOpen(false);
-                  if (mapRef.current) {
-                    mapRef.current.flyTo([st.lat, st.lng], 14, { animate: true, duration: 1.2 });
-                  }
-                }}
-                className="pt-1.5 first:pt-0 p-2 rounded-xl hover:bg-slate-100/80 cursor-pointer transition-colors flex items-center justify-between group"
-              >
-                <div className="min-w-0 pr-2">
-                  <h4 className="text-xs font-bold text-slate-900 truncate group-hover:text-emerald-700 transition-colors">
-                    {st.name}
-                  </h4>
-                  <p className="text-[10px] text-slate-500 font-mono">{st.zone_code} • {st.pm25} µg/m³</p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
-                    st.aqi > 200 ? 'bg-purple-100 text-purple-700' :
-                    st.aqi > 150 ? 'bg-rose-100 text-rose-700' :
-                    st.aqi > 100 ? 'bg-orange-100 text-orange-700' :
-                    st.aqi > 50 ? 'bg-amber-100 text-amber-800' :
-                    'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    {st.aqi} AQI
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Selected Station Intelligence Card */}
       {selectedStation && !isNavigating && !isDirectionsMode && (
@@ -2150,11 +2136,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               </div>
             </div>
 
-            {/* Sector Category & Physical Diagnostics */}
+            {/* Physical Diagnostics & Atmospheric Profile */}
             <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200/60 text-xs space-y-1.5">
               <div className="flex items-center gap-1.5 text-slate-700 font-bold">
                 <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                <span>{selectedStation.sector || 'Urban Corridor'}</span>
+                <span>{selectedStation.name} • Monitoring Zone</span>
               </div>
               <p className="text-slate-600 font-medium text-[11px] leading-relaxed">
                 {selectedStation.detail || 'Atmospheric dispersion monitored continuously by station telemetry and AI boundary layer regression.'}
@@ -2922,17 +2908,6 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           }`}
         >
           <Layers className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => setIsStationDrawerOpen(prev => !prev)}
-          title="View 10 Stations"
-          className={`w-12 h-12 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] border flex items-center justify-center transition-all ${
-            isStationDrawerOpen 
-              ? 'bg-purple-600 text-white border-purple-500' 
-              : 'bg-white/95 backdrop-blur-md text-slate-700 border-slate-200'
-          }`}
-        >
-          <SlidersHorizontal className="w-5 h-5" />
         </button>
       </div>
 
