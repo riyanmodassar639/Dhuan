@@ -76,6 +76,32 @@ class LahoreSmogPredictor:
         curr_pm25 = current_pm25
         curr_aqi = current_aqi
         
+        # Step 0: "Now" baseline anchored to ground readings
+        initial_hour = start_time.hour
+        initial_cat = get_aqi_category(current_aqi)
+        initial_temp = 32.0 if start_time.month in [10, 4, 5] else 24.0
+        initial_hum = 26.0
+        initial_wind = 6.0
+        initial_icon = "sunny" if (6 <= initial_hour <= 17) else "clear-night"
+
+        projections.append({
+            "step": 0,
+            "timestamp": start_time.strftime("%Y-%m-%d %H:%M"),
+            "time_label": "Now",
+            "day_label": start_time.strftime("%a"),
+            "hour": initial_hour,
+            "predicted_pm25": round(current_pm25, 1),
+            "predicted_aqi": current_aqi,
+            "temperature": int(round(initial_temp)),
+            "humidity": int(round(initial_hum)),
+            "wind_speed": int(round(initial_wind)),
+            "wind_direction": 110,
+            "weather_icon": initial_icon,
+            "status": initial_cat['status'],
+            "color": initial_cat['color'],
+            "detail": "Current verified ground conditions in Lahore."
+        })
+        
         for step in range(1, 73):
             future_time = start_time + timedelta(hours=step)
             hour = future_time.hour
@@ -126,8 +152,11 @@ class LahoreSmogPredictor:
             pred_aqi = calculate_us_aqi(pred_pm25)
             cat = get_aqi_category(pred_aqi)
             
-            time_label = future_time.strftime("%I %p").lstrip('0')
+            time_label = f"{hour:02d}:00"
+            if hour == 0:
+                time_label = f"{future_time.strftime('%a')} 00:00"
             day_label = future_time.strftime("%a")
+            weather_icon = "sunny" if (6 <= hour <= 17) else "clear-night"
             
             detail = cat['detail']
             if 6 <= hour <= 9:
@@ -145,6 +174,11 @@ class LahoreSmogPredictor:
                 "hour": hour,
                 "predicted_pm25": round(pred_pm25, 1),
                 "predicted_aqi": pred_aqi,
+                "temperature": int(round(temp)),
+                "humidity": int(round(humidity)),
+                "wind_speed": int(round(wind_speed)),
+                "wind_direction": int(round(wind_dir)),
+                "weather_icon": weather_icon,
                 "status": cat['status'],
                 "color": cat['color'],
                 "detail": detail

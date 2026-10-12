@@ -128,6 +128,11 @@ async function fetchAndSyncLiveLahoreData() {
             ? aiResult.summary_24h.insight
             : 'AI model projects diurnal variation with elevated levels during evening traffic inversion (07:00 PM - 10:00 PM).';
 
+          // Persist full hourly meteorological projections into SQLite
+          if (aiResult && aiResult.hourly_72h) {
+            await saveHourlyForecastToSql(aiResult.hourly_72h);
+          }
+
           // Update SQLite Database
           await dbRun(`
             UPDATE dashboard_metrics
@@ -170,6 +175,10 @@ async function fetchAndSyncLiveLahoreData() {
           ? aiResult.summary_24h.insight 
           : 'Random Forest model indicates diurnal smog variation with peak inversion between 07:30 - 09:30 AM.';
 
+        if (aiResult && aiResult.hourly_72h) {
+          await saveHourlyForecastToSql(aiResult.hourly_72h);
+        }
+
         await dbRun(`
           UPDATE dashboard_metrics
           SET current_aqi = ?, current_status = ?, pm25_level = ?, who_multiplier = ?, 
@@ -187,35 +196,79 @@ async function fetchAndSyncLiveLahoreData() {
   return null;
 }
 
+// Persist full hourly projections array into SQLite database
+async function saveHourlyForecastToSql(hourlyArray) {
+  if (!hourlyArray || !Array.isArray(hourlyArray) || hourlyArray.length === 0) return;
+  try {
+    await dbRun('DELETE FROM hourly_forecast');
+    for (const h of hourlyArray) {
+      await dbRun(`
+        INSERT INTO hourly_forecast 
+        (step, time_label, day_label, timestamp, aqi, pm25, temperature, humidity, wind_speed, wind_direction, weather_icon, status, color, detail)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        h.step,
+        h.time_label,
+        h.day_label || '',
+        h.timestamp,
+        h.predicted_aqi,
+        h.predicted_pm25,
+        h.temperature !== undefined ? h.temperature : 25,
+        h.humidity !== undefined ? h.humidity : 45,
+        h.wind_speed !== undefined ? h.wind_speed : 8,
+        h.wind_direction !== undefined ? h.wind_direction : 110,
+        h.weather_icon || 'sunny',
+        h.status,
+        h.color,
+        h.detail || ''
+      ]);
+    }
+    console.log(`[SQL Sync] Persisted ${hourlyArray.length} hourly forecast steps into SQLite table.`);
+  } catch (err) {
+    console.error('Failed to save hourly forecast to SQL:', err.message);
+  }
+}
+
 // Retrieve complete overview state from SQL + AI Core
 async function getDashboardOverviewData() {
   const metrics = await dbGet('SELECT * FROM dashboard_metrics ORDER BY id DESC LIMIT 1');
   const alertAreas = await dbAll('SELECT * FROM high_alert_areas ORDER BY aqi DESC');
   const healthTrends = await dbAll('SELECT * FROM health_exposure_trends ORDER BY order_idx ASC');
   const insights = await dbAll('SELECT * FROM health_insights ORDER BY id ASC');
+  let hourlyForecast = await dbAll('SELECT * FROM hourly_forecast ORDER BY step ASC');
 
-  let currentAqi = metrics ? metrics.current_aqi : 165;
-  let currentPm25 = metrics ? metrics.pm25_level : 82.0;
+  let currentAqi = metrics ? metrics.current_aqi : 81;
+  let currentPm25 = metrics ? metrics.pm25_level : 25.2;
 
-  // Fetch fresh 72h curve from AI Core
-  const aiResult = await fetchAiForecastFromCore(currentPm25, currentAqi);
+  // Fetch fresh 72h curve from AI Core if cache expired or table empty
+  let aiResult = null;
+  if (!hourlyForecast || hourlyForecast.length === 0) {
+    aiResult = await fetchAiForecastFromCore(currentPm25, currentAqi);
+    if (aiResult && aiResult.hourly_72h) {
+      await saveHourlyForecastToSql(aiResult.hourly_72h);
+      hourlyForecast = await dbAll('SELECT * FROM hourly_forecast ORDER BY step ASC');
+    }
+  } else {
+    aiResult = await fetchAiForecastFromCore(currentPm25, currentAqi);
+  }
 
   return {
     metrics: metrics || {
       city_name: 'Lahore',
-      current_aqi: 165,
-      current_status: 'Unhealthy',
-      pm25_level: 82.0,
-      who_multiplier: 16.4,
-      forecast_24h_aqi: 180,
+      current_aqi: 81,
+      current_status: 'Moderate',
+      pm25_level: 25.2,
+      who_multiplier: 5.0,
+      forecast_24h_aqi: 95,
       forecast_24h_trend: 'Expected to rise',
-      model_insight: 'Random Forest model indicates a 22% spike in PM2.5 levels between 6:00 PM and 10:00 PM today.',
+      model_insight: 'AI model projects diurnal variation with elevated levels during evening traffic inversion.',
       system_status: 'All Models Online'
     },
     highAlertAreas: alertAreas || [],
     healthTrends: healthTrends || [],
     healthInsights: insights || [],
-    aiForecast: aiResult
+    aiForecast: aiResult,
+    hourlyForecast: hourlyForecast || []
   };
 }
 

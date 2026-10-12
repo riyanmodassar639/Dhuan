@@ -97,6 +97,28 @@ async function initDatabase() {
     )
   `);
 
+  // 5. Hourly AI Forecast Table (Full 24h - 72h meteorological projection)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS hourly_forecast (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      step INTEGER NOT NULL,
+      time_label TEXT NOT NULL,
+      day_label TEXT,
+      timestamp TEXT NOT NULL,
+      aqi INTEGER NOT NULL,
+      pm25 REAL NOT NULL,
+      temperature INTEGER,
+      humidity INTEGER,
+      wind_speed INTEGER,
+      wind_direction INTEGER,
+      weather_icon TEXT,
+      status TEXT NOT NULL,
+      color TEXT NOT NULL,
+      detail TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed default authentic Lahore data if empty
   const metricsCount = await dbGet('SELECT COUNT(*) as count FROM dashboard_metrics');
   if (metricsCount.count === 0) {

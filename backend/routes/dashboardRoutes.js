@@ -50,4 +50,18 @@ router.get('/alerts', async (req, res) => {
   }
 });
 
+// GET /api/dashboard/hourly-forecast - Hourly AI meteorological projections from SQLite
+router.get('/hourly-forecast', async (req, res) => {
+  try {
+    const data = await getDashboardOverviewData();
+    res.json({
+      success: true,
+      count: data.hourlyForecast.length,
+      hourlyForecast: data.hourlyForecast
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

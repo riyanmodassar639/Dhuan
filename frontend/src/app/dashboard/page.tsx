@@ -5,6 +5,7 @@ import { BrainCircuit, Activity, AlertTriangle, MapPin, Navigation, Map as MapIc
 import Link from 'next/link';
 import ForecastChartWidget from '@/components/ForecastChart';
 import HealthGraphWidget from '@/components/HealthGraph';
+import HourlyForecastWidget, { HourlyForecastItem } from '@/components/HourlyForecastWidget';
 
 interface DashboardMetrics {
   city_name: string;
@@ -77,6 +78,7 @@ export default function DashboardOverview() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [aiForecast, setAiForecast] = useState<any>(null);
+  const [hourlyForecast, setHourlyForecast] = useState<HourlyForecastItem[]>([]);
 
   // Fetch verified data from Node.js + SQLite backend
   const fetchDashboardData = async () => {
@@ -102,6 +104,11 @@ export default function DashboardOverview() {
         }
         if (data.aiForecast) {
           setAiForecast(data.aiForecast);
+        }
+        if (data.hourlyForecast && data.hourlyForecast.length > 0) {
+          setHourlyForecast(data.hourlyForecast);
+        } else if (data.aiForecast && data.aiForecast.hourly_72h) {
+          setHourlyForecast(data.aiForecast.hourly_72h);
         }
         setIsConnected(true);
         setLastSyncTime(new Date().toLocaleTimeString());
@@ -226,6 +233,12 @@ export default function DashboardOverview() {
           </div>
         </div>
       </div>
+
+      {/* Hourly AI Meteorological & AQI Forecast Widget (IQAir-Style Model) */}
+      <HourlyForecastWidget 
+        hourlyData={hourlyForecast} 
+        cityName={metrics.city_name} 
+      />
 
       {/* Spatial AI Routing Model Banner */}
       <div className="bg-slate-900 rounded-3xl p-8 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-8 text-white shadow-xl border border-slate-800 relative overflow-hidden group">
