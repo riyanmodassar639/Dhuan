@@ -9,7 +9,7 @@ import {
   Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, 
   Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, 
   Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, 
-  AlertTriangle, Calendar, Bell, Layers, RotateCw, Eye, EyeOff, Radio, Sparkles
+  AlertTriangle, Calendar, Bell, Layers, RotateCw, Eye, EyeOff, Radio, Sparkles, Palette
 } from 'lucide-react';
 import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 import { getApiEndpoint } from '@/lib/api';
@@ -453,6 +453,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [showStationsLayer, setShowStationsLayer] = useState(true);
   const [smogOverlayUrl, setSmogOverlayUrl] = useState<string>("");
   const [mapZoom, setMapZoom] = useState<number>(12);
+  const [showColorGuideModal, setShowColorGuideModal] = useState<boolean>(false);
 
   // Live Journey Environment & Smog state during Navigation
   const [navCurrentArea, setNavCurrentArea] = useState<string>("Current Corridor");
@@ -2523,6 +2524,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             <span>{stations.length} Stations</span>
           </button>
 
+          {/* Color Guide Modal Button */}
+          <button
+            onClick={() => setShowColorGuideModal(true)}
+            title="View AQI Colors & Smog Severity Scale"
+            className="px-3 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-[0_4px_16px_rgba(0,0,0,0.12)] border active:scale-95 bg-white/95 backdrop-blur-md text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
+          >
+            <Palette className="w-3.5 h-3.5 text-purple-600" />
+            <span>Color Guide</span>
+          </button>
 
           {/* Manual Refresh Button */}
           <button
@@ -3544,8 +3554,16 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
-      {/* Mobile Layer Toggle (Above Compass) */}
+      {/* Mobile Layer & Color Guide Controls (Above Compass) */}
       <div className={`md:hidden absolute z-[1000] flex flex-col gap-2 ${fullScreen ? 'bottom-40 right-6' : 'bottom-20 right-6'}`}>
+        <button
+          onClick={() => setShowColorGuideModal(true)}
+          title="AQI Color Guide"
+          className="w-12 h-12 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] border flex items-center justify-center transition-all bg-white/95 backdrop-blur-md text-purple-600 border-slate-200 active:scale-95"
+        >
+          <Palette className="w-5 h-5" />
+        </button>
+
         <button
           onClick={() => setShowSmogLayer(prev => !prev)}
           title={showSmogLayer ? "Hide Smog Layer" : "Show Smog Layer"}
@@ -3570,6 +3588,227 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            <path d="M12 21.75l-4.5-10.5 4.5 2.25 4.5-2.25-4.5 10.5z" className="text-slate-400" />
         </svg>
       </div>
+
+      {/* AQI & Smog Color Guide Modal */}
+      {showColorGuideModal && (
+        <div className="fixed inset-0 z-[3000] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300">
+                  <Palette className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-base sm:text-lg text-white tracking-tight flex items-center gap-2">
+                    AQI & Smog Color Index Guide
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Official Scale</span>
+                  </h2>
+                  <p className="text-xs text-slate-300">
+                    فضائی معیار اور سموگ لیولز کی مکمل کلر گائیڈ اور حفاظتی ہدایات
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowColorGuideModal(false)}
+                className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors active:scale-95"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Current Live Context Banner */}
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-900">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>Lahore Live Status:</span>
+                <span className="px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-950 font-bold font-mono">81 AQI • Moderate Haze</span>
+              </div>
+              <span className="text-[11px] text-amber-700">All 14 Live Ground Stations Connected</span>
+            </div>
+
+            {/* Modal Content - Scrollable Color Tier Cards */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-3.5 divide-y divide-slate-100 max-h-[calc(90vh-180px)]">
+              {/* Tier 1: Good (0-50) */}
+              <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200/60 hover:bg-emerald-50 transition-colors">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-emerald-500/30 shrink-0">
+                    0-50
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-emerald-950">Good / عمدہ اور صاف ہوا</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">Green (#10b981)</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                      Fine Particulate PM2.5: <span className="font-mono font-bold text-emerald-700">0 – 12.0 µg/m³</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      ہوا مکمل طور پر صاف ہے۔ بیرونی سرگرمیاں، کھیل اور واک کے لیے بہترین ماحول۔ کسی حفاظتی ماسک کی ضرورت نہیں۔
+                    </p>
+                  </div>
+                </div>
+                <div className="self-end sm:self-center shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white px-2.5 py-1 rounded-xl border border-emerald-200 shadow-sm">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    100% Safe
+                  </span>
+                </div>
+              </div>
+
+              {/* Tier 2: Moderate (51-100) */}
+              <div className="pt-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-amber-50/60 border-2 border-amber-300 hover:bg-amber-50 transition-colors shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-amber-500/30 shrink-0">
+                    51-100
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-amber-950">Moderate Haze / معتدل غبار</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-300">Yellow / Amber (#f59e0b)</span>
+                      <span className="text-[9px] font-bold bg-amber-600 text-white px-1.5 py-0.5 rounded uppercase">Current Lahore</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                      Fine Particulate PM2.5: <span className="font-mono font-bold text-amber-700">12.1 – 35.4 µg/m³</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      عام لوگوں کے لیے محفوظ ہے، البتہ شام کو انورژن کی وجہ سے باریک گرد میں اضافہ ہو سکتا ہے۔ الرجی اور دمے کے مریض احتیاط کریں۔
+                    </p>
+                  </div>
+                </div>
+                <div className="self-end sm:self-center shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-white px-2.5 py-1 rounded-xl border border-amber-300 shadow-sm">
+                    <Activity className="w-3.5 h-3.5 text-amber-500" />
+                    Acceptable
+                  </span>
+                </div>
+              </div>
+
+              {/* Tier 3: Unhealthy for Sensitive Groups (101-150) */}
+              <div className="pt-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-orange-50/50 border border-orange-200/70 hover:bg-orange-50 transition-colors">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-orange-500/30 shrink-0">
+                    101-150
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-orange-950">Sensitive Caution / حساس افراد کے لیے غیر صحت بخش</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 font-bold border border-orange-200">Orange (#f97316)</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                      Fine Particulate PM2.5: <span className="font-mono font-bold text-orange-700">35.5 – 55.4 µg/m³</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      بچے، بزرگ اور سانس کے مریض باہر نکلتے وقت ماسک استعمال کریں۔ طویل بیرونی مشقت سے گریز کریں۔
+                    </p>
+                  </div>
+                </div>
+                <div className="self-end sm:self-center shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-700 bg-white px-2.5 py-1 rounded-xl border border-orange-200 shadow-sm">
+                    <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
+                    Mask Advised
+                  </span>
+                </div>
+              </div>
+
+              {/* Tier 4: Unhealthy / Dense Smog (151-200) */}
+              <div className="pt-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200/70 hover:bg-rose-50 transition-colors">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-rose-500/30 shrink-0">
+                    151-200
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-rose-950">Dense Smog Inversion / مضر صحت سموگ</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold border border-rose-200">Red / Rose (#f43f5e)</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                      Fine Particulate PM2.5: <span className="font-mono font-bold text-rose-700">55.5 – 150.4 µg/m³</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      عام شہری بھی گلے کی خراش اور آنکھوں کی جلن محسوس کر سکتے ہیں۔ N95 ماسک لازمی ہے اور AI روٹ تبدیلی تجویز کرتا ہے۔
+                    </p>
+                  </div>
+                </div>
+                <div className="self-end sm:self-center shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-white px-2.5 py-1 rounded-xl border border-rose-200 shadow-sm">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                    N95 Mask
+                  </span>
+                </div>
+              </div>
+
+              {/* Tier 5: Very Unhealthy (201-300) */}
+              <div className="pt-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-purple-50/50 border border-purple-200/70 hover:bg-purple-50 transition-colors">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-purple-500/30 shrink-0">
+                    201-300
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-purple-950">Severe Smog / انتہائی غیر صحت بخش سموگ</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold border border-purple-200">Purple (#a855f7)</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                      Fine Particulate PM2.5: <span className="font-mono font-bold text-purple-700">150.5 – 250.4 µg/m³</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      شدید سموگ کی لہر۔ کھڑکیاں اور دروازے بند رکھیں۔ گاڑی میں ائیر ری سرکولیشن آن رکھیں اور بلا ضرورت سفر سے گریز کریں۔
+                    </p>
+                  </div>
+                </div>
+                <div className="self-end sm:self-center shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-white px-2.5 py-1 rounded-xl border border-purple-200 shadow-sm">
+                    <AlertTriangle className="w-3.5 h-3.5 text-purple-600" />
+                    Severe Alert
+                  </span>
+                </div>
+              </div>
+
+              {/* Tier 6: Hazardous / High Alert (301-500+) */}
+              <div className="pt-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-rose-950 text-white border-2 border-rose-800 hover:bg-rose-900 transition-colors shadow-lg">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center font-bold text-sm shadow-md shrink-0 border border-rose-400">
+                    301+
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-white">Hazardous / High Alert Emergency (شدید خطرناک)</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-900 text-rose-200 font-bold border border-rose-700">Dark Crimson / Maroon (#881337)</span>
+                    </div>
+                    <p className="text-xs text-rose-200 mt-0.5 font-medium">
+                      Fine Particulate PM2.5: <span className="font-mono font-bold text-white">250.5+ µg/m³</span>
+                    </p>
+                    <p className="text-[11px] text-rose-200 mt-1">
+                      ایمرجنسی ہائی الرٹ۔ تمام آبادی کے لیے زہریلی ہوا ہے۔ گھروں کے اندر ائیر پیوریفائر چلائیں اور فوری لاک ڈاؤن یا شیلٹر ہدایات پر عمل کریں۔
+                    </p>
+                  </div>
+                </div>
+                <div className="self-end sm:self-center shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-200 bg-rose-900/90 px-2.5 py-1 rounded-xl border border-rose-700 shadow-sm">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                    High Alert Emergency
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer with AI Intelligence Note */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                <span>AI روٹنگ ماڈل ان کلرز اور سینسرز کے مطابق سب سے محفوظ راستہ فراہم کرتا ہے۔</span>
+              </div>
+              <button
+                onClick={() => setShowColorGuideModal(false)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-slate-900/10"
+              >
+                Close / سمجھ گیا
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
