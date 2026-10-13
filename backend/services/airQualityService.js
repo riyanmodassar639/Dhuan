@@ -278,11 +278,11 @@ async function syncSpatialAreasToSql(pm25 = 25.2, aqi = 81) {
     { name: 'Multan Road (Thokar)', zone: 'MR-TNB', w: 1.14, lat: 31.4420, lng: 74.2120 },
     { name: 'Sabzazar (Bund Road)', zone: 'SB-BND', w: 1.11, lat: 31.5260, lng: 74.2480 },
     { name: 'Kahna (Ferozepur South)', zone: 'KH-FZP', w: 1.09, lat: 31.3680, lng: 74.3650 },
-    { name: 'Wagha & Manawan (GT East)', zone: 'WG-MNW', w: 1.05, lat: 31.5950, lng: 74.4780 },
+    { name: 'Wagha & Manawan (GT East)', zone: 'WG-MNW', w: 1.05, lat: 31.5920, lng: 74.5180 },
     { name: 'Gulberg (Syed Maratib Ali)', zone: 'GL-SMA', w: 1.01, lat: 31.5150, lng: 74.3480 },
     { name: 'US Consulate (Empress Rd)', zone: 'US-CONS', w: 1.00, lat: 31.5560, lng: 74.3620 },
     { name: 'Mall Road (Anarkali)', zone: 'MR-ANK', w: 0.97, lat: 31.5720, lng: 74.3080 },
-    { name: 'Barki Road (Paragon)', zone: 'BR-PGN', w: 0.95, lat: 31.5280, lng: 74.4420 },
+    { name: 'Barki Road (Paragon)', zone: 'BR-PGN', w: 0.95, lat: 31.4960, lng: 74.4780 },
     { name: 'Johar Town (Doctor\'s Hospital)', zone: 'JT-DH', w: 0.93, lat: 31.4697, lng: 74.2760 },
     { name: 'Model Town (A-Block)', zone: 'MT-A', w: 0.89, lat: 31.4820, lng: 74.3220 },
     { name: 'Bahria Town & Raiwind', zone: 'BT-RWD', w: 0.88, lat: 31.3620, lng: 74.1980 },
@@ -316,8 +316,9 @@ async function getDashboardOverviewData() {
   let currentAqi = 81;
   let currentPm25 = 25.2;
 
-  // Refresh alert areas if empty, fewer than 14 stations, or containing legacy stale numbers
-  if (!alertAreas || alertAreas.length < 14 || alertAreas[0].aqi > 140) {
+  // Refresh alert areas if empty, fewer than 14 stations, or containing legacy stale coordinates/numbers
+  const waghaSt = alertAreas ? alertAreas.find(a => a.zone_code === 'WG-MNW') : null;
+  if (!alertAreas || alertAreas.length < 14 || alertAreas[0].aqi > 140 || (waghaSt && waghaSt.lng < 74.50)) {
     alertAreas = await syncSpatialAreasToSql(currentPm25, currentAqi);
   }
 

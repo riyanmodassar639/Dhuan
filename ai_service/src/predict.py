@@ -386,8 +386,8 @@ class LahoreSmogPredictor:
             {
                 "name": "Wagha & Manawan (GT East)",
                 "zone_code": "WG-MNW",
-                "lat": 31.5950,
-                "lng": 74.4780,
+                "lat": 31.5920,
+                "lng": 74.5180,
                 "weight": 1.05,
                 "sector": "Eastern Border & GT Road Corridor",
                 "characteristic": "Cross-border freight corridor & eastern agricultural plain"
@@ -422,8 +422,8 @@ class LahoreSmogPredictor:
             {
                 "name": "Barki Road (Paragon)",
                 "zone_code": "BR-PGN",
-                "lat": 31.5280,
-                "lng": 74.4420,
+                "lat": 31.4960,
+                "lng": 74.4780,
                 "weight": 0.95,
                 "sector": "Eastern Suburban & Peri-Urban",
                 "characteristic": "Peri-urban development with agricultural fringe"

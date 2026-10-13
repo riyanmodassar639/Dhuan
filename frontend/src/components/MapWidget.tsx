@@ -105,12 +105,12 @@ export const DEFAULT_STATIONS: GroundStation[] = [
     id: 6,
     name: 'Wagha & Manawan (GT East)',
     zone_code: 'WG-MNW',
-    aqi: 82,
+    aqi: 81,
     pm25: 26.5,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.5950,
-    lng: 74.4780,
+    lat: 31.5920,
+    lng: 74.5180,
     sector: 'Eastern Border & GT Road Corridor',
     detail: 'Cross-border freight corridor & eastern agricultural plain',
     advisory: 'Moderate dust and freight exhaust along eastern GT Road.'
@@ -165,8 +165,8 @@ export const DEFAULT_STATIONS: GroundStation[] = [
     pm25: 23.9,
     status: 'Moderate Haze',
     color_tier: 'amber',
-    lat: 31.5280,
-    lng: 74.4420,
+    lat: 31.4960,
+    lng: 74.4780,
     sector: 'Eastern Suburban & Peri-Urban',
     detail: 'Peri-urban development with agricultural fringe',
     advisory: 'Clean open dispersion during daytime convective hours.'
@@ -229,48 +229,73 @@ export const DEFAULT_STATIONS: GroundStation[] = [
   }
 ];
 
-// Exact Administrative & Geographic Boundary Polygon of Lahore District
-// Strictly follows River Ravi (NW/West), GT Road border south of Kala Shah Kaku (North),
-// Pakistan-India International Border from Wagha to Bedian (East), and Raiwind/Kahna/Sundar border (South)
+// Full Metropolitan Footprint of Greater Lahore (100% full-opacity core before soft atmospheric feathering)
 export const LAHORE_BOUNDARY_POLYGON: [number, number][] = [
-  // North (Shahdara, Kot Abdul Malik East, Lakhodher, Manawan North)
-  [31.648, 74.262],
-  [31.656, 74.295],
-  [31.658, 74.338],
-  [31.654, 74.385],
-  [31.646, 74.435],
-  [31.635, 74.482],
-  // East (Strictly along Pakistan-India International Border: Wagha, Dograi, Barki, Hudiara, Padhana, Bedian)
-  [31.608, 74.522],
-  [31.580, 74.518],
-  [31.552, 74.512],
-  [31.522, 74.506],
-  [31.490, 74.510],
-  [31.458, 74.504],
-  [31.425, 74.492],
-  [31.392, 74.472],
-  // South (Bedian South, Central Park, Kahna, Sua Asil, Raiwind, Sundar)
-  [31.362, 74.435],
-  [31.338, 74.390],
-  [31.320, 74.340],
-  [31.298, 74.285],
-  [31.295, 74.235],
-  [31.312, 74.185],
-  [31.340, 74.155],
-  // West & North-West (Along River Ravi corridor: Mohlanwal, Chung, Thokar West, Sabzazar, Sagiyan, Shahdara)
-  [31.378, 74.162],
-  [31.415, 74.180],
-  [31.452, 74.202],
-  [31.490, 74.218],
-  [31.528, 74.232],
-  [31.565, 74.242],
-  [31.608, 74.250],
+  // North (Shahdara, Ferozewala, Lakhodher, Manawan North)
+  [31.662, 74.250],
+  [31.672, 74.305],
+  [31.668, 74.375],
+  [31.658, 74.450],
+  [31.640, 74.515],
+  // East (Wagha, Dograi, Barki, Hudiara, Padhana, Bedian)
+  [31.605, 74.555],
+  [31.560, 74.545],
+  [31.515, 74.535],
+  [31.470, 74.530],
+  [31.425, 74.515],
+  [31.380, 74.490],
+  // South (Bedian South, Central Park, Kahna, Sua Asil, Raiwind, Sundar, Manga Mandi)
+  [31.335, 74.445],
+  [31.305, 74.395],
+  [31.285, 74.335],
+  [31.272, 74.265],
+  [31.275, 74.195],
+  [31.298, 74.142],
+  [31.338, 74.132],
+  // West & North-West (Mohlanwal, Chung, Thokar West, Sabzazar, Al-Jalil Garden, Kot Abdul Malik)
+  [31.385, 74.150],
+  [31.435, 74.172],
+  [31.485, 74.195],
+  [31.535, 74.205],
+  [31.585, 74.218],
+  [31.630, 74.232],
 ];
 
+// Generous canvas bounds so the soft Gaussian outer plume fades completely to 0% before reaching the edge
 export const LAHORE_HEATMAP_BOUNDS: [[number, number], [number, number]] = [
-  [31.285, 74.145],
-  [31.668, 74.532]
+  [31.14, 73.96],
+  [31.82, 74.76]
 ];
+
+// Ray-casting point-in-polygon check + exact distance (in km) outside the Lahore footprint for borderless feathering
+export const getDistanceOutsideLahoreKm = (lat: number, lng: number): number => {
+  let inside = false;
+  const n = LAHORE_BOUNDARY_POLYGON.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const yi = LAHORE_BOUNDARY_POLYGON[i][0], xi = LAHORE_BOUNDARY_POLYGON[i][1];
+    const yj = LAHORE_BOUNDARY_POLYGON[j][0], xj = LAHORE_BOUNDARY_POLYGON[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  if (inside) return 0;
+
+  let minSqDistKm = Infinity;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const ay = LAHORE_BOUNDARY_POLYGON[j][0], ax = LAHORE_BOUNDARY_POLYGON[j][1];
+    const by = LAHORE_BOUNDARY_POLYGON[i][0], bx = LAHORE_BOUNDARY_POLYGON[i][1];
+    const dx = (bx - ax) * 96.0;
+    const dy = (by - ay) * 111.0;
+    const px = (lng - ax) * 96.0;
+    const py = (lat - ay) * 111.0;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, (px * dx + py * dy) / lenSq)) : 0;
+    const distX = px - t * dx;
+    const distY = py - t * dy;
+    const sqDist = distX * distX + distY * distY;
+    if (sqDist < minSqDistKm) minSqDistKm = sqDist;
+  }
+  return Math.sqrt(minSqDistKm);
+};
 
 // Continuous, high-contrast RGBA color interpolation for per-pixel AI spatial smog rendering
 export const getHeatmapRgba = (aqi: number): [number, number, number, number] => {
@@ -280,32 +305,32 @@ export const getHeatmapRgba = (aqi: number): [number, number, number, number] =>
     return [lerp(16, 132, t), lerp(185, 204, t), lerp(129, 22, t), 115];
   }
   if (aqi <= 75) {
-    // Low-Moderate residential zones (71-75 AQI): Soft Yellow-Green to Lemon Gold
+    // Low-Moderate residential zones (71-75 AQI): Soft Yellow-Green to Warm Sunlight Gold
     const t = (aqi - 50) / 25;
-    return [lerp(148, 248, t), lerp(212, 200, t), lerp(32, 20, t), lerp(118, 134, t)];
+    return [lerp(154, 250, t), lerp(214, 198, t), lerp(36, 22, t), lerp(118, 136, t)];
   }
   if (aqi <= 83) {
-    // Mid-Moderate urban zones (76-83 AQI): Lemon Gold to Warm Amber
+    // Mid-Moderate urban zones (76-83 AQI): Sunlight Gold to Rich Amber
     const t = (aqi - 75) / 8;
-    return [lerp(248, 245, t), lerp(200, 135, t), lerp(20, 14, t), lerp(134, 152, t)];
+    return [lerp(250, 245, t), lerp(198, 132, t), lerp(22, 14, t), lerp(136, 154, t)];
   }
   if (aqi <= 100) {
-    // Upper-Moderate industrial/transit hotspots (84-100 AQI): Warm Amber to Deep Industrial Orange-Red
+    // Upper-Moderate industrial/transit hotspots (84-100 AQI): Rich Amber to Deep Industrial Orange-Red
     const t = (aqi - 83) / 17;
-    return [lerp(245, 226, t), lerp(135, 58, t), lerp(14, 18, t), lerp(152, 175, t)];
+    return [lerp(245, 226, t), lerp(132, 54, t), lerp(14, 18, t), lerp(154, 178, t)];
   }
   if (aqi <= 150) {
     // Smog Inversion Forming (101-150 AQI): Deep Orange-Red to Crimson Rose
     const t = (aqi - 100) / 50;
-    return [lerp(226, 225, t), lerp(58, 29, t), lerp(18, 72, t), 182];
+    return [lerp(226, 225, t), lerp(54, 29, t), lerp(18, 72, t), 184];
   }
   if (aqi <= 200) {
     // Dense Smog Inversion (151-200 AQI): Crimson Rose to Severe Purple
     const t = (aqi - 150) / 50;
-    return [lerp(225, 147, t), lerp(29, 51, t), lerp(72, 234, t), 192];
+    return [lerp(225, 147, t), lerp(29, 51, t), lerp(72, 234, t), 194];
   }
   const t = Math.min(1, (aqi - 200) / 100);
-  return [lerp(147, 136, t), lerp(51, 19, t), lerp(234, 55, t), 205];
+  return [lerp(147, 136, t), lerp(51, 19, t), lerp(234, 55, t), 206];
 };
 
 export const getAqiColor = (aqi: number) => {
@@ -555,12 +580,31 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     return Math.round((sumWeightedPm25 / sumWeight) * 10) / 10;
   }, [stations, cityPm25]);
 
-  // Generate high-resolution per-pixel AI Spatial Smog Heatmap strictly clipped to Lahore District Boundary Polygon
+  const getNearestStationInfo = useCallback((lat: number, lng: number) => {
+    const list = stations && stations.length > 0 ? stations : DEFAULT_STATIONS;
+    let nearest = list[0];
+    let minDistKm = Infinity;
+    for (const s of list) {
+      const dLatKm = (lat - s.lat) * 111.0;
+      const dLngKm = (lng - s.lng) * 96.0;
+      const dKm = Math.sqrt(dLatKm * dLatKm + dLngKm * dLngKm);
+      if (dKm < minDistKm) {
+        minDistKm = dKm;
+        nearest = s;
+      }
+    }
+    return {
+      station: nearest,
+      distanceKm: Math.round(minDistKm * 10) / 10
+    };
+  }, [stations]);
+
+  // Generate high-resolution per-pixel AI Spatial Smog Heatmap with natural borderless atmospheric feathering
   useEffect(() => {
     if (typeof window === 'undefined' || !mounted) return;
     try {
-      const gridW = 160;
-      const gridH = 160;
+      const gridW = 180;
+      const gridH = 180;
       const rawCanvas = document.createElement('canvas');
       rawCanvas.width = gridW;
       rawCanvas.height = gridH;
@@ -575,41 +619,42 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         const lat = maxLat - (py / (gridH - 1)) * (maxLat - minLat);
         for (let px = 0; px < gridW; px++) {
           const lng = minLng + (px / (gridW - 1)) * (maxLng - minLng);
+          const distOutKm = getDistanceOutsideLahoreKm(lat, lng);
+          const idx = (py * gridW + px) * 4;
+
+          if (distOutKm >= 14.5) {
+            data[idx + 3] = 0;
+            continue;
+          }
+
+          let featherAlpha = 1.0;
+          if (distOutKm > 2.2) {
+            const t = Math.min(1, (distOutKm - 2.2) / 12.3);
+            featherAlpha = Math.pow(0.5 * (1 + Math.cos(Math.PI * t)), 1.35);
+          }
+
           const aqi = getSpatialAqi(lat, lng);
           const [r, g, b, a] = getHeatmapRgba(aqi);
-          const idx = (py * gridW + px) * 4;
           data[idx] = r;
           data[idx + 1] = g;
           data[idx + 2] = b;
-          data[idx + 3] = a;
+          data[idx + 3] = Math.round(a * featherAlpha);
         }
       }
       rawCtx.putImageData(imgData, 0, 0);
 
-      const outW = 600;
-      const outH = 600;
+      const outW = 680;
+      const outH = 680;
       const outCanvas = document.createElement('canvas');
       outCanvas.width = outW;
       outCanvas.height = outH;
       const outCtx = outCanvas.getContext('2d');
       if (!outCtx) return;
 
-      outCtx.save();
-      outCtx.beginPath();
-      LAHORE_BOUNDARY_POLYGON.forEach(([pLat, pLng], i) => {
-        const x = ((pLng - minLng) / (maxLng - minLng)) * outW;
-        const y = ((maxLat - pLat) / (maxLat - minLat)) * outH;
-        if (i === 0) outCtx.moveTo(x, y);
-        else outCtx.lineTo(x, y);
-      });
-      outCtx.closePath();
-      outCtx.clip();
-
       outCtx.imageSmoothingEnabled = true;
       outCtx.imageSmoothingQuality = 'high';
-      outCtx.filter = 'blur(8px)';
+      outCtx.filter = 'blur(20px)';
       outCtx.drawImage(rawCanvas, 0, 0, outW, outH);
-      outCtx.restore();
 
       setSmogOverlayUrl(outCanvas.toDataURL('image/png'));
     } catch (err) {
@@ -1282,6 +1327,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     const aqiVal = getSpatialAqi(lat, lon);
     const pm25Val = getSpatialPm25(lat, lon);
     const cat = getAqiCategory(aqiVal);
+    const nearestInfo = getNearestStationInfo(lat, lon);
 
     // Generate authentic 24-hour diurnal forecast curve grounded in AI Core
     const forecast = [];
@@ -1324,6 +1370,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       lat, lon,
       aqi: aqiVal,
       pm25: pm25Val,
+      whoMultiplier: (pm25Val / 5.0).toFixed(1),
+      nearestStationName: nearestInfo.station.name,
+      nearestStationZone: nearestInfo.station.zone_code,
+      nearestStationDist: nearestInfo.distanceKm,
       status: cat.status,
       color: cat.color,
       bg: cat.bg,
@@ -1960,27 +2010,17 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           )
         )}
 
-        {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer (100% Clipped to Lahore District Boundary) */}
+        {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer (Borderless Natural Dispersion) */}
         {showSmogLayer && (
           <Pane name="smogLayer" style={{ pointerEvents: 'none', zIndex: 400 }}>
             {smogOverlayUrl && (
               <ImageOverlay
                 url={smogOverlayUrl}
                 bounds={LAHORE_HEATMAP_BOUNDS}
-                opacity={0.88}
+                opacity={0.90}
                 zIndex={400}
               />
             )}
-            <Polygon
-              positions={LAHORE_BOUNDARY_POLYGON}
-              pathOptions={{
-                color: '#d97706',
-                weight: 1.5,
-                opacity: 0.45,
-                dashArray: '6, 6',
-                fill: false
-              }}
-            />
           </Pane>
         )}
 
@@ -2887,11 +2927,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                  Environmental Status
                </h3>
                
-               <div className={`p-5 rounded-2xl border ${selectedPlace.border} ${selectedPlace.bg} flex flex-col items-center justify-center mb-4 relative overflow-hidden`}>
+               <div className={`p-5 rounded-2xl border ${selectedPlace.border} ${selectedPlace.bg} flex flex-col items-center justify-center mb-3 relative overflow-hidden`}>
                  <div className="absolute -right-4 -top-4 opacity-5">
                    <Activity className="w-32 h-32" />
                  </div>
-                 <span className="text-4xl font-black tracking-tighter mb-1" style={{ color: selectedPlace.color.replace('text-', '') }}>
+                 <span className={`text-4xl font-black tracking-tighter mb-1 ${selectedPlace.color}`}>
                    {selectedPlace.aqi}
                  </span>
                  <span className={`text-sm font-bold ${selectedPlace.color}`}>
@@ -2899,15 +2939,38 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                  </span>
                </div>
 
-               <div className="space-y-3 mt-5">
+               {selectedPlace.pm25 !== undefined && (
+                 <div className="grid grid-cols-2 gap-2.5 mb-4">
+                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">PM2.5 Density</span>
+                     <div className="text-lg font-black text-slate-900 mt-0.5">
+                       {selectedPlace.pm25} <span className="text-xs font-bold text-slate-400">µg/m³</span>
+                     </div>
+                     <span className="text-[10px] font-bold text-rose-600">
+                       {selectedPlace.whoMultiplier || (selectedPlace.pm25 / 5.0).toFixed(1)}x WHO Limit
+                     </span>
+                   </div>
+                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Nearest Station</span>
+                     <div className="text-xs font-extrabold text-slate-900 mt-1 line-clamp-1">
+                       {selectedPlace.nearestStationName || 'US Consulate'}
+                     </div>
+                     <span className="text-[10px] font-semibold text-emerald-700">
+                       {selectedPlace.nearestStationDist !== undefined ? `${selectedPlace.nearestStationDist} km away` : 'Live Ground Ref'}
+                     </span>
+                   </div>
+                 </div>
+               )}
+
+               <div className="space-y-3 mt-4">
                  <div className="flex items-start gap-3">
-                   <ShieldAlert className={`w-5 h-5 mt-0.5 ${selectedPlace.color}`} />
+                   <ShieldAlert className={`w-5 h-5 mt-0.5 shrink-0 ${selectedPlace.color}`} />
                    <div>
                      <h4 className="text-sm font-bold text-slate-900">Health Recommendation</h4>
                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                       {selectedPlace.aqi > 150 
+                       {selectedPlace.advisory || (selectedPlace.aqi > 150 
                          ? "Avoid prolonged outdoor exertion. Sensitive groups should remain indoors with air purifiers active." 
-                         : "Air quality is acceptable. However, unusually sensitive individuals should consider limiting outdoor exertion."}
+                         : "Air quality is acceptable. However, unusually sensitive individuals should consider limiting outdoor exertion.")}
                      </p>
                    </div>
                  </div>
