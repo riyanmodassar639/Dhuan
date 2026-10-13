@@ -212,6 +212,7 @@ export default function SmartRoutingPage() {
   const [manualTag, setManualTag] = useState('Work');
   const [manualVehicle, setManualVehicle] = useState<'car' | 'bike' | 'walk' | 'transit'>('car');
   const [manualLat, setManualLat] = useState(31.5204);
+  const [manualDay, setManualDay] = useState('Monday');
   const [manualLng, setManualLng] = useState(74.3587);
   const [photonQuery, setPhotonQuery] = useState('');
   const [photonSuggestions, setPhotonSuggestions] = useState<any[]>([]);
@@ -273,6 +274,29 @@ export default function SmartRoutingPage() {
       }
     } catch (e) {}
     fetchDestinations();
+
+    // Check if redirected from Map View with picked location
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('addFromMap') === 'true') {
+        const mapName = params.get('name') || '';
+        const mapAddress = params.get('address') || mapName;
+        const mapLat = parseFloat(params.get('lat') || '31.5204');
+        const mapLng = parseFloat(params.get('lng') || '74.3587');
+        const mapDay = params.get('day') || 'Monday';
+
+        setManualName(mapName);
+        setManualAddress(mapAddress);
+        setManualLat(mapLat);
+        setManualLng(mapLng);
+        setManualDay(mapDay);
+        if (DAYS_OF_WEEK.includes(mapDay)) {
+          setSelectedDay(mapDay);
+        }
+        setIsAddModalOpen(true);
+        window.history.replaceState({}, '', '/dashboard/routing');
+      }
+    }
   }, [fetchDestinations]);
 
   // Save changes to localStorage helper
@@ -366,7 +390,7 @@ export default function SmartRoutingPage() {
     }
   };
 
-  // Add Manual Destination into Backend database Database & Spatial Engine
+  // Add Manual Destination into Backend Database & Spatial Engine
   const handleAddManualStop = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualName.trim()) return;
@@ -379,13 +403,14 @@ export default function SmartRoutingPage() {
         lat: manualLat,
         lng: manualLng,
         time: manualTime,
-        day: selectedDay,
+        day: manualDay,
         tag: manualTag,
         vehicle: manualVehicle,
         status: 'scheduled',
         notifications: {
           enabled: true,
           leadTimeMins: 30,
+          isSilent: false,
           smogSpikeAlert: true,
           channel: 'push'
         }
@@ -399,13 +424,23 @@ export default function SmartRoutingPage() {
 
       if (res.ok) {
         const data = await res.json();
-        if (data.destination) {
-          const updated = [...allStops, data.destination];
+        const newlyAdded = data.destinations || (data.destination ? [data.destination] : []);
+        if (newlyAdded.length > 0) {
+          const updated = [...allStops, ...newlyAdded];
           setAllStops(updated);
           try {
             localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
           } catch (e) {}
-          showToast(`Destination saved! AQI: ${data.destination.aqiForecast} (${data.destination.smogStatus})`);
+
+          if (manualDay !== 'All' && selectedDay !== manualDay && DAYS_OF_WEEK.includes(manualDay)) {
+            setSelectedDay(manualDay);
+          }
+
+          showToast(
+            manualDay === 'All'
+              ? `Destination "${manualName.trim()}" added to ALL 7 days!`
+              : `Destination "${manualName.trim()}" added to ${manualDay}! Projected AQI: ${newlyAdded[0].aqiForecast}`
+          );
           setIsAddModalOpen(false);
           setManualName('');
           setManualAddress('');
@@ -422,14 +457,15 @@ export default function SmartRoutingPage() {
     }
 
     // Offline / fallback addition
-    const fallbackStop: PlannedStop = {
-      id: `stop-${Date.now()}`,
+    const targetDays = manualDay === 'All' ? DAYS_OF_WEEK : [manualDay];
+    const fallbackStops: PlannedStop[] = targetDays.map(d => ({
+      id: `dest-${Date.now()}-${d.toLowerCase().slice(0, 3)}`,
       name: manualName,
       address: manualAddress || manualName,
       lat: manualLat,
       lng: manualLng,
       time: manualTime,
-      day: selectedDay,
+      day: d,
       tag: manualTag,
       vehicle: manualVehicle,
       aqiForecast: 110,
@@ -438,15 +474,22 @@ export default function SmartRoutingPage() {
       notifications: {
         enabled: true,
         leadTimeMins: 30,
+        isSilent: false,
         smogSpikeAlert: true,
         channel: 'push'
       },
       status: 'scheduled'
-    };
-    const updated = [...allStops, fallbackStop];
+    }));
+
+    const updated = [...allStops, ...fallbackStops];
     saveStops(updated);
+    if (manualDay !== 'All' && selectedDay !== manualDay && DAYS_OF_WEEK.includes(manualDay)) {
+      setSelectedDay(manualDay);
+    }
     setIsAddModalOpen(false);
-    showToast(`Added "${fallbackStop.name}" to ${selectedDay}'s schedule!`);
+    setManualName('');
+    setManualAddress('');
+    showToast(manualDay === 'All' ? 'Added destination to ALL 7 days!' : `Added "${manualName}" to ${manualDay}!`);
   };
 
   // Toggle Notification for a Destination in database
@@ -867,7 +910,7 @@ export default function SmartRoutingPage() {
 
             {/* Manual Add Button */}
             <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => { setManualDay(selectedDay); setIsAddModalOpen(true); }}
               className="flex items-center gap-2 px-4 py-3.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-2xl font-bold text-sm shadow-xs transition-colors"
             >
               <Plus className="w-4 h-4 text-emerald-600" />
@@ -1169,92 +1212,54 @@ export default function SmartRoutingPage() {
                       </div>
                     </div>
 
-                    {/* Middle: Smart Notification Controls */}
-                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
-                      {/* Toggle notification */}
+                    {/* Right: Consolidated Controls (Notice, Sound Icon, Navigate, Cancel, Delete) */}
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 xl:pt-0 border-t xl:border-t-0 border-slate-100 justify-start xl:justify-end">
+                      {/* Notice Time */}
+                      <div className="bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200/80 flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-slate-500">Notice:</span>
+                        {[15, 30, 45].map(mins => (
+                          <button
+                            key={mins}
+                            onClick={() => updateLeadTime(stop.id, mins)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-colors ${
+                              stop.notifications?.leadTimeMins === mins
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {mins}m
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Sound / Silent Toggle Icon Button (ONLY LOGO, NO TEXT) */}
                       <button
-                        onClick={() => toggleNotification(stop.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                          stop.notifications?.enabled
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
+                        onClick={() => toggleSilentAlert(stop.id)}
+                        className={`p-2 rounded-xl transition-all border ${
+                          !stop.notifications?.isSilent
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                            : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200'
                         }`}
-                        title="Toggle smog departure alerts"
+                        title={
+                          !stop.notifications?.isSilent
+                            ? 'Sound alert active (Device notification + AI Ringtone). Click to switch to Silent mode.'
+                            : 'Silent mode active (Device notification only, no sound). Click to enable Sound alert.'
+                        }
                       >
-                        <Bell className="w-3.5 h-3.5" />
-                        <span>{stop.notifications?.enabled ? 'Alerts ON' : 'Alerts OFF'}</span>
+                        {!stop.notifications?.isSilent ? (
+                          <Bell className="w-4 h-4 text-emerald-600 animate-pulse" />
+                        ) : (
+                          <BellOff className="w-4 h-4 text-slate-500" />
+                        )}
                       </button>
 
-                      {/* Lead time selection */}
-                      {stop.notifications?.enabled && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-bold text-slate-500">Notice:</span>
-                          {[15, 30, 45].map(mins => (
-                            <button
-                              key={mins}
-                              onClick={() => updateLeadTime(stop.id, mins)}
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-colors ${
-                                stop.notifications?.leadTimeMins === mins
-                                  ? 'bg-slate-900 text-white'
-                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                              }`}
-                            >
-                              {mins}m
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Sound / Silent Toggle Button (Directly following notice time) */}
-                      {stop.notifications?.enabled && (
-                        <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
-                          <button
-                            onClick={() => toggleSilentAlert(stop.id)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                              !stop.notifications?.isSilent
-                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                            }`}
-                            title={
-                              !stop.notifications?.isSilent
-                                ? 'Sound alert active (Device notification + AI Ringtone). Click to switch to Silent mode.'
-                                : 'Silent mode active (Device notification only, no sound). Click to enable Sound alert.'
-                            }
-                          >
-                            {!stop.notifications?.isSilent ? (
-                              <>
-                                <Bell className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                                <span className="text-[11px]">Sound</span>
-                              </>
-                            ) : (
-                              <>
-                                <BellOff className="w-3.5 h-3.5 text-slate-500" />
-                                <span className="text-[11px]">Silent</span>
-                              </>
-                            )}
-                          </button>
-
-                          {/* Quick Test Alert Button for this destination */}
-                          <button
-                            onClick={() => handleTestStopAlert(stop)}
-                            className="px-2 py-1 rounded-lg text-[10px] font-extrabold bg-slate-900 hover:bg-slate-800 text-white transition-colors"
-                            title="Test alert for this destination on your device"
-                          >
-                            Test
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right: Actions (Navigate, Cancel, Delete) */}
-                    <div className="flex items-center gap-2 shrink-0">
                       {/* Navigate Now */}
                       {!isCancelled && (
                         <Link
                           href={`/dashboard/map?destLat=${stop.lat}&destLng=${stop.lng}&destName=${encodeURIComponent(
                             stop.name
                           )}`}
-                          className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors shrink-0"
                           title="Navigate to destination now on live map"
                         >
                           <Navigation className="w-3.5 h-3.5" />
@@ -1265,7 +1270,7 @@ export default function SmartRoutingPage() {
                       {/* Cancel / Restore Button */}
                       <button
                         onClick={() => toggleCancelStop(stop.id)}
-                        className={`px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
+                        className={`px-3 py-2 rounded-xl font-bold text-xs transition-colors shrink-0 ${
                           isCancelled
                             ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
@@ -1278,7 +1283,7 @@ export default function SmartRoutingPage() {
                       {/* Delete Stop */}
                       <button
                         onClick={() => handleDeleteStop(stop.id)}
-                        className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors"
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors shrink-0"
                         title="Delete stop permanently"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1299,7 +1304,7 @@ export default function SmartRoutingPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-xl font-black text-slate-900">Add Destination Manually</h3>
-                <p className="text-xs text-slate-500 font-medium">Scheduled for {selectedDay}</p>
+                <p className="text-xs text-slate-500 font-medium">Scheduled for {manualDay === 'All' ? 'All Days' : manualDay}</p>
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -1365,6 +1370,37 @@ export default function SmartRoutingPage() {
                   required
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
                 />
+              </div>
+
+              {/* Day Selector (Specific day or All days) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Scheduled Day
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-600">
+                    {manualDay === 'All' ? '🌟 All 7 Days' : manualDay}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                  {[...DAYS_OF_WEEK, 'All'].map(d => {
+                    const isSel = manualDay === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setManualDay(d)}
+                        className={`py-2 px-1 text-center rounded-xl text-xs font-extrabold transition-all ${
+                          isSel
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {d === 'All' ? '🌟 All' : d.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Departure Time */}

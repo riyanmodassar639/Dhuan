@@ -213,38 +213,51 @@ router.post('/destinations', async (req, res) => {
     const spikeAlert = notifications?.smogSpikeAlert !== undefined ? (notifications.smogSpikeAlert ? 1 : 0) : 1;
     const notifChannel = notifications?.channel || 'push';
 
-    await dbRun(`
-      INSERT OR REPLACE INTO planned_destinations (
-        id, user_id, day, name, address, lat, lng, time, tag, vehicle,
-        aqi_forecast, pm25_level, smog_status, advisory,
-        lead_time_mins, notifications_enabled, is_silent, smog_spike_alert, channel, status
-      ) VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      destId,
-      destDay,
-      name,
-      address || name,
-      Number(lat),
-      Number(lng),
-      destTime,
-      destTag,
-      destVehicle,
-      spatialInfo.aqi,
-      spatialInfo.pm25,
-      spatialInfo.status,
-      spatialInfo.advisory,
-      leadTime,
-      notifEnabled,
-      isSilent,
-      spikeAlert,
-      notifChannel,
-      destStatus
-    ]);
+    const DAYS_LIST = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const targetDays = day === 'All' ? DAYS_LIST : [day || 'Monday'];
+    const createdDestinations = [];
 
-    const createdRow = await dbGet('SELECT * FROM planned_destinations WHERE id = ?', [destId]);
+    for (const d of targetDays) {
+      const singleDestId = targetDays.length > 1 ? `dest-${Date.now()}-${d.toLowerCase().slice(0, 3)}` : (id || `dest-${Date.now()}`);
+
+      await dbRun(`
+        INSERT OR REPLACE INTO planned_destinations (
+          id, user_id, day, name, address, lat, lng, time, tag, vehicle,
+          aqi_forecast, pm25_level, smog_status, advisory,
+          lead_time_mins, notifications_enabled, is_silent, smog_spike_alert, channel, status
+        ) VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        singleDestId,
+        d,
+        name,
+        address || name,
+        Number(lat),
+        Number(lng),
+        destTime,
+        destTag,
+        destVehicle,
+        spatialInfo.aqi,
+        spatialInfo.pm25,
+        spatialInfo.status,
+        spatialInfo.advisory,
+        leadTime,
+        notifEnabled,
+        isSilent,
+        spikeAlert,
+        notifChannel,
+        destStatus
+      ]);
+
+      const createdRow = await dbGet('SELECT * FROM planned_destinations WHERE id = ?', [singleDestId]);
+      if (createdRow) {
+        createdDestinations.push(mapRowToStop(createdRow));
+      }
+    }
+
     res.status(201).json({
       success: true,
-      destination: mapRowToStop(createdRow)
+      destination: createdDestinations[0],
+      destinations: createdDestinations
     });
   } catch (err) {
     console.error('Error creating planned destination:', err);

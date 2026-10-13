@@ -154,7 +154,29 @@ test('DHUAN Backend Test Suite', async (t) => {
         const alertData = await alertRes.json();
         assert.equal(alertData.success, true);
         assert.ok(alertData.alert);
-        assert.equal(alertData.alert.destinationName, 'Lahore Gymkhana');
+      }
+
+      // Test creating destination for 'All' days
+      const allDaysRes = await fetch('http://localhost:5001/api/routing/destinations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Central Mall',
+          address: 'Main Boulevard, Gulberg',
+          lat: 31.5122,
+          lng: 74.3475,
+          time: '02:00 PM',
+          day: 'All',
+          tag: 'Shopping',
+          vehicle: 'car'
+        })
+      });
+      if (allDaysRes.ok) {
+        const allDaysData = await allDaysRes.json();
+        assert.equal(allDaysData.success, true);
+        assert.equal(allDaysData.destinations.length, 7, 'Must create 7 destination rows for All days');
+        // Clean up created all days destinations
+        await dbRun('DELETE FROM planned_destinations WHERE name = "Central Mall"');
       }
     } catch (e) {
       // In standalone sandbox

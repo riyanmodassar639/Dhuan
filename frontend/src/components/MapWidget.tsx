@@ -792,16 +792,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       if (params.get('mode') === 'preplan') {
         setIsPrePlanMode(true);
         setPrePlanDay(day);
-        try {
-          const saved = localStorage.getItem('dhuan_planned_trips');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            const filtered = parsed.filter((p: any) => p.day === day && p.status !== 'cancelled');
-            setPrePlanStops(filtered);
-          }
-        } catch(e) {
-          console.error(e);
-        }
+        setPrePlanStops([]); // Clean selection for picking 1 destination
       } else if (params.get('destLat') && params.get('destLng')) {
         const dLat = parseFloat(params.get('destLat')!);
         const dLng = parseFloat(params.get('destLng')!);
@@ -1445,7 +1436,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         status: 'scheduled'
       };
 
-      setPrePlanStops(prev => [...prev, newStop]);
+      setPrePlanStops([newStop]);
       setQuery('');
       setResults([]);
       setHasSearched(false);
@@ -1661,7 +1652,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
              status: 'scheduled'
           };
 
-          setPrePlanStops(prev => [...prev, newStop]);
+          setPrePlanStops([newStop]);
        } catch(e) {
           console.error(e);
        }
@@ -3734,59 +3725,46 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                     <Calendar className="w-4 h-4 text-emerald-400" />
                     <span className="font-extrabold text-sm uppercase tracking-wider">{prePlanDay} Itinerary</span>
                  </div>
-                 <p className="text-[11px] text-slate-400 mt-0.5">Click map to pick destination stops</p>
+                 <p className="text-[11px] text-slate-400 mt-0.5">Click map to pick 1 destination</p>
               </div>
               <span className="bg-emerald-500 text-slate-900 font-extrabold text-xs px-2.5 py-1 rounded-full shadow-xs">
-                 {prePlanStops.length} Selected
+                 {prePlanStops.length > 0 ? '1 Selected' : '0 Selected'}
               </span>
            </div>
 
-           {/* List of Picked Destinations */}
+           {/* Picked Destination Info */}
            <div className="p-3 overflow-y-auto space-y-2.5 flex-1 divide-y divide-slate-100 max-h-[380px]">
               {prePlanStops.length === 0 ? (
                  <div className="text-center py-8 px-4 text-slate-400">
                     <MapPin className="w-8 h-8 mx-auto mb-2 text-emerald-500 animate-bounce" />
-                    <p className="text-xs font-bold text-slate-700">No destinations picked yet</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Tap roads, shops or landmarks on the map to add stops for {prePlanDay}.</p>
+                    <p className="text-xs font-bold text-slate-700">No destination picked yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Tap any road, shop or landmark on the map to pick your destination for {prePlanDay}.</p>
                  </div>
               ) : (
-                 prePlanStops.map((st, idx) => (
-                    <div key={st.id} className="pt-2.5 first:pt-0 flex items-start gap-2.5">
-                       <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-black text-xs flex items-center justify-center shrink-0 mt-1 shadow-xs">
-                          {idx + 1}
-                       </div>
-                       <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-black text-slate-900 truncate">{st.name}</h4>
-                          <p className="text-[10px] text-slate-500 truncate">{st.address}</p>
-                          
-                          {/* Time Input & AQI preview */}
-                          <div className="flex items-center gap-2 mt-1.5">
-                             <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
-                                <Clock className="w-3 h-3 text-slate-500" />
-                                <input 
-                                  type="text"
-                                  value={st.time}
-                                  onChange={(e) => {
-                                     const val = e.target.value;
-                                     setPrePlanStops(prev => prev.map(p => p.id === st.id ? { ...p, time: val } : p));
-                                  }}
-                                  className="bg-transparent text-[11px] font-bold text-slate-800 outline-none w-20"
-                                  placeholder="e.g. 10:30 AM"
-                                />
+                 prePlanStops.map((st) => (
+                    <div key={st.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-start justify-between gap-2.5">
+                       <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+                             1
+                          </div>
+                          <div className="flex-1 min-w-0">
+                             <h4 className="text-xs font-black text-slate-900 truncate">{st.name}</h4>
+                             <p className="text-[10px] text-slate-500 truncate">{st.address}</p>
+                             <div className="mt-1.5 flex items-center gap-1.5">
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded text-emerald-700 bg-emerald-50 border border-emerald-200">
+                                   AQI {st.aqiForecast} • {st.smogStatus}
+                                </span>
                              </div>
-                             <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded text-emerald-700 bg-emerald-50 border border-emerald-200">
-                                AQI {st.aqiForecast}
-                             </span>
                           </div>
                        </div>
 
-                       {/* Delete Stop */}
+                       {/* Clear Stop */}
                        <button 
-                         onClick={() => setPrePlanStops(prev => prev.filter(p => p.id !== st.id))}
-                         className="text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                         onClick={() => setPrePlanStops([])}
+                         className="text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
                          title="Remove destination"
                        >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-4 h-4" />
                        </button>
                     </div>
                  ))
@@ -3796,46 +3774,24 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            {/* Footer Actions */}
            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
               <button 
-                onClick={async () => {
-                   try {
-                      const existingStr = localStorage.getItem('dhuan_planned_trips') || '[]';
-                      const existing = JSON.parse(existingStr);
-                      const others = existing.filter((p: any) => p.day !== prePlanDay);
-                      const updated = [...others, ...prePlanStops];
-                      localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
-
-                      // Synchronize into backend SQLite database
-                      for (const stop of prePlanStops) {
-                        try {
-                          await fetch(getApiEndpoint('/routing/destinations'), {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              id: stop.id,
-                              name: stop.name,
-                              address: stop.address || stop.name,
-                              lat: stop.lat,
-                              lng: stop.lng,
-                              time: stop.time || '10:30 AM',
-                              day: prePlanDay,
-                              tag: (stop as any).tag || 'General',
-                              vehicle: (stop as any).vehicle || 'car',
-                              status: (stop as any).status || 'scheduled'
-                            })
-                          });
-                        } catch (err) {
-                          // Keep going
-                        }
-                      }
-                   } catch(e) {
-                      console.error(e);
-                   }
-                   router.push('/dashboard/routing');
+                disabled={prePlanStops.length === 0}
+                onClick={() => {
+                   if (prePlanStops.length === 0) return;
+                   const stop = prePlanStops[0];
+                   const params = new URLSearchParams({
+                     addFromMap: 'true',
+                     name: stop.name,
+                     address: stop.address || stop.name,
+                     lat: String(stop.lat),
+                     lng: String(stop.lng),
+                     day: prePlanDay
+                   });
+                   router.push(`/dashboard/routing?${params.toString()}`);
                 }}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95"
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Done ({prePlanStops.length} Destinations)</span>
+                <span>Done (1 Destination)</span>
               </button>
 
               <button 
