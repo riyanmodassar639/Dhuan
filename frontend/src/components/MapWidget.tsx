@@ -466,6 +466,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [navUpcomingStatus, setNavUpcomingStatus] = useState<string>("Moderate Haze");
   const [navUpcomingWarning, setNavUpcomingWarning] = useState<string>("");
 
+  // AI Smart Routing & 1-Second Live Environment Guard State
+  const [routePreference, setRoutePreference] = useState<'safest' | 'fastest'>('safest');
+  const [routingSessionId, setRoutingSessionId] = useState<number | null>(null);
+  const [aiScanCount, setAiScanCount] = useState<number>(0);
+  const [aiLiveScanMessage, setAiLiveScanMessage] = useState<string>("AI Environment Guard Active • Scanning every 1s");
+  const [aiSmogSpikeAlert, setAiSmogSpikeAlert] = useState<any | null>(null);
+  const [isCheckingSmogSpike, setIsCheckingSmogSpike] = useState<boolean>(false);
+  const hasAutoTriggeredSpikeRef = useRef<boolean>(false);
+
   // Off-Route Rerouting state
   const [isRerouting, setIsRerouting] = useState(false);
   const [rerouteNotice, setRerouteNotice] = useState<string | null>(null);
@@ -1056,14 +1065,61 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     }, 600);
     return () => clearTimeout(delayFn);
   }, [originInput]);
-  // Navigation Simulator
+  // Trigger Backend + AI Core 1-Second Ride Environment & Smog Spike Monitor
+  const triggerBackendAiMonitor = useCallback(async (
+    curPos: [number, number],
+    aheadPos: [number, number],
+    remCoords: number[][],
+    forceSpike = false
+  ) => {
+    if (!selectedPlace) return;
+    if (forceSpike) setIsCheckingSmogSpike(true);
+    try {
+      const res = await fetch(getApiEndpoint('/dashboard/routing/monitor'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: routingSessionId,
+          currentPos: curPos,
+          aheadPos: aheadPos,
+          destination: [selectedPlace.lat, selectedPlace.lon],
+          vehicleMode: selectedVehicle,
+          remainingCoords: remCoords.slice(0, 30),
+          simulateSpike: forceSpike
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ai_live_message) {
+          setAiLiveScanMessage(data.ai_live_message);
+        }
+        if (data.ahead_telemetry && forceSpike) {
+          setNavUpcomingAqi(data.ahead_telemetry.peak_aqi_ahead || data.ahead_telemetry.aqi);
+          setNavUpcomingStatus(data.ahead_telemetry.status || 'Smog Inversion Forming');
+        }
+        if (data.smog_alert && data.smog_alert.triggered) {
+          setAiSmogSpikeAlert(data.smog_alert);
+        }
+      }
+    } catch (err) {
+      console.log('AI ride monitor step fallback:', err);
+    } finally {
+      if (forceSpike) setIsCheckingSmogSpike(false);
+    }
+  }, [selectedPlace, routingSessionId, selectedVehicle]);
+
+  // Real-Time 1-Second (1000ms) AI Navigation & Environment Guard Loop (Stationary until User Physically Moves)
   useEffect(() => {
      let interval: NodeJS.Timeout;
+     let navWatchId: number | undefined;
+
      if (isNavigating && routes.length > 0 && routes[selectedRouteIdx]) {
         const currentRoute = routes[selectedRouteIdx];
-        const routeCoords = currentRoute.geometry.coordinates;
-        let currentIndex = 0;
-        
+        const routeCoords = currentRoute.geometry.coordinates; // [[lng, lat], ...]
+        let userPosIdx = 0;
+        let lastUserCoords: [number, number] | null = null;
+        let scanTick = 0;
+
         // Helper to calculate distance in meters
         const getDist = (coord1: number[], coord2: number[]) => {
            const R = 6371e3;
@@ -1096,36 +1152,33 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         const totalRouteDist = calcRemainingDist(0) || currentRoute.distance || 1000;
         const totalRouteDuration = currentRoute.duration || 600;
 
-        // Initialize remaining trip metrics
-        const initRemDist = Math.round(totalRouteDist);
-        const initRemSec = Math.round(totalRouteDuration);
-        setNavRemainingDistance(initRemDist);
-        setNavRemainingDuration(initRemSec);
-        setNavEtaTime(new Date(Date.now() + initRemSec * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
-        
-        // Start at index 0
-        setNavPosition({ lat: routeCoords[0][1], lng: routeCoords[0][0] });
-        if (mapRef.current) {
-           mapRef.current.setView([routeCoords[0][1], routeCoords[0][0]], 18, { animate: true, duration: 1.5 });
-        }
-        
-        interval = setInterval(() => {
-           currentIndex += 1;
-           if (currentIndex >= routeCoords.length - 1) {
-              clearInterval(interval);
-              setIsNavigating(false);
-              setIsPanelCollapsed(false);
-              return;
+        // Find starting index closest to userLocation or routeOriginCoords
+        const startAnchor = userLocation || routeOriginCoords || [routeCoords[0][1], routeCoords[0][0]];
+        let minStartDist = Infinity;
+        for (let i = 0; i < Math.min(25, routeCoords.length); i++) {
+           const d = getDist([startAnchor[1], startAnchor[0]], routeCoords[i]);
+           if (d < minStartDist) {
+              minStartDist = d;
+              userPosIdx = i;
            }
-           
-           const current = routeCoords[currentIndex];
-           const next = routeCoords[currentIndex + 1];
-           
-           // Bearing
-           const bearing = getBearing(current, next);
+        }
 
-           // Live Remaining Distance, Time & ETA
-           const remDistMeters = Math.round(calcRemainingDist(currentIndex));
+        const startPt = routeCoords[userPosIdx];
+        const nextPt = routeCoords[Math.min(routeCoords.length - 1, userPosIdx + 1)];
+        const initBearing = getBearing(startPt, nextPt);
+
+        // Position the arrow initially — IT WILL REMAIN HERE UNTIL USER PHYSICALLY MOVES!
+        setNavPosition({ lat: startPt[1], lng: startPt[0] });
+        setNavHeading(initBearing);
+        lastUserCoords = [startPt[1], startPt[0]];
+
+        if (mapRef.current) {
+           mapRef.current.setView([startPt[1], startPt[0]], 17, { animate: true, duration: 1.0 });
+        }
+
+        // Update turn instructions and remaining metrics function
+        const updateJourneyProgress = (currIdx: number) => {
+           const remDistMeters = Math.round(calcRemainingDist(currIdx));
            const progressRatio = Math.max(0, Math.min(1, remDistMeters / totalRouteDist));
            const remDurationSec = Math.max(30, Math.round(totalRouteDuration * progressRatio));
            const etaDate = new Date(Date.now() + remDurationSec * 1000);
@@ -1135,44 +1188,145 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            setNavRemainingDuration(remDurationSec);
            setNavEtaTime(formattedEta);
 
-           // Live Spatial AQI & Environment for Current Location
-           const curLat = next[1];
-           const curLng = next[0];
+           // Turn instruction
+           let distanceToTurn = 0;
+           let turnType = "Continue straight";
+           let foundTurn = false;
+
+           for (let i = currIdx; i < routeCoords.length - 2; i++) {
+               const p1 = routeCoords[i];
+               const p2 = routeCoords[i+1];
+               const p3 = routeCoords[i+2];
+               distanceToTurn += getDist(p1, p2);
+               let angleDiff = getBearing(p2, p3) - getBearing(p1, p2);
+               if (angleDiff > 180) angleDiff -= 360;
+               if (angleDiff < -180) angleDiff += 360;
+
+               if (Math.abs(angleDiff) > 25) {
+                   if (angleDiff > 25 && angleDiff <= 130) turnType = "Turn right";
+                   else if (angleDiff < -25 && angleDiff >= -130) turnType = "Turn left";
+                   else turnType = "Make a U-turn";
+
+                   if (selectedVehicle === 'transit') {
+                      turnType = routes[selectedRouteIdx]?.transitData?.steps?.[1]?.badge ? `Ride ${routes[selectedRouteIdx].transitData.steps[1].badge}` : "Transfer at Metro Station";
+                   } else if (selectedVehicle === 'walk') {
+                      turnType = i % 2 === 0 ? 'Follow shaded inner street' : 'Cross at pedestrian walkway';
+                   } else if (selectedVehicle === 'bike') {
+                      turnType = i % 2 === 0 ? 'Stay in green-belt bike lane' : (angleDiff > 0 ? 'Turn right onto service road' : 'Turn left onto service road');
+                   } else {
+                      if (i % 14 === 0 && Math.abs(angleDiff) < 45) turnType = 'Take the flyover';
+                      if (i % 19 === 0 && Math.abs(angleDiff) < 45) turnType = 'Take the underpass';
+                      if (i % 25 === 0) turnType = 'Continue on Ring Road (L-20)';
+                   }
+                   foundTurn = true;
+                   break;
+               }
+           }
+           if (!foundTurn) {
+              turnType = selectedVehicle === 'transit' ? 'Arrive at PMA Station' : 'Arrive at destination';
+           }
+           setNavInstruction({ type: turnType, distance: Math.round(distanceToTurn) });
+        };
+
+        updateJourneyProgress(userPosIdx);
+
+        // REAL HARDWARE GPS TRACKING: The arrow ONLY moves when the user physically moves!
+        if (typeof window !== 'undefined' && navigator.geolocation) {
+           navWatchId = navigator.geolocation.watchPosition(
+              (pos) => {
+                 const gpsLat = pos.coords.latitude;
+                 const gpsLng = pos.coords.longitude;
+
+                 // If last position known, check if user actually moved > 3.5 meters
+                 if (lastUserCoords) {
+                    const distMoved = getDist([lastUserCoords[1], lastUserCoords[0]], [gpsLng, gpsLat]);
+                    if (distMoved < 3.5) {
+                       // User is stationary: Arrow stands STILL at its place!
+                       return;
+                    }
+                 }
+
+                 // Find closest point on route polyline to user's real GPS position
+                 let closestIdx = userPosIdx;
+                 let minDist = Infinity;
+                 const searchStart = Math.max(0, userPosIdx - 2);
+                 const searchEnd = Math.min(routeCoords.length - 1, userPosIdx + 30);
+
+                 for (let k = searchStart; k <= searchEnd; k++) {
+                    const d = getDist([gpsLng, gpsLat], routeCoords[k]);
+                    if (d < minDist) {
+                       minDist = d;
+                       closestIdx = k;
+                    }
+                 }
+
+                 // If user drifted far off the route (>85m), auto-recalculate
+                 if (minDist > 85) {
+                    handleOffRoute([gpsLat, gpsLng]);
+                    return;
+                 }
+
+                 userPosIdx = closestIdx;
+                 lastUserCoords = [gpsLat, gpsLng];
+
+                 const curPt = routeCoords[userPosIdx];
+                 const nxtPt = routeCoords[Math.min(routeCoords.length - 1, userPosIdx + 1)];
+                 const newBearing = (pos.coords.heading !== null && !isNaN(pos.coords.heading) && pos.coords.heading >= 0)
+                    ? pos.coords.heading
+                    : getBearing(curPt, nxtPt);
+
+                 setNavPosition({ lat: curPt[1], lng: curPt[0] });
+                 setNavHeading(newBearing);
+                 updateJourneyProgress(userPosIdx);
+
+                 if (mapRef.current) {
+                    mapRef.current.setView([curPt[1], curPt[0]], 17, { animate: true, duration: 0.8 });
+                 }
+              },
+              (err) => console.log("Navigation GPS tracking:", err),
+              { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+           );
+        }
+
+        // REAL-TIME 1-SECOND AI ENVIRONMENT SCANNER (CHECKS ENVIRONMENT EVERY 1s WITHOUT MOVING THE ARROW!)
+        interval = setInterval(() => {
+           scanTick += 1;
+           setAiScanCount(prev => prev + 1);
+
+           // Current coordinate where the user is stationary (or moving)
+           const curPt = routeCoords[userPosIdx];
+           const curLat = curPt[1];
+           const curLng = curPt[0];
+
            const curAqi = getSpatialAqi(curLat, curLng);
+           const curPm25 = getSpatialPm25(curLat, curLng);
            const curCat = getAqiCategory(curAqi);
+           const curNearest = getNearestStationInfo(curLat, curLng);
+
            setNavCurrentAqi(curAqi);
            setNavCurrentStatus(curCat.status);
-           setNavCurrentPm25(Math.round(curAqi * 0.65));
+           setNavCurrentPm25(curPm25);
 
-           // Derive current area / road name
-           let curAreaName = "Connecting Corridor";
+           let curAreaName = currentRoute.aiStats?.corridorName?.replace(/^via\s+/i, '') || `${curNearest.station.name.split(' (')[0]} Corridor`;
            if (currentRoute.legs?.[0]?.steps && currentRoute.legs[0].steps.length > 0) {
               const stepIndex = Math.min(
                  currentRoute.legs[0].steps.length - 1, 
-                 Math.floor((currentIndex / routeCoords.length) * currentRoute.legs[0].steps.length)
+                 Math.floor((userPosIdx / routeCoords.length) * currentRoute.legs[0].steps.length)
               );
               const stepObj = currentRoute.legs[0].steps[stepIndex];
               if (stepObj?.name && stepObj.name.trim().length > 0) {
                  curAreaName = stepObj.name.replace(/^via\s+/i, '');
               }
            }
-           if (!curAreaName || curAreaName === "Main Route" || curAreaName === "Connecting Corridor") {
-              if (curLat > 31.54) curAreaName = "Mall Road Expressway";
-              else if (curLat > 31.50) curAreaName = "Canal Bank Corridor";
-              else if (curLng > 74.37) curAreaName = "Defence Road Corridor";
-              else curAreaName = "Ferozepur Road Arterial";
-           }
            setNavCurrentArea(curAreaName);
 
-           // Calculate upcoming area ~2-3 km ahead
+           // Upcoming area ~2-3 km ahead along the remaining route
            let distAheadSum = 0;
-           let aheadIdx = currentIndex + 1;
-           for (let k = currentIndex + 1; k < routeCoords.length - 1; k++) {
+           let aheadIdx = userPosIdx + 1;
+           for (let k = userPosIdx + 1; k < routeCoords.length - 1; k++) {
               distAheadSum += getDist(routeCoords[k], routeCoords[k+1]);
               aheadIdx = k;
-              if (distAheadSum >= 2300) {
-                 break;
-              }
+              if (distAheadSum >= 2200) break;
            }
            if (aheadIdx >= routeCoords.length - 1) {
               aheadIdx = routeCoords.length - 1;
@@ -1180,85 +1334,50 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
            const aheadCoord = routeCoords[aheadIdx];
            const aheadAqi = getSpatialAqi(aheadCoord[1], aheadCoord[0]);
+           const aheadPm25 = getSpatialPm25(aheadCoord[1], aheadCoord[0]);
            const aheadCat = getAqiCategory(aheadAqi);
+           const aheadNearest = getNearestStationInfo(aheadCoord[1], aheadCoord[0]);
            const aheadDistMeters = Math.round(distAheadSum);
 
            setNavUpcomingDistance(aheadDistMeters);
            setNavUpcomingAqi(aheadAqi);
            setNavUpcomingStatus(aheadCat.status);
 
-           // Upcoming Area Name
-           let upcomingName = selectedPlace?.name ? `${selectedPlace.name} Corridor` : "Destination Vicinity";
-           if (aheadIdx < routeCoords.length - 2) {
-              if (aheadCoord[1] > 31.54) upcomingName = "Mall Road Junction";
-              else if (aheadCoord[1] > 31.50) upcomingName = "Canal Bank Road Corridor";
-              else if (aheadCoord[0] > 74.37) upcomingName = "Ring Road Interchange";
-              else upcomingName = "Ferozepur Underpass Corridor";
-           }
+           const upcomingName = `${aheadNearest.station.name.split(' (')[0]} Sector Corridor`;
            setNavUpcomingArea(upcomingName);
 
-           // Environmental Warning / Smog Ahead Trend
            const distKmStr = aheadDistMeters >= 1000 ? `${(aheadDistMeters / 1000).toFixed(1)} km` : `${aheadDistMeters} m`;
-           if (aheadAqi > curAqi + 20) {
-              setNavUpcomingWarning(`⚠️ Smog Spikes Ahead: Air quality worsens by +${aheadAqi - curAqi} AQI in next ${distKmStr}. Visibility drops to ~700m.`);
-           } else if (aheadAqi < curAqi - 20) {
-              setNavUpcomingWarning(`🌿 Cleaner Corridor Ahead: Smog decreases by -${curAqi - aheadAqi} AQI in next ${distKmStr}. Lower particulate concentration.`);
+           if (aheadAqi >= 150) {
+              setNavUpcomingWarning(`🚨 HIGH SMOG ALERT: Dense smog ahead (${aheadAqi} AQI / ${aheadPm25} µg/m³) near ${upcomingName}.`);
+              setAiLiveScanMessage(`🚨 High Smog Alert Ahead (${aheadAqi} AQI near ${upcomingName})! Checking cleaner detour...`);
+           } else if (aheadAqi > curAqi + 15) {
+              setNavUpcomingWarning(`⚠️ Rising Smog Ahead: +${aheadAqi - curAqi} AQI (${aheadAqi} AQI) in next ${distKmStr} near ${upcomingName}.`);
+              setAiLiveScanMessage(`⚠️ Smog gradient rising (+${aheadAqi - curAqi} AQI near ${upcomingName}). Monitoring safety...`);
            } else {
-              setNavUpcomingWarning(`🌫️ Steady Smog Level: Uniform air conditions (${aheadCat.status}) continue for next ${distKmStr}.`);
+              setNavUpcomingWarning(`✅ Normal Baseline: Stable air quality (${aheadAqi} AQI • ${aheadCat.status}) for next ${distKmStr}.`);
+              setAiLiveScanMessage(`✅ AI 1s Scan: Normal air quality (${curAqi} AQI). No high smog alert ahead — current path is safe.`);
            }
-           
-           // Calculate next turn instruction
-           let distanceToTurn = 0;
-           let turnType = "Continue straight";
-           let foundTurn = false;
-           
-           for (let i = currentIndex; i < routeCoords.length - 2; i++) {
-               const p1 = routeCoords[i];
-               const p2 = routeCoords[i+1];
-               const p3 = routeCoords[i+2];
-               
-               distanceToTurn += getDist(p1, p2);
-               
-               let angleDiff = getBearing(p2, p3) - getBearing(p1, p2);
-               if (angleDiff > 180) angleDiff -= 360;
-               if (angleDiff < -180) angleDiff += 360;
-               
-               if (Math.abs(angleDiff) > 25) {
-                   if (angleDiff > 25 && angleDiff <= 130) turnType = "Turn right";
-                   else if (angleDiff < -25 && angleDiff >= -130) turnType = "Turn left";
-                   else turnType = "Make a U-turn";
-                   
-                   // Sprinkle vehicle-specific flavor events
-                   if (selectedVehicle === 'transit') {
-                      turnType = routes[selectedRouteIdx]?.transitData?.steps?.[1]?.badge ? `Ride ${routes[selectedRouteIdx].transitData.steps[1].badge}` : "Transfer at Metro Station";
-                   } else if (selectedVehicle === 'walk') {
-                      turnType = i % 2 === 0 ? 'Follow pedestrian path' : 'Cross at walkway';
-                   } else if (selectedVehicle === 'bike') {
-                      turnType = i % 2 === 0 ? 'Stay in service lane' : (angleDiff > 0 ? 'Turn right' : 'Turn left');
-                   } else {
-                      if (i % 14 === 0 && Math.abs(angleDiff) < 45) turnType = 'Take the flyover';
-                      if (i % 19 === 0 && Math.abs(angleDiff) < 45) turnType = 'Take the underpass';
-                      if (i % 25 === 0) turnType = 'Continue on Ring Road (L-20)';
-                   }
-                   
-                   foundTurn = true;
-                   break;
-               }
+
+           // Periodic 1-second backend telemetry sync without dummy spikes:
+           // Only sends real coordinates. AI Model will ONLY trigger alert if real condition is High Alert!
+           if (scanTick % 3 === 0 || scanTick === 1) {
+              triggerBackendAiMonitor(
+                [curLat, curLng],
+                [aheadCoord[1], aheadCoord[0]],
+                routeCoords.slice(userPosIdx),
+                false
+              );
            }
-           if (!foundTurn) {
-              turnType = selectedVehicle === 'transit' ? 'Arrive at Metro/Bus Station' : 'Arrive at destination';
-           }
-           setNavInstruction({ type: turnType, distance: Math.round(distanceToTurn) });
-           setNavHeading(bearing);
-           setNavPosition({ lat: next[1], lng: next[0] });
-           
-           if (mapRef.current) {
-              mapRef.current.setView([next[1], next[0]], 18, { animate: true, duration: 1.0 });
-           }
-        }, 1500);
+        }, 1000); // 1000ms = 1-Second AI Environment Scan
      }
-     return () => clearInterval(interval);
-  }, [isNavigating, routes, selectedRouteIdx]);
+
+     return () => {
+        if (interval) clearInterval(interval);
+        if (navWatchId !== undefined && typeof window !== 'undefined' && navigator.geolocation) {
+           navigator.geolocation.clearWatch(navWatchId);
+        }
+     };
+  }, [isNavigating, routes, selectedRouteIdx, selectedVehicle, getSpatialAqi, getSpatialPm25, getNearestStationInfo, triggerBackendAiMonitor, selectedPlace, userLocation, routeOriginCoords]);
 
   if (!mounted) {
     return (
@@ -1523,9 +1642,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     origin: [number, number], 
     dest: [number, number], 
     vehicleMode?: 'car' | 'bike' | 'walk' | 'transit',
-    customStops?: Array<{ id: string; name: string; coords: [number, number]; input: string }>
+    customStops?: Array<{ id: string; name: string; coords: [number, number]; input: string }>,
+    customPreference?: 'safest' | 'fastest'
   ) => {
     const mode = vehicleMode || selectedVehicle;
+    const pref = customPreference || routePreference;
     const currentStops = customStops !== undefined ? customStops : routeStops;
     const validStops = currentStops.filter(s => s.coords && (s.coords[0] !== 0 || s.coords[1] !== 0));
 
@@ -1536,9 +1657,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         const effectiveDest = validStops.length > 0 ? validStops[0].coords : dest;
         const pmaRoutes = solvePmaTransitRoutes(origin, effectiveDest);
         if (pmaRoutes.length > 0) {
-          const formattedRoutes = pmaRoutes.map((tr, idx) => ({
+          const clientPmaRoutes = pmaRoutes.map((tr, idx) => ({
             duration: tr.totalDurationMin * 60,
             distance: tr.totalDistanceMeters,
+            corridor_type: 'pma_transit',
+            corridor_name: `via ${tr.linesUsed.map((l: any) => l.badge).join(' → ')}`,
             geometry: {
               type: 'LineString',
               coordinates: tr.geometryCoordinates
@@ -1546,126 +1669,105 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             legs: [{
               steps: tr.steps.map(s => ({ name: s.instructions }))
             }],
-            transitData: tr,
+            transitData: tr
+          }));
+
+          // Evaluate PMA Transit routes through Backend + AI Core + SQLite
+          try {
+            const aiRes = await fetch(getApiEndpoint('/dashboard/routing/analyze'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                origin,
+                destination: effectiveDest,
+                originName: userAddress,
+                destName: selectedPlace?.name || 'Destination',
+                vehicleMode: 'transit',
+                preference: pref,
+                clientRoutes: clientPmaRoutes
+              })
+            });
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              if (aiData.routes && aiData.routes.length > 0) {
+                const mergedTransit = aiData.routes.map((r: any, idx: number) => ({
+                  ...r,
+                  transitData: pmaRoutes[idx]
+                }));
+                setRoutingSessionId(aiData.sessionId || null);
+                setRoutes(mergedTransit);
+                setSelectedRouteIdx(aiData.recommendedIdx ?? 0);
+                if (mapRef.current && mergedTransit[0]) {
+                  const allCoords = mergedTransit[0].transitData.segments.flatMap((s: any) => s.coordinates);
+                  if (allCoords.length > 0) {
+                    const bounds = L.latLngBounds(allCoords);
+                    mapRef.current.fitBounds(bounds, { padding: [60, 60], animate: true, duration: 1.5 });
+                  }
+                }
+                setIsSearching(false);
+                return;
+              }
+            }
+          } catch (e) {
+            console.log('PMA AI routing fallback:', e);
+          }
+
+          const fallbackTransit = clientPmaRoutes.map((r, idx) => ({
+            ...r,
             aiStats: {
-              smogExposure: 28 + idx * 8, // AC Metro / Bus protects commuters from smog!
-              traffic: 'Dedicated Transit Corridor',
+              smogExposure: 54 + idx * 5,
+              effectiveAqi: 38 + idx * 4,
+              safetyScore: 95 - idx * 4,
+              traffic: 'Dedicated PMA Transit Track',
               isSafest: idx === 0,
+              isFastest: idx === 0,
+              aiBadge: idx === 0 ? 'PMA Recommended Line' : 'PMA Alternative Line',
+              aiReasoning: 'Punjab MassTransit Authority (PMA) air-conditioned carriage filters ambient particulate haze.',
               ecoFriendly: true
             }
           }));
-
-          setRoutes(formattedRoutes);
+          setRoutes(fallbackTransit);
           setSelectedRouteIdx(0);
-
-          if (mapRef.current && formattedRoutes[0]) {
-             const allCoords = formattedRoutes[0].transitData.segments.flatMap(s => s.coordinates);
-             if (allCoords.length > 0) {
-                const bounds = L.latLngBounds(allCoords);
-                mapRef.current.fitBounds(bounds, { padding: [60, 60], animate: true, duration: 1.5 });
-             }
-          }
           setIsSearching(false);
           return;
         }
       }
 
-      // 2. ROAD ROUTING (Car, Bike, Walk) using OSRM with all stops included
-      const allWaypoints = [
-        [origin[1], origin[0]],
-        ...validStops.map(s => [s.coords[1], s.coords[0]]),
-        [dest[1], dest[0]]
-      ];
-      const waypointStr = allWaypoints.map(c => `${c[0]},${c[1]}`).join(';');
-      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${waypointStr}?geometries=geojson&alternatives=3&overview=full`);
-      const data = await res.json();
-      
-      let baseRoutes = data.routes || [];
-      
-      if (baseRoutes.length > 0) {
-         const primary = baseRoutes[0];
-         
-         if (validStops.length > 0 || isNavigating) {
-            // During navigation or multi-stop routes: strictly single clean real road route
-            baseRoutes = [primary];
-            if (validStops.length > 0) {
-               const stopLabel = validStops.length === 1 
-                  ? `via Stop A (${validStops[0].name.split(',')[0] || "Custom Stop"})` 
-                  : `via ${validStops.length} stops (${validStops.map((_, i) => String.fromCharCode(65 + i)).join(' → ')})`;
-               if (primary.legs && primary.legs[0] && primary.legs[0].steps && primary.legs[0].steps[0]) {
-                  primary.legs[0].steps[0] = { name: stopLabel };
-               }
-            } else {
-               if (primary.legs && primary.legs[0] && primary.legs[0].steps && primary.legs[0].steps[0]) {
-                  primary.legs[0].steps[0] = { name: "Safest Recalculated Route" };
-               }
-            }
-         } else {
-            // Before navigation: if OSRM returned genuine alternative driving routes, use them!
-            if (data.routes && data.routes.length > 1) {
-               baseRoutes = data.routes.slice(0, 3).map((r: any, rIdx: number) => {
-                  const roadName = r.legs?.[0]?.steps?.[0]?.name || (rIdx === 0 ? "Fastest Route" : `Alternative Route ${rIdx}`);
-                  return {
-                     ...r,
-                     legs: [{ ...r.legs?.[0], steps: [{ name: `via ${roadName}` }] }]
-                  };
-               });
-            } else {
-               // Single genuine road route
-               if (primary.legs && primary.legs[0] && primary.legs[0].steps && primary.legs[0].steps[0]) {
-                  const defaultLabel = primary.distance > 5000 ? "via Lahore Ring Road / Expressway" : "via Canal Road & Main Boulevard";
-                  primary.legs[0].steps[0] = { name: defaultLabel };
-               }
-               baseRoutes = [primary];
-            }
-         }
-      }
+      // 2. AI-CONTROLLED ROAD & STREET ROUTING (Car: Ring Road/Expressway, Bike: Service Lane/Boulevard, Walk: Inner Streets)
+      const backendRes = await fetch(getApiEndpoint('/dashboard/routing/analyze'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin,
+          destination: dest,
+          originName: userAddress,
+          destName: selectedPlace?.name || 'Destination',
+          vehicleMode: mode,
+          preference: pref,
+          stops: validStops.map(s => ({ name: s.name || 'Stop', coords: s.coords }))
+        })
+      });
 
-      if (baseRoutes.length > 0) {
-        const enhancedRoutes = baseRoutes.map((r: any, idx: number) => {
-           let isSafest = false;
-           if (baseRoutes.length > 1 && idx === 1) isSafest = true;
-           else if (baseRoutes.length === 1 && idx === 0) isSafest = true;
-           
-           // Calculate authentic average smog exposure from AI spatial map along route coordinates
-           const coords = r.geometry?.coordinates || [];
-           let routeAqiSum = 0;
-           let sampleCount = 0;
-           if (coords.length > 0) {
-             const step = Math.max(1, Math.floor(coords.length / 10));
-             for (let ci = 0; ci < coords.length; ci += step) {
-               const pt = coords[ci]; // [lon, lat]
-               routeAqiSum += getSpatialAqi(pt[1], pt[0]);
-               sampleCount++;
-             }
-           }
-           let smogExposure = sampleCount > 0 ? Math.round(routeAqiSum / sampleCount) : (cityBaselineAqi || 81);
+      if (backendRes.ok) {
+        const aiData = await backendRes.json();
+        if (aiData.routes && aiData.routes.length > 0) {
+          let finalRoutes = aiData.routes;
+          if (isNavigating && finalRoutes.length > 1) {
+            const bestIdx = aiData.recommendedIdx ?? 0;
+            finalRoutes = [finalRoutes[bestIdx]];
+          }
+          setRoutingSessionId(aiData.sessionId || null);
+          setRoutes(finalRoutes);
+          const selIdx = isNavigating ? 0 : (aiData.recommendedIdx ?? 0);
+          setSelectedRouteIdx(selIdx);
 
-           let trafficLevel = isSafest ? 'Low' : ['Moderate', 'High'][idx % 2];
-
-           if (mode === 'bike') {
-             smogExposure += 10; // Open air exposure factor
-           } else if (mode === 'walk') {
-             smogExposure += 5;
-             trafficLevel = 'Pedestrian Friendly';
-           }
-
-           const caloriesBurned = mode === 'walk' ? Math.round((r.distance / 1000) * 58) : undefined;
-           const stepsCount = mode === 'walk' ? Math.round(r.distance * 1.35) : undefined;
-           
-           return {
-              ...r,
-              aiStats: { smogExposure, traffic: trafficLevel, isSafest, caloriesBurned, stepsCount }
-           };
-        });
-
-        setRoutes(enhancedRoutes);
-        setSelectedRouteIdx(enhancedRoutes.length > 1 ? 1 : 0);
-        
-        if (mapRef.current && enhancedRoutes[0]) {
-           const coords = enhancedRoutes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
-           const bounds = L.latLngBounds(coords);
-           mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+          if (mapRef.current && finalRoutes[selIdx] && !isNavigating) {
+            const coords = finalRoutes[selIdx].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+            const bounds = L.latLngBounds(coords);
+            mapRef.current.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+          }
+          setIsSearching(false);
+          return;
         }
       }
     } catch (err) {
@@ -1679,6 +1781,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     if (!selectedPlace) return;
     setIsDirectionsMode(true);
     setIsNavigating(false);
+    setAiSmogSpikeAlert(null);
+    hasAutoTriggeredSpikeRef.current = false;
     
     const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
     setRouteOriginCoords(origin);
@@ -1749,13 +1853,16 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     setNavPosition(null);
     setRerouteNotice(null);
     setIsRerouting(false);
+    setAiSmogSpikeAlert(null);
+    setAiScanCount(0);
+    hasAutoTriggeredSpikeRef.current = false;
   };
 
   // Off-Route Rerouting Handler: auto recalculates route from drifted road coordinates
   const handleOffRoute = async (newCoords: [number, number]) => {
     if (!selectedPlace) return;
     setIsRerouting(true);
-    setRerouteNotice(`Off-route detected • Automatically recalculating route to ${selectedPlace.name || "destination"}...`);
+    setRerouteNotice(`Off-route detected • AI recalculating safest route to ${selectedPlace.name || "destination"}...`);
 
     // Snap to nearest actual drivable road coordinate via OSRM Nearest API
     let roadCoords: [number, number] = newCoords;
@@ -1777,7 +1884,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     try {
        const origin = roadCoords;
        const dest: [number, number] = [selectedPlace.lat, selectedPlace.lon];
-       await fetchRoutesAndEnhance(origin, dest, selectedVehicle, routeStops);
+       await fetchRoutesAndEnhance(origin, dest, selectedVehicle, routeStops, 'safest');
        setRouteOriginCoords(roadCoords);
        setSelectedRouteIdx(0);
     } catch (err) {
@@ -1793,11 +1900,71 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   // Simulate Detour Trigger for interactive testing
   const handleSimulateDetour = async () => {
     if (!navPosition || !selectedPlace) return;
-    // Calculate a small cross-street offset perpendicular to current heading (~180m)
     const rad = ((navHeading || 0) + 90) * Math.PI / 180;
     const detourLat = navPosition.lat + (0.0018 * Math.cos(rad));
     const detourLng = navPosition.lng + (0.0018 * Math.sin(rad));
     await handleOffRoute([detourLat, detourLng]);
+  };
+
+  // Trigger Live AI Smog Spike Ahead Check (Manual or Automatic Mid-Ride Test)
+  const handleSimulateSmogSpikeAhead = async () => {
+    if (!selectedPlace) return;
+    const curPos: [number, number] = navPosition
+      ? [navPosition.lat, navPosition.lng]
+      : (routeOriginCoords || userLocation || [31.5204, 74.3587]);
+    const currentRoute = routes[selectedRouteIdx];
+    const coords = currentRoute?.geometry?.coordinates || [];
+    const midIdx = Math.min(coords.length - 1, Math.max(1, Math.floor(coords.length * 0.35)));
+    const aheadPos: [number, number] = coords[midIdx]
+      ? [coords[midIdx][1], coords[midIdx][0]]
+      : [selectedPlace.lat, selectedPlace.lon];
+    await triggerBackendAiMonitor(curPos, aheadPos, coords, true);
+  };
+
+  // User Accepts AI Recommended Cleaner Bypass Path During Ride
+  const handleAcceptAiSmogReroute = async () => {
+    if (!aiSmogSpikeAlert) return;
+    const cleanRoute = aiSmogSpikeAlert.recommendedNewRoute;
+    const corridorLabel = aiSmogSpikeAlert.recommended_corridor || 'AI Safest Green Bypass';
+    const savedAqi = aiSmogSpikeAlert.aqi_saved || 25;
+
+    setRerouteNotice(`✅ AI Safe Path Active: Following ${corridorLabel} (-${savedAqi} AQI cleaner)`);
+    setAiLiveScanMessage(`✅ Switched to ${corridorLabel}. Avoided ${aiSmogSpikeAlert.hotspot_name} smog spike (-${savedAqi} AQI).`);
+
+    if (cleanRoute && cleanRoute.geometry && cleanRoute.geometry.coordinates) {
+      setRoutes([cleanRoute]);
+      setSelectedRouteIdx(0);
+      const startPt = cleanRoute.geometry.coordinates[0];
+      if (startPt) {
+        setNavPosition({ lat: startPt[1], lng: startPt[0] });
+      }
+      setNavUpcomingAqi(aiSmogSpikeAlert.projected_clean_aqi || 72);
+      setNavUpcomingStatus('Moderate Haze');
+      setNavUpcomingWarning(`🌿 AI Safe Bypass Active: Routed via ${corridorLabel} (${aiSmogSpikeAlert.projected_clean_aqi || 72} AQI).`);
+    } else if (navPosition && selectedPlace) {
+      await fetchRoutesAndEnhance([navPosition.lat, navPosition.lng], [selectedPlace.lat, selectedPlace.lon], selectedVehicle, routeStops, 'safest');
+    }
+
+    // Log user acceptance to SQLite database
+    try {
+      fetch(getApiEndpoint('/dashboard/routing/accept-reroute'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: routingSessionId,
+          vehicleMode: selectedVehicle,
+          currentPos: navPosition ? [navPosition.lat, navPosition.lng] : [31.5204, 74.3587],
+          currentAqi: navCurrentAqi,
+          aheadAqi: aiSmogSpikeAlert.current_path_aqi,
+          corridorName: corridorLabel
+        })
+      }).catch(() => {});
+    } catch (e) {}
+
+    setAiSmogSpikeAlert(null);
+    setTimeout(() => {
+      setRerouteNotice(null);
+    }, 4000);
   };
 
   if (!mounted) {
@@ -2010,6 +2177,22 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           )
         )}
 
+        {/* AI Recommended Cleaner Bypass Preview Polyline (During Mid-Ride Smog Spike Alert) */}
+        {isNavigating && aiSmogSpikeAlert?.recommendedNewRoute?.geometry?.coordinates && (
+          <Polyline
+            positions={aiSmogSpikeAlert.recommendedNewRoute.geometry.coordinates.map((c: any) => [c[1], c[0]])}
+            color="#10b981"
+            weight={7}
+            opacity={0.95}
+            dashArray="10, 8"
+            pathOptions={{
+              lineCap: 'round',
+              lineJoin: 'round',
+              className: 'drop-shadow-lg animate-pulse'
+            }}
+          />
+        )}
+
         {/* Dynamic AI-Controlled Atmospheric Smog Dispersion Layer (Borderless Natural Dispersion) */}
         {showSmogLayer && (
           <Pane name="smogLayer" style={{ pointerEvents: 'none', zIndex: 400 }}>
@@ -2104,6 +2287,96 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               </span>
               <span className="text-emerald-50 font-bold text-lg leading-tight opacity-90 drop-shadow-sm">{navInstruction.type}</span>
            </div>
+        </div>
+      )}
+
+      {/* Live 1-Second AI Atmospheric Telemetry HUD Pill (Top Right during Navigation) */}
+      {isNavigating && (
+        <div className="absolute top-6 right-4 z-[3100] hidden md:flex flex-col items-end gap-2 max-w-[320px]">
+          <div className="bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.35)] border border-slate-700/80 flex items-center gap-2.5 text-xs">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5 font-black text-emerald-400 text-[11px] uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>AI Env Scan #{aiScanCount} (1s Live)</span>
+              </div>
+              <span className="text-[11px] text-slate-300 font-semibold line-clamp-1">
+                Here: <strong className="text-white">{navCurrentAqi} AQI</strong> • Ahead: <strong className={navUpcomingAqi > navCurrentAqi + 6 ? 'text-rose-400' : 'text-emerald-300'}>{navUpcomingAqi} AQI</strong>
+              </span>
+            </div>
+          </div>
+
+          {!aiSmogSpikeAlert && (
+            <button
+              onClick={handleSimulateSmogSpikeAhead}
+              disabled={isCheckingSmogSpike}
+              className="px-3.5 py-2 rounded-xl bg-rose-600/95 hover:bg-rose-700 text-white text-[11px] font-extrabold shadow-lg border border-rose-400/50 flex items-center gap-1.5 transition-all active:scale-95"
+              title="Simulate a sudden smog spike ahead to test AI rerouting"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>{isCheckingSmogSpike ? 'AI Checking Corridor...' : 'Test Smog Spike Ahead'}</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Floating Mid-Ride AI Smog Spike Alert & Reroute Recommendation Modal */}
+      {isNavigating && aiSmogSpikeAlert && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-[3400] w-[calc(100%-24px)] sm:w-[460px] bg-slate-900/95 backdrop-blur-xl text-white rounded-3xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] border-2 border-rose-500/80 overflow-hidden animate-in fade-in slide-in-from-top-5 duration-300">
+          <div className="bg-gradient-to-r from-rose-600 to-amber-600 px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-white animate-bounce shrink-0" />
+              <span className="text-xs font-black uppercase tracking-wider text-white">
+                AI Smog Spike Detected Ahead • Reroute Available
+              </span>
+            </div>
+            <span className="text-[10px] font-black bg-black/30 px-2 py-0.5 rounded-full text-rose-100">
+              +{aiSmogSpikeAlert.delta_aqi || 24} AQI Surge
+            </span>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 bg-slate-800/90 p-3 rounded-2xl border border-slate-700">
+              <div>
+                <span className="text-[10px] font-bold uppercase text-rose-400 block">Current Path Ahead ({aiSmogSpikeAlert.hotspot_name})</span>
+                <span className="text-xl font-black text-rose-400">{aiSmogSpikeAlert.current_path_aqi} AQI</span>
+                <span className="text-[11px] text-slate-400 block">High PM2.5 Plume</span>
+              </div>
+              <div className="text-slate-500 font-black text-lg">→</div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase text-emerald-400 block">AI Cleaner Bypass</span>
+                <span className="text-xl font-black text-emerald-400">{aiSmogSpikeAlert.projected_clean_aqi} AQI</span>
+                <span className="text-[11px] font-bold text-emerald-300 block">-{aiSmogSpikeAlert.aqi_saved} AQI Cleaner</span>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-200 leading-relaxed bg-slate-800/50 p-3 rounded-xl border border-slate-700/60">
+              <div className="font-bold text-emerald-400 mb-0.5 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span>Recommended: {aiSmogSpikeAlert.recommended_corridor}</span>
+              </div>
+              <p className="text-[11px] text-slate-300">{aiSmogSpikeAlert.message}</p>
+            </div>
+
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                onClick={handleAcceptAiSmogReroute}
+                className="flex-1 py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/25 transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                <span>Accept New Safe Path</span>
+              </button>
+              <button
+                onClick={() => setAiSmogSpikeAlert(null)}
+                className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition-all active:scale-95"
+              >
+                Keep Current
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2442,6 +2715,74 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
                    {/* Scrollable Smog & Environmental Status Feed */}
                    <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                     {/* 0. LIVE 1-SECOND AI ATMOSPHERIC TELEMETRY SCANNER */}
+                     <div className="bg-slate-900 text-white rounded-2xl p-3.5 shadow-md border border-slate-800 space-y-2">
+                       <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-2">
+                           <span className="relative flex h-2.5 w-2.5">
+                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                           </span>
+                           <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                             <Sparkles className="w-3.5 h-3.5" />
+                             AI Live Environment Scanner
+                           </span>
+                         </div>
+                         <span className="text-[10px] font-mono font-bold bg-slate-800 text-emerald-300 px-2 py-0.5 rounded-full border border-slate-700">
+                           Scan #{aiScanCount} • 1s Interval
+                         </span>
+                       </div>
+                       <p className="text-[11px] text-slate-300 font-medium leading-snug">
+                         {aiLiveScanMessage}
+                       </p>
+                     </div>
+
+                     {/* ACTIVE MID-RIDE AI SMOG SPIKE REROUTE ALERT CARD (IF TRIGGERED) */}
+                     {aiSmogSpikeAlert && (
+                       <div className="bg-rose-950 text-white rounded-2xl p-4 shadow-lg border-2 border-rose-500 space-y-3 animate-in fade-in duration-300">
+                         <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-1.5 text-rose-300 font-black text-xs uppercase tracking-wider">
+                             <AlertTriangle className="w-4 h-4 text-rose-400 animate-bounce shrink-0" />
+                             <span>Smog Spike Ahead ({aiSmogSpikeAlert.hotspot_name})</span>
+                           </div>
+                           <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">
+                             -{aiSmogSpikeAlert.aqi_saved} AQI Bypass
+                           </span>
+                         </div>
+
+                         <p className="text-xs text-rose-100 leading-relaxed">
+                           {aiSmogSpikeAlert.message}
+                         </p>
+
+                         <div className="grid grid-cols-2 gap-2 text-center bg-black/30 p-2.5 rounded-xl border border-rose-800/60">
+                           <div>
+                             <span className="text-[10px] text-rose-300 font-bold uppercase block">Current Ahead</span>
+                             <span className="text-lg font-black text-rose-400">{aiSmogSpikeAlert.current_path_aqi} AQI</span>
+                           </div>
+                           <div>
+                             <span className="text-[10px] text-emerald-300 font-bold uppercase block">AI Safe Bypass</span>
+                             <span className="text-lg font-black text-emerald-400">{aiSmogSpikeAlert.projected_clean_aqi} AQI</span>
+                           </div>
+                         </div>
+
+                         <div className="flex items-center gap-2">
+                           <button
+                             onClick={handleAcceptAiSmogReroute}
+                             className="flex-1 py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs uppercase rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-1"
+                           >
+                             <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                             <span>Accept Safe Path</span>
+                           </button>
+                           <button
+                             onClick={() => setAiSmogSpikeAlert(null)}
+                             className="py-2.5 px-3 bg-rose-900/70 hover:bg-rose-900 text-rose-200 font-bold text-xs rounded-xl border border-rose-800 transition-all"
+                           >
+                             Ignore
+                           </button>
+                         </div>
+                       </div>
+                     )}
+
                      {/* 1. CURRENT LOCATION SMOG & ENVIRONMENT CARD */}
                      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 relative overflow-hidden">
                        <div className="flex items-center justify-between mb-2">
@@ -2544,19 +2885,29 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                        </div>
                      </div>
 
-                     {/* 3. OFF-ROUTE & DETOUR ASSISTANT */}
-                     <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 flex items-center justify-between gap-3">
+                     {/* 3. AI DYNAMIC REROUTE & SMOG SPIKE SIMULATOR */}
+                     <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2.5">
                        <div>
-                         <h4 className="text-xs font-black text-slate-900">Off-Route Auto Recalculation</h4>
-                         <p className="text-[11px] text-slate-500">Tap any road on map to detour</p>
+                         <h4 className="text-xs font-black text-slate-900">AI Mid-Ride Smog & Detour Controls</h4>
+                         <p className="text-[11px] text-slate-500">Test AI smog spike alert or off-route recalculation</p>
                        </div>
-                       <button 
-                         onClick={handleSimulateDetour}
-                         disabled={isRerouting}
-                         className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition-all active:scale-95 border border-slate-200 shrink-0"
-                       >
-                         {isRerouting ? 'Rerouting...' : 'Simulate Detour'}
-                       </button>
+                       <div className="grid grid-cols-2 gap-2">
+                         <button 
+                           onClick={handleSimulateSmogSpikeAhead}
+                           disabled={isCheckingSmogSpike}
+                           className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-extrabold transition-all active:scale-95 border border-rose-200 flex items-center justify-center gap-1"
+                         >
+                           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                           <span>{isCheckingSmogSpike ? 'Scanning...' : 'Smog Spike Alert'}</span>
+                         </button>
+                         <button 
+                           onClick={handleSimulateDetour}
+                           disabled={isRerouting}
+                           className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition-all active:scale-95 border border-slate-200"
+                         >
+                           {isRerouting ? 'Rerouting...' : 'Simulate Detour'}
+                         </button>
+                       </div>
                      </div>
                    </div>
 
@@ -2574,7 +2925,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
               ) : (
                 <div className="flex flex-col h-full bg-slate-50">
                    <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
-                  <div className="flex items-center justify-between mb-3.5">
+                  <div className="flex items-center justify-between mb-3">
                     <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors w-fit p-2 -ml-2 rounded-full hover:bg-slate-100">
                       <ArrowLeft className="w-5 h-5" />
                     </button>
@@ -2596,7 +2947,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                                setSelectedVehicle(v.id as any);
                                const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
                                if (selectedPlace) {
-                                 await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], v.id as any);
+                                 await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], v.id as any, routeStops, routePreference);
                                }
                              }}
                              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -2613,6 +2964,45 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                        })}
                     </div>
                   </div>
+
+                  {/* AI Route Optimization Preference Toggle (Safest Low-Smog vs Fastest Time) */}
+                  <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80 mb-3.5">
+                    <button
+                      onClick={async () => {
+                        setRoutePreference('safest');
+                        const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+                        if (selectedPlace) {
+                          await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], selectedVehicle, routeStops, 'safest');
+                        }
+                      }}
+                      className={`py-1.5 px-2.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+                        routePreference === 'safest'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>AI Safest (Low Smog)</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setRoutePreference('fastest');
+                        const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+                        if (selectedPlace) {
+                          await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], selectedVehicle, routeStops, 'fastest');
+                        }
+                      }}
+                      className={`py-1.5 px-2.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+                        routePreference === 'fastest'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Fastest & Safe</span>
+                    </button>
+                  </div>
+
                   <div className="space-y-3 relative ml-2">
                      <div className="absolute left-3.5 top-5 bottom-5 w-0.5 bg-slate-200"></div>
                      <div className="flex items-start gap-4 relative">
@@ -2731,7 +3121,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                </div>
                
                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {routes.length === 0 && <div className="text-center p-8 text-slate-400 font-medium">Calculating route...</div>}
+                  {routes.length === 0 && (
+                    <div className="text-center p-8 text-slate-400 font-medium flex flex-col items-center gap-2">
+                      <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                      <span>AI Model evaluating Lahore smog corridors...</span>
+                    </div>
+                  )}
                   {routes.map((route, idx) => (
                     <div 
                       key={idx} 
@@ -2751,13 +3146,15 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                       }}
                       className={`p-4 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden ${idx === selectedRouteIdx ? 'border-purple-500 bg-purple-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-purple-200'}`}
                     >
-                      {route.aiStats?.isSafest && (
-                        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black uppercase px-2 py-1 rounded-bl-lg tracking-wider">
-                           {selectedVehicle === 'transit' ? 'Recommended Line' : 'Safest Route'}
+                      {(route.aiStats?.isSafest || route.aiStats?.isFastest) && (
+                        <div className={`absolute top-0 right-0 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-bl-lg tracking-wider ${
+                          route.aiStats?.isSafest ? 'bg-emerald-600' : 'bg-purple-600'
+                        }`}>
+                           {route.aiStats?.aiBadge || (selectedVehicle === 'transit' ? 'Recommended Line' : 'Safest Route')}
                         </div>
                       )}
                       
-                      <div className="flex justify-between items-center mb-1">
+                      <div className="flex justify-between items-center mb-1 pt-2">
                         <span className={`font-black text-lg ${idx === selectedRouteIdx ? 'text-purple-700' : 'text-slate-800'}`}>
                           {Math.round(route.duration / 60)} min
                         </span>
@@ -2815,8 +3212,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                           )}
                         </div>
                       ) : (
-                        <div className="text-xs text-slate-500 font-medium mb-2">
-                          via {route.legs[0]?.steps?.[0]?.name || "Main Route"}
+                        <div className="text-xs text-slate-700 font-bold mb-1.5 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0"></span>
+                          <span className="line-clamp-1">
+                            {route.corridor_name || `via ${route.legs?.[0]?.steps?.[0]?.name || "Main Route"}`}
+                          </span>
                         </div>
                       )}
 
@@ -2842,17 +3242,53 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                         </div>
                       )}
 
-                      {/* AI Environment & Traffic Data */}
+                      {/* AI Environment, Dose & Safety Score Telemetry */}
                       {route.aiStats && (
-                        <div className="flex items-center gap-2 mt-2 pt-2.5 border-t border-slate-200/60">
-                           <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.smogExposure < 60 ? 'bg-emerald-100 text-emerald-700' : route.aiStats.smogExposure < 100 ? 'bg-yellow-100 text-yellow-700' : 'bg-rose-100 text-rose-700'}`}>
-                             <Wind className="w-3 h-3" />
-                             AQI {route.aiStats.smogExposure}
-                           </div>
-                           <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md ${route.aiStats.traffic === 'Low' || route.aiStats.traffic === 'Dedicated Transit Corridor' || route.aiStats.traffic === 'Pedestrian Friendly' ? 'bg-emerald-100 text-emerald-700' : route.aiStats.traffic === 'Moderate' ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700'}`}>
-                             <Activity className="w-3 h-3" />
-                             {route.aiStats.traffic}
-                           </div>
+                        <div className="space-y-2 mt-2 pt-2.5 border-t border-slate-200/60">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${route.aiStats.smogExposure < 75 ? 'bg-emerald-100 text-emerald-800' : route.aiStats.smogExposure < 95 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                              <Wind className="w-3 h-3" />
+                              <span>Corridor {route.aiStats.smogExposure} AQI</span>
+                            </div>
+                            {route.aiStats.effectiveAqi !== undefined && (
+                              <div className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800">
+                                <span>In-Vehicle {route.aiStats.effectiveAqi} AQI</span>
+                              </div>
+                            )}
+                            {route.aiStats.safetyScore !== undefined && (
+                              <div className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800">
+                                <Sparkles className="w-3 h-3" />
+                                <span>Safety {route.aiStats.safetyScore}%</span>
+                              </div>
+                            )}
+                            {route.aiStats.inhaledPm25Ug !== undefined && (
+                              <div className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                                <span>Dose: {route.aiStats.inhaledPm25Ug} µg</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {route.aiStats.stopEvaluations && route.aiStats.stopEvaluations.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              {route.aiStats.stopEvaluations.map((stEval: any, stIdx: number) => (
+                                <span
+                                  key={stIdx}
+                                  className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1"
+                                >
+                                  <span className="w-3.5 h-3.5 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center font-black">
+                                    {stEval.label || String.fromCharCode(65 + stIdx)}
+                                  </span>
+                                  <span>{stEval.name}: {stEval.aqi} AQI ({stEval.pm25} µg/m³)</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {route.aiStats.aiReasoning && (
+                            <p className="text-[11px] text-slate-600 bg-slate-50/90 p-2 rounded-lg border border-slate-200/70 leading-snug font-medium">
+                              {route.aiStats.aiReasoning}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2862,11 +3298,17 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                {routes.length > 0 && (
                  <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
                     <button 
-                      onClick={() => { setIsNavigating(true); setIsPanelCollapsed(true); }}
+                      onClick={() => {
+                        setIsNavigating(true);
+                        setIsPanelCollapsed(true);
+                        setAiScanCount(0);
+                        setAiSmogSpikeAlert(null);
+                        hasAutoTriggeredSpikeRef.current = false;
+                      }}
                       className="w-full py-4 bg-purple-600 text-white rounded-xl font-bold text-lg hover:bg-purple-700 transition-colors flex justify-center items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
                     >
                       <Navigation className="w-5 h-5 fill-white" />
-                      Start Navigation
+                      Start AI-Monitored Navigation
                     </button>
                  </div>
                )}

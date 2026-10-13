@@ -139,6 +139,43 @@ async function initDatabase() {
     )
   `);
 
+  // 7. AI Smart Routing Sessions Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ai_routing_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_mode TEXT NOT NULL,
+      preference TEXT NOT NULL,
+      origin_name TEXT,
+      origin_lat REAL NOT NULL,
+      origin_lng REAL NOT NULL,
+      dest_name TEXT,
+      dest_lat REAL NOT NULL,
+      dest_lng REAL NOT NULL,
+      recommended_corridor TEXT,
+      safest_aqi INTEGER,
+      fastest_duration_sec INTEGER,
+      inhaled_pm25_ug REAL,
+      safety_score INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 8. AI Real-Time Navigation & Reroute Logs Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ai_navigation_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER,
+      vehicle_mode TEXT NOT NULL,
+      current_lat REAL NOT NULL,
+      current_lng REAL NOT NULL,
+      current_aqi INTEGER NOT NULL,
+      ahead_aqi INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      ai_recommendation TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed default authentic Lahore data if empty
   const metricsCount = await dbGet('SELECT COUNT(*) as count FROM dashboard_metrics');
   if (metricsCount.count === 0) {

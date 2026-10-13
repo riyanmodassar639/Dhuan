@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from predict import LahoreSmogPredictor, calculate_us_aqi, get_aqi_category
 from assistant import SmogAssistantEngine
+from routing_ai import SmogRoutingAIEngine
 
 app = FastAPI(
     title="DHUAN AI Core — Lahore Smog Intelligence Engine",
@@ -26,9 +27,11 @@ app.add_middleware(
 
 # Initialize predictor on server boot
 predictor = None
+routing_engine = None
 try:
     predictor = LahoreSmogPredictor()
-    print("[AI Core] Lahore Smog AI Model loaded successfully!")
+    routing_engine = SmogRoutingAIEngine(predictor)
+    print("[AI Core] Lahore Smog AI Model & Smart Routing Engine loaded successfully!")
 except Exception as e:
     print(f"[AI Core] Warning: Model load deferred: {e}")
 
@@ -43,7 +46,7 @@ def read_root():
         "service": "DHUAN AI Core",
         "status": "online",
         "model_loaded": predictor is not None,
-        "algorithm": "RandomForestRegressor + Meteorological Lags",
+        "algorithm": "RandomForestRegressor + Meteorological Lags + Spatial IDW Routing",
         "city": "Lahore, Pakistan"
     }
 
@@ -102,6 +105,78 @@ def predict_spatial_areas(req: SpatialAreasRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class RouteEvaluationRequest(BaseModel):
+    origin: list
+    destination: list
+    vehicle_mode: Optional[str] = "car"
+    preference: Optional[str] = "safest"
+    candidate_routes: list
+    stops: Optional[list] = []
+    current_aqi: Optional[int] = 81
+    current_pm25: Optional[float] = 25.2
+
+@app.post("/api/v1/routing/evaluate")
+def evaluate_routes(req: RouteEvaluationRequest):
+    global predictor, routing_engine
+    if not predictor:
+        predictor = LahoreSmogPredictor()
+    if not routing_engine:
+        routing_engine = SmogRoutingAIEngine(predictor)
+    try:
+        res = routing_engine.evaluate_routes(
+            origin=req.origin,
+            destination=req.destination,
+            vehicle_mode=req.vehicle_mode,
+            preference=req.preference,
+            candidate_routes=req.candidate_routes,
+            current_aqi=req.current_aqi,
+            current_pm25=req.current_pm25,
+            stops=req.stops or []
+        )
+        return {
+            "success": True,
+            "engine": "DHUAN AI Multi-Modal Smog Routing Engine",
+            **res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class RideMonitorRequest(BaseModel):
+    current_pos: list
+    ahead_pos: list
+    destination: list
+    vehicle_mode: Optional[str] = "car"
+    remaining_coords: Optional[list] = []
+    current_aqi: Optional[int] = 81
+    current_pm25: Optional[float] = 25.2
+    simulate_spike: Optional[bool] = False
+
+@app.post("/api/v1/routing/monitor-step")
+def monitor_ride_step(req: RideMonitorRequest):
+    global predictor, routing_engine
+    if not predictor:
+        predictor = LahoreSmogPredictor()
+    if not routing_engine:
+        routing_engine = SmogRoutingAIEngine(predictor)
+    try:
+        res = routing_engine.monitor_navigation_step(
+            current_pos=req.current_pos,
+            ahead_pos=req.ahead_pos,
+            destination=req.destination,
+            vehicle_mode=req.vehicle_mode,
+            remaining_coords=req.remaining_coords or [],
+            current_aqi=req.current_aqi,
+            current_pm25=req.current_pm25,
+            simulate_spike=bool(req.simulate_spike)
+        )
+        return {
+            "success": True,
+            "engine": "DHUAN AI 1-Second Ride Environment Guard",
+            **res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class AssistantAskRequest(BaseModel):
     query: str
     history: Optional[list] = []
@@ -150,3 +225,4 @@ def assistant_ask(req: AssistantAskRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
