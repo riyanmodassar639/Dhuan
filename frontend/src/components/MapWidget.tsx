@@ -2509,8 +2509,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
-      {/* Floating Google-Maps-Style Search Bar (Hidden during active directions or navigation) */}
-      {!isNavigating && !isDirectionsMode && (
+      {/* Floating Google-Maps-Style Search Bar (Hidden when Place Detail Model is open, or during Directions / Navigation) */}
+      {!isNavigating && !isDirectionsMode && !selectedPlace && (
         <div className="absolute top-4 left-4 z-[2000] w-[calc(100%-32px)] sm:w-[380px]">
         <form onSubmit={handleSearch} className="relative bg-white rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] flex items-center px-4 py-3 border border-slate-200">
           <Search className="w-5 h-5 text-slate-500 mr-3 shrink-0" />
