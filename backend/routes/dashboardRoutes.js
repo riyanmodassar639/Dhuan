@@ -173,5 +173,119 @@ router.post('/place-telemetry', async (req, res) => {
   }
 });
 
+// POST /api/dashboard/simulator/run - Scenario Simulator & Environmental Digital Twin
+router.post('/simulator/run', async (req, res) => {
+  try {
+    const { 
+      windScenario = 'easterly_stubble_plume',
+      policyIntervention = 'none',
+      inversionSeverity = 'moderate'
+    } = req.body || {};
+
+    const overview = await getDashboardOverviewData();
+    const baseStations = overview.highAlertAreas || [];
+
+    let windAqiMultiplier = 1.0;
+    let windDescription = 'Baseline prevailing wind';
+    if (windScenario === 'easterly_stubble_plume') {
+      windAqiMultiplier = 1.38;
+      windDescription = 'Easterly low-velocity wind transporting dense stubble burning aerosols from eastern border';
+    } else if (windScenario === 'calm_stagnant') {
+      windAqiMultiplier = 1.22;
+      windDescription = 'Dead calm (< 2 km/h); zero horizontal advection; pollutants pool at ground level';
+    } else if (windScenario === 'westerly_clean') {
+      windAqiMultiplier = 0.78;
+      windDescription = 'Fresh westerly breeze (14 km/h) clearing particulates toward eastern plains';
+    } else if (windScenario === 'monsoon_scrub') {
+      windAqiMultiplier = 0.45;
+      windDescription = 'Convective rain event scrubbing atmospheric aerosols down to ambient clean air';
+    }
+
+    let policyDelta = 0.0;
+    let policyDescription = 'No active policy intervention';
+    if (policyIntervention === 'odd_even_traffic') {
+      policyDelta = -0.16;
+      policyDescription = 'Odd-Even license plate rotation: 40% reduction in private vehicle exhaust';
+    } else if (policyIntervention === 'industrial_shutdown') {
+      policyDelta = -0.22;
+      policyDescription = 'Temporary shutdown of non-compliant steel re-rolling mills & brick kilns';
+    } else if (policyIntervention === 'heavy_truck_ban') {
+      policyDelta = -0.14;
+      policyDescription = 'Daytime restriction on heavy multi-axle diesel freight vehicles';
+    } else if (policyIntervention === 'combined_emergency') {
+      policyDelta = -0.38;
+      policyDescription = 'Full Smog Emergency Protocol: Traffic curbs, industrial scrubbers, and water misting cannons';
+    }
+
+    let inversionDelta = 1.0;
+    if (inversionSeverity === 'extreme_thermal_lid') {
+      inversionDelta = 1.28;
+    } else if (inversionSeverity === 'none') {
+      inversionDelta = 0.85;
+    }
+
+    const simulatedStations = baseStations.map(st => {
+      let spatialFactor = 1.0;
+      if (windScenario === 'easterly_stubble_plume') {
+        if (st.zone_code === 'WG-MNW' || st.zone_code === 'BR-PGN' || st.zone_code === 'DHA-6') {
+          spatialFactor = 1.25;
+        } else if (st.zone_code === 'SH-GT' || st.zone_code === 'KL-IND') {
+          spatialFactor = 1.12;
+        }
+      }
+
+      const combinedFactor = Math.max(0.25, (windAqiMultiplier * inversionDelta * spatialFactor) + policyDelta);
+      const simAqi = Math.min(500, Math.max(25, Math.round(st.aqi * combinedFactor)));
+      const simPm25 = Math.round((st.pm25 * combinedFactor) * 10) / 10;
+
+      let status = 'Moderate Haze';
+      let colorTier = 'amber';
+      if (simAqi > 300) { status = 'Hazardous Toxic Smog'; colorTier = 'maroon'; }
+      else if (simAqi > 200) { status = 'Severe Smog Event'; colorTier = 'purple'; }
+      else if (simAqi > 150) { status = 'Dense Smog Inversion'; colorTier = 'rose'; }
+      else if (simAqi > 100) { status = 'Smog Inversion Forming'; colorTier = 'orange'; }
+      else if (simAqi <= 50) { status = 'Clean Air'; colorTier = 'emerald'; }
+
+      return {
+        ...st,
+        baseline_aqi: st.aqi,
+        simulated_aqi: simAqi,
+        simulated_pm25: simPm25,
+        aqi_delta: simAqi - st.aqi,
+        simulated_status: status,
+        simulated_color: colorTier
+      };
+    });
+
+    const baseAvgAqi = Math.round(baseStations.reduce((a, b) => a + b.aqi, 0) / (baseStations.length || 1));
+    const simAvgAqi = Math.round(simulatedStations.reduce((a, b) => a + b.simulated_aqi, 0) / (simulatedStations.length || 1));
+    const netDeltaPercent = Math.round(((simAvgAqi - baseAvgAqi) / baseAvgAqi) * 100);
+
+    res.json({
+      success: true,
+      is_simulation: true,
+      simulation_engine: 'DHUAN Atmospheric Plume & Planetary Boundary Layer Digital Twin v1.0',
+      parameters: {
+        windScenario,
+        windDescription,
+        policyIntervention,
+        policyDescription,
+        inversionSeverity
+      },
+      summary: {
+        baselineCityAvgAqi: baseAvgAqi,
+        simulatedCityAvgAqi: simAvgAqi,
+        netDeltaAqi: simAvgAqi - baseAvgAqi,
+        netDeltaPercent,
+        projectedExposureChange: netDeltaPercent > 0 ? `+${netDeltaPercent}% increased respiratory exposure` : `${netDeltaPercent}% reduced respiratory exposure`
+      },
+      simulatedStations
+    });
+  } catch (err) {
+    console.error('Error running scenario simulation:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
 

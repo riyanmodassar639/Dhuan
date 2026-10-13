@@ -13,7 +13,8 @@ import {
   Bell,
   MapPin,
   Sparkles,
-  PhoneCall
+  PhoneCall,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Footer from '@/components/Footer';
@@ -53,6 +54,7 @@ export default function DashboardLayout({
     { name: 'Overview', href: '/dashboard', icon: Activity },
     { name: 'Map View', href: '/dashboard/map', icon: MapPin },
     { name: 'Smart Routing', href: '/dashboard/routing', icon: MapIcon },
+    { name: 'Simulator', href: '/dashboard/simulator', icon: SlidersHorizontal },
     { name: 'Health Profile', href: '/dashboard/health', icon: ShieldAlert },
     { name: 'Ask DHUAN', href: '/dashboard/ask', icon: Sparkles },
     { name: 'SOS & Hospitals', href: '/dashboard/emergency', icon: PhoneCall, isEmergency: true },
