@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('path');
-const { initDatabase, dbGet, dbAll } = require('../db/database');
+const { initDatabase, dbGet, dbAll, dbRun } = require('../db/database');
 const { 
   getSmogStatus, 
   calculateUsAqiFromPm25, 
@@ -110,15 +109,31 @@ test('DHUAN Backend Test Suite', async (t) => {
     }
   });
 
-  await t.test('7. Smart Routing SQLite & AI Multi-Stop Itinerary Pipeline', async () => {
-    // Verify planned_destinations SQLite table exists and has seeded data
-    const rows = await dbAll('SELECT * FROM planned_destinations WHERE day = "Monday"');
-    assert.ok(rows.length >= 10, 'Should have at least 10 verified destinations for Monday');
+  await t.test('7. Smart Routing SQLite & Dynamic Itinerary Pipeline', async () => {
+    // Verify planned_destinations SQLite table exists and has proper schema
+    const tableInfo = await dbAll('PRAGMA table_info(planned_destinations)');
+    assert.ok(tableInfo.length > 0, 'planned_destinations table must exist in SQLite');
+    const cols = tableInfo.map(c => c.name);
+    assert.ok(cols.includes('id'), 'has id column');
+    assert.ok(cols.includes('name'), 'has name column');
+    assert.ok(cols.includes('day'), 'has day column');
+    assert.ok(cols.includes('is_silent'), 'has is_silent column');
+    assert.ok(cols.includes('notifications_enabled'), 'has notifications_enabled column');
 
-    const first = rows.find(r => r.name.includes('Packages Mall'));
-    assert.ok(first, 'Packages Mall destination must exist');
-    assert.ok(first.lat > 31.0 && first.lng > 74.0, 'Valid coordinates');
-    assert.ok(first.aqi_forecast > 0, 'AQI forecast must be positive');
+    // Test inserting a destination dynamically
+    const testId = `test-dest-${Date.now()}`;
+    await dbRun(`
+      INSERT INTO planned_destinations (
+        id, user_id, day, name, address, lat, lng, time, tag, vehicle,
+        aqi_forecast, pm25_level, smog_status, advisory,
+        lead_time_mins, notifications_enabled, is_silent, smog_spike_alert, channel, status
+      ) VALUES (?, 'default_user', 'Monday', 'Lahore Gymkhana', 'Upper Mall, Lahore', 31.5333, 74.3498, '10:30 AM', 'Fitness', 'car', 120, 42.5, 'Moderate Haze', 'Keep vehicle AC on internal circulation.', 30, 1, 0, 1, 'push', 'scheduled')
+    `, [testId]);
+
+    const created = await dbGet('SELECT * FROM planned_destinations WHERE id = ?', [testId]);
+    assert.ok(created, 'Destination must be created in SQLite');
+    assert.equal(created.name, 'Lahore Gymkhana');
+    assert.equal(created.is_silent, 0);
 
     // Test live HTTP endpoints if server running
     try {
@@ -126,36 +141,29 @@ test('DHUAN Backend Test Suite', async (t) => {
       if (getRes.ok) {
         const data = await getRes.json();
         assert.equal(data.success, true);
-        assert.ok(data.destinations.length >= 10);
-        assert.ok(data.dayCounts.Monday >= 10);
-      }
-
-      // Test AI optimization endpoint
-      const optRes = await fetch('http://localhost:5001/api/routing/destinations/optimize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ day: 'Monday' })
-      });
-      if (optRes.ok) {
-        const optData = await optRes.json();
-        assert.equal(optData.success, true);
-        assert.ok(optData.summary.netReductionPct > 0, 'AI optimization must achieve positive PM2.5 reduction');
+        assert.ok(Array.isArray(data.destinations));
       }
 
       // Test Smart Proactive Alert
       const alertRes = await fetch('http://localhost:5001/api/routing/destinations/test-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ day: 'Monday' })
+        body: JSON.stringify({ day: 'Monday', id: testId })
       });
       if (alertRes.ok) {
         const alertData = await alertRes.json();
         assert.equal(alertData.success, true);
-        assert.ok(alertData.alert.message.includes('Proactive Smog Alert'));
+        assert.ok(alertData.alert);
+        assert.equal(alertData.alert.destinationName, 'Lahore Gymkhana');
       }
     } catch (e) {
       // In standalone sandbox
     }
+
+    // Clean up test destination
+    await dbRun('DELETE FROM planned_destinations WHERE id = ?', [testId]);
+    const afterDelete = await dbGet('SELECT * FROM planned_destinations WHERE id = ?', [testId]);
+    assert.equal(afterDelete, undefined, 'Test destination must be cleaned up');
   });
 
 });

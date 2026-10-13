@@ -279,6 +279,7 @@ async function initDatabase() {
       advisory TEXT,
       lead_time_mins INTEGER DEFAULT 30,
       notifications_enabled INTEGER DEFAULT 1,
+      is_silent INTEGER DEFAULT 0,
       smog_spike_alert INTEGER DEFAULT 1,
       channel TEXT DEFAULT 'push',
       status TEXT DEFAULT 'scheduled',
@@ -313,12 +314,6 @@ async function initDatabase() {
   const hospCount = await dbGet('SELECT COUNT(*) as count FROM hospitals');
   if (hospCount.count === 0) {
     await seedHospitalsData();
-  }
-
-  // Seed planned destinations if table is empty
-  const destCount = await dbGet('SELECT COUNT(*) as count FROM planned_destinations');
-  if (destCount.count === 0) {
-    await seedPlannedDestinationsData();
   }
 }
 

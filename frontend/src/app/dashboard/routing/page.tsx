@@ -8,6 +8,7 @@ import {
   Clock,
   Calendar,
   Bell,
+  BellOff,
   Navigation,
   Plus,
   Trash2,
@@ -32,9 +33,7 @@ import {
   Flame,
   Wind,
   ShieldAlert,
-  Send,
-  MessageSquare,
-  Database
+  Send
 } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
 
@@ -54,8 +53,9 @@ export interface PlannedStop {
   notifications: {
     enabled: boolean;
     leadTimeMins: number; // 15, 30, 45, 60
+    isSilent?: boolean;   // true = mute ringtone sound, false = ring on
     smogSpikeAlert: boolean;
-    channel: 'push' | 'whatsapp' | 'sms';
+    channel: 'push';
   };
   status: 'scheduled' | 'completed' | 'cancelled';
 }
@@ -70,262 +70,129 @@ const DAYS_OF_WEEK = [
   'Sunday'
 ];
 
-// Initial realistic default schedule for Lahore (10 stops on Monday as requested by user)
-const DEFAULT_INITIAL_STOPS: PlannedStop[] = [
-  {
-    id: 'stop-1',
-    name: 'Packages Mall, Walton Road',
-    address: 'Walton Road, Gulshan-e-Mustafa, Lahore',
-    lat: 31.4746,
-    lng: 74.3547,
-    time: '08:30 AM',
-    day: 'Monday',
-    tag: 'Work',
-    vehicle: 'car',
-    aqiForecast: 245,
-    smogStatus: 'Severe Smog Event',
-    advisory: 'Morning smog thermal inversion. Keep car AC on recirculation mode.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: true,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-2',
-    name: 'Kalma Chowk Underpass',
-    address: 'Main Boulevard Gulberg, Lahore',
-    lat: 31.5034,
-    lng: 74.3318,
-    time: '09:45 AM',
-    day: 'Monday',
-    tag: 'Meeting',
-    vehicle: 'transit',
-    aqiForecast: 210,
-    smogStatus: 'Severe Smog Event',
-    advisory: 'Heavy morning congestion corridor. Metrobus AC line recommended.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: true,
-      channel: 'whatsapp'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-3',
-    name: 'MM Alam Road, Gulberg III',
-    address: 'Near Cafe Aylanto, Gulberg III, Lahore',
-    lat: 31.5165,
-    lng: 74.3508,
-    time: '11:15 AM',
-    day: 'Monday',
-    tag: 'Dining',
-    vehicle: 'car',
-    aqiForecast: 135,
-    smogStatus: 'Smog Inversion Forming',
-    advisory: 'Air beginning to disperse with thermal rise. Moderate conditions.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 15,
-      smogSpikeAlert: false,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-4',
-    name: 'Mall Road & Civil Secretariat',
-    address: 'Shahrah-e-Quaid-e-Azam, Lahore',
-    lat: 31.5601,
-    lng: 74.3138,
-    time: '12:45 PM',
-    day: 'Monday',
-    tag: 'Work',
-    vehicle: 'car',
-    aqiForecast: 115,
-    smogStatus: 'Smog Inversion Forming',
-    advisory: 'Midday thermal mixing active. Safest air window of the day.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: true,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-5',
-    name: 'Liberty Market Roundabout',
-    address: 'Liberty Roundabout, Gulberg III, Lahore',
-    lat: 31.5109,
-    lng: 74.3444,
-    time: '02:00 PM',
-    day: 'Monday',
-    tag: 'Shopping',
-    vehicle: 'walk',
-    aqiForecast: 108,
-    smogStatus: 'Smog Inversion Forming',
-    advisory: 'Optimal window for brief outdoor movement.',
-    notifications: {
-      enabled: false,
-      leadTimeMins: 15,
-      smogSpikeAlert: false,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-6',
-    name: 'Lahore Gymkhana Club',
-    address: 'Upper Mall Road, Lahore Cantt',
-    lat: 31.5367,
-    lng: 74.3644,
-    time: '03:30 PM',
-    day: 'Monday',
-    tag: 'Fitness',
-    vehicle: 'car',
-    aqiForecast: 122,
-    smogStatus: 'Smog Inversion Forming',
-    advisory: 'Tree-lined green belt provides natural PM2.5 filtration.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: false,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-7',
-    name: 'Johar Town G1 Market',
-    address: 'Khayaban-e-Firdousi, Johar Town, Lahore',
-    lat: 31.4697,
-    lng: 74.2988,
-    time: '05:00 PM',
-    day: 'Monday',
-    tag: 'Meeting',
-    vehicle: 'car',
-    aqiForecast: 185,
-    smogStatus: 'Dense Smog Inversion',
-    advisory: 'Early evening temperature inversion beginning. Wear N95 mask.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 45,
-      smogSpikeAlert: true,
-      channel: 'whatsapp'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-8',
-    name: 'Defence Raya Golf Resort',
-    address: 'Sector M, DHA Phase 6, Lahore',
-    lat: 31.4552,
-    lng: 74.4371,
-    time: '06:30 PM',
-    day: 'Monday',
-    tag: 'Meeting',
-    vehicle: 'car',
-    aqiForecast: 230,
-    smogStatus: 'Severe Smog Event',
-    advisory: 'Evening smog surge detected along Southern Ring Road corridor.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: true,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-9',
-    name: 'DHA Phase 5 Commercial Avenue',
-    address: 'Main Commercial, Phase 5 DHA, Lahore',
-    lat: 31.4722,
-    lng: 74.4019,
-    time: '08:00 PM',
-    day: 'Monday',
-    tag: 'Shopping',
-    vehicle: 'car',
-    aqiForecast: 175,
-    smogStatus: 'Dense Smog Inversion',
-    advisory: 'High vehicular emissions in commercial zone. Keep cabin sealed.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 15,
-      smogSpikeAlert: true,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-10',
-    name: 'Askari 11 Gate 2',
-    address: 'Bedian Road / Ring Road Interchange, Lahore',
-    lat: 31.4485,
-    lng: 74.4558,
-    time: '09:15 PM',
-    day: 'Monday',
-    tag: 'Home',
-    vehicle: 'car',
-    aqiForecast: 145,
-    smogStatus: 'Smog Inversion Forming',
-    advisory: 'Traffic easing. Safe journey home.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: false,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  // Tuesday Sample
-  {
-    id: 'stop-tue-1',
-    name: 'Shaukat Khanum Memorial Hospital',
-    address: 'Khayaban-e-Jinnah, Johar Town, Lahore',
-    lat: 31.4645,
-    lng: 74.2798,
-    time: '10:00 AM',
-    day: 'Tuesday',
-    tag: 'Medical',
-    vehicle: 'car',
-    aqiForecast: 160,
-    smogStatus: 'Dense Smog Inversion',
-    advisory: 'Hospital precinct with HEPA clean-room access.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 30,
-      smogSpikeAlert: true,
-      channel: 'push'
-    },
-    status: 'scheduled'
-  },
-  {
-    id: 'stop-tue-2',
-    name: 'Emporium Mall by Nishat',
-    address: 'Abdul Haque Rd, Johar Town, Lahore',
-    lat: 31.4674,
-    lng: 74.2678,
-    time: '02:30 PM',
-    day: 'Tuesday',
-    tag: 'Shopping',
-    vehicle: 'car',
-    aqiForecast: 110,
-    smogStatus: 'Smog Inversion Forming',
-    advisory: 'Indoor air filtered mall. Clean air haven.',
-    notifications: {
-      enabled: true,
-      leadTimeMins: 15,
-      smogSpikeAlert: false,
-      channel: 'push'
-    },
-    status: 'scheduled'
+// Clean empty slate (no dummy hardcoded stops)
+const DEFAULT_INITIAL_STOPS: PlannedStop[] = [];
+
+// AI Ringtone Audio Chime Synthesizer (Web Audio API)
+function playDhuanAlertChime(): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof window === 'undefined') {
+        resolve();
+        return;
+      }
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) {
+        resolve();
+        return;
+      }
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const now = ctx.currentTime;
+      // Tone 1: 587.33 Hz (D5) - bright alert tone
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now);
+      gain1.gain.setValueAtTime(0.3, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.35);
+
+      // Tone 2: 880 Hz (A5) - bell resonance
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(880, now + 0.18);
+      gain2.gain.setValueAtTime(0.35, now + 0.18);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.18);
+      osc2.stop(now + 0.7);
+
+      setTimeout(() => {
+        try { ctx.close(); } catch(e) {}
+        resolve();
+      }, 750);
+    } catch (err) {
+      resolve();
+    }
+  });
+}
+
+// AI Voice Speech Synthesizer (Speaks specific Day, Destination, Time, and Smog details)
+function speakAiVoiceAnnouncement(text: string) {
+  try {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.98;
+      utterance.pitch = 1.05;
+      utterance.lang = 'en-US';
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(
+        v => (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('David')) && v.lang.startsWith('en')
+      );
+      if (preferred) {
+        utterance.voice = preferred;
+      }
+      window.speechSynthesis.speak(utterance);
+    }
+  } catch (err) {
+    console.warn('Speech synthesis deferred:', err);
   }
-];
+}
+
+// Device Notification Engine (Native OS Notification like WhatsApp Web + AI Ringtone Sound)
+async function triggerDeviceSmogAlert(params: {
+  day: string;
+  destinationName: string;
+  time: string;
+  aqi: number;
+  smogStatus: string;
+  isSilent?: boolean;
+}) {
+  const { day, destinationName, time, aqi, smogStatus, isSilent } = params;
+
+  // 1. Send Device Notification (Appears on user's device/OS outside webpage like WhatsApp Web)
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(`DHUAN Alert: ${destinationName}`, {
+          body: `${day} schedule (${time}) • Smog AQI ${aqi} (${smogStatus}). Take protective travel measures.`,
+          icon: '/favicon.ico',
+          tag: `dhuan-device-${Date.now()}`
+        });
+      } catch (e) {
+        console.warn('Native notification error:', e);
+      }
+    } else if (Notification.permission !== 'denied') {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          new Notification(`DHUAN Alert: ${destinationName}`, {
+            body: `${day} schedule (${time}) • Smog AQI ${aqi} (${smogStatus}). Take protective travel measures.`,
+            icon: '/favicon.ico'
+          });
+        }
+      } catch(e) {}
+    }
+  }
+
+  // 2. Play AI Voice Ringtone Sound if NOT silenced by user
+  if (!isSilent) {
+    await playDhuanAlertChime();
+    const spokenText = `Dhuan alert. ${day} schedule. Departure for ${destinationName} at ${time}. Smog level is AQI ${aqi}, ${smogStatus}.`;
+    speakAiVoiceAnnouncement(spokenText);
+  }
+}
 
 export default function SmartRoutingPage() {
   const router = useRouter();
@@ -357,7 +224,7 @@ export default function SmartRoutingPage() {
   // Notification Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Fetch planned destinations from backend SQLite database
+  // Fetch planned destinations from backend database database
   const fetchDestinations = useCallback(async () => {
     setIsSqlSyncing(true);
     try {
@@ -376,7 +243,7 @@ export default function SmartRoutingPage() {
         }
       }
     } catch (err) {
-      console.warn('Backend SQLite sync deferred, using local cache:', err);
+      console.warn('Backend database sync deferred, using local cache:', err);
     } finally {
       setIsSqlSyncing(false);
     }
@@ -399,6 +266,12 @@ export default function SmartRoutingPage() {
 
   useEffect(() => {
     setMounted(true);
+    try {
+      const stored = localStorage.getItem('dhuan_planned_trips');
+      if (stored && stored.includes('stop-1')) {
+        localStorage.removeItem('dhuan_planned_trips');
+      }
+    } catch (e) {}
     fetchDestinations();
   }, [fetchDestinations]);
 
@@ -493,7 +366,7 @@ export default function SmartRoutingPage() {
     }
   };
 
-  // Add Manual Destination into Backend SQLite Database & Spatial Engine
+  // Add Manual Destination into Backend database Database & Spatial Engine
   const handleAddManualStop = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualName.trim()) return;
@@ -532,7 +405,7 @@ export default function SmartRoutingPage() {
           try {
             localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
           } catch (e) {}
-          showToast(`Saved "${data.destination.name}" to SQLite! AQI: ${data.destination.aqiForecast} (${data.destination.smogStatus})`);
+          showToast(`Destination saved! AQI: ${data.destination.aqiForecast} (${data.destination.smogStatus})`);
           setIsAddModalOpen(false);
           setManualName('');
           setManualAddress('');
@@ -576,7 +449,7 @@ export default function SmartRoutingPage() {
     showToast(`Added "${fallbackStop.name}" to ${selectedDay}'s schedule!`);
   };
 
-  // Toggle Notification for a Destination in SQLite
+  // Toggle Notification for a Destination in database
   const toggleNotification = async (id: string) => {
     const target = allStops.find(s => s.id === id);
     const newEnabled = target ? !target.notifications?.enabled : true;
@@ -612,7 +485,7 @@ export default function SmartRoutingPage() {
     }
   };
 
-  // Update Notification Lead Time in SQLite
+  // Update Notification Lead Time in database
   const updateLeadTime = async (id: string, mins: number) => {
     const updated = allStops.map(s => {
       if (s.id === id) {
@@ -645,8 +518,11 @@ export default function SmartRoutingPage() {
     }
   };
 
-  // Update Notification Channel in SQLite
-  const updateChannel = async (id: string, channel: 'push' | 'whatsapp' | 'sms') => {
+  // Toggle Silent Mode (Sound ON vs Silent) for a Destination
+  const toggleSilentAlert = async (id: string) => {
+    const target = allStops.find(s => s.id === id);
+    const newIsSilent = target ? !target.notifications?.isSilent : true;
+
     const updated = allStops.map(s => {
       if (s.id === id) {
         const notifs = s.notifications || {
@@ -659,7 +535,7 @@ export default function SmartRoutingPage() {
           ...s,
           notifications: {
             ...notifs,
-            channel
+            isSilent: newIsSilent
           }
         };
       }
@@ -671,14 +547,97 @@ export default function SmartRoutingPage() {
       await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notifications: { channel } })
+        body: JSON.stringify({ notifications: { isSilent: newIsSilent } })
       });
     } catch (err) {
-      console.error('Error syncing channel to DB:', err);
+      console.error('Error syncing silent mode to DB:', err);
     }
   };
 
-  // Cancel or Restore Destination in SQLite
+  // Test alert for a specific stop on user's device
+  const handleTestStopAlert = async (stop: PlannedStop) => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch (e) {}
+    }
+
+    await triggerDeviceSmogAlert({
+      day: stop.day,
+      destinationName: stop.name,
+      time: stop.time,
+      aqi: stop.aqiForecast,
+      smogStatus: stop.smogStatus,
+      isSilent: stop.notifications?.isSilent ?? false
+    });
+
+    try {
+      await fetch(getApiEndpoint('/routing/destinations/test-alert'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: stop.day, id: stop.id })
+      });
+    } catch (e) {}
+  };
+
+  // Proactive Real-Time Device Alert Monitor (Runs in background like WhatsApp Web)
+  const alertedStopsRef = React.useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      try {
+        Notification.requestPermission();
+      } catch (e) {}
+    }
+
+    const checkInterval = setInterval(() => {
+      if (allStops.length === 0) return;
+      const now = new Date();
+      const currentDay = DAYS_OF_WEEK[(now.getDay() + 6) % 7];
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+      const currentTimeInMins = currentHours * 60 + currentMinutes;
+
+      allStops.forEach(stop => {
+        if (!stop.notifications?.enabled || stop.status === 'cancelled') return;
+        if (stop.day !== currentDay) return;
+
+        const timeMatch = stop.time.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!timeMatch) return;
+        let stopHours = parseInt(timeMatch[1], 10);
+        const stopMinutes = parseInt(timeMatch[2], 10);
+        const meridiem = timeMatch[3].toUpperCase();
+
+        if (meridiem === 'PM' && stopHours < 12) stopHours += 12;
+        if (meridiem === 'AM' && stopHours === 12) stopHours = 0;
+
+        const stopTimeInMins = stopHours * 60 + stopMinutes;
+        const leadTime = stop.notifications.leadTimeMins || 30;
+        const targetAlertTimeInMins = stopTimeInMins - leadTime;
+
+        const alertKey = `${stop.id}-${currentDay}-${stop.time}-${now.toDateString()}`;
+        if (
+          currentTimeInMins >= targetAlertTimeInMins &&
+          currentTimeInMins <= targetAlertTimeInMins + 2 &&
+          !alertedStopsRef.current.has(alertKey)
+        ) {
+          alertedStopsRef.current.add(alertKey);
+          triggerDeviceSmogAlert({
+            day: stop.day,
+            destinationName: stop.name,
+            time: stop.time,
+            aqi: stop.aqiForecast,
+            smogStatus: stop.smogStatus,
+            isSilent: stop.notifications.isSilent ?? false
+          });
+        }
+      });
+    }, 20000);
+
+    return () => clearInterval(checkInterval);
+  }, [allStops]);
+
+  // Cancel or Restore Destination in database
   const toggleCancelStop = async (id: string) => {
     const target = allStops.find(s => s.id === id);
     const nextStatus: PlannedStop['status'] = target?.status === 'cancelled' ? 'scheduled' : 'cancelled';
@@ -704,7 +663,7 @@ export default function SmartRoutingPage() {
     }
   };
 
-  // Permanently Delete Destination from SQLite
+  // Permanently Delete Destination from database
   const handleDeleteStop = async (id: string) => {
     const updated = allStops.filter(s => s.id !== id);
     saveStops(updated);
@@ -775,8 +734,14 @@ export default function SmartRoutingPage() {
     showToast('AI Smog Optimization Applied! All departures aligned to clean air windows.');
   };
 
-  // Send Proactive Smog Alert via Backend
+  // Send Proactive Smog Alert to Device
   const handleSendTestSmogAlert = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch (e) {}
+    }
+
     try {
       const res = await fetch(getApiEndpoint('/routing/destinations/test-alert'), {
         method: 'POST',
@@ -786,47 +751,51 @@ export default function SmartRoutingPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.alert) {
-          showToast(data.alert.message);
+          await triggerDeviceSmogAlert({
+            day: data.alert.day || selectedDay,
+            destinationName: data.alert.destinationName || dayStops[0]?.name || 'Lahore',
+            time: data.alert.time || dayStops[0]?.time || '10:00 AM',
+            aqi: data.alert.aqi || dayStops[0]?.aqiForecast || 160,
+            smogStatus: data.alert.smogStatus || dayStops[0]?.smogStatus || 'Moderate Haze',
+            isSilent: data.alert.isSilent ?? dayStops[0]?.notifications?.isSilent ?? false
+          });
           return;
         }
       }
     } catch (err) {
       console.error('Error sending test alert:', err);
     }
-    showToast(
-      `Test Smart Alert: Your ${dayStops[0]?.time || '10:15 AM'} stop to ${
-        dayStops[0]?.name || 'Lahore'
-      } is approaching in 30m. AQI is ${dayStops[0]?.aqiForecast || 160}.`
-    );
+
+    const firstActive = dayStops.find(s => s.status === 'scheduled') || dayStops[0];
+    if (firstActive) {
+      await triggerDeviceSmogAlert({
+        day: firstActive.day,
+        destinationName: firstActive.name,
+        time: firstActive.time,
+        aqi: firstActive.aqiForecast,
+        smogStatus: firstActive.smogStatus,
+        isSilent: firstActive.notifications?.isSilent ?? false
+      });
+    }
   };
 
-  // Reset to Default Lahore Tour in SQLite
-  const handleResetSchedule = async () => {
-    if (confirm('Reset to default Lahore multi-stop schedule?')) {
+  // Clear Day Schedule
+  const handleClearSchedule = async () => {
+    if (confirm(`Clear all scheduled stops for ${selectedDay}?`)) {
       setIsSqlSyncing(true);
       try {
-        const res = await fetch(getApiEndpoint('/routing/destinations/reset'), {
-          method: 'POST'
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.destinations) {
-            setAllStops(data.destinations);
-            try {
-              localStorage.setItem('dhuan_planned_trips', JSON.stringify(data.destinations));
-            } catch (e) {}
-            showToast('Restored default 10-stop Monday tour in SQLite database.');
-            fetchDestinations();
-            return;
-          }
-        }
+        const toDelete = allStops.filter(s => s.day === selectedDay);
+        await Promise.all(
+          toDelete.map(s =>
+            fetch(getApiEndpoint(`/routing/destinations/${s.id}`), { method: 'DELETE' })
+          )
+        );
+        fetchDestinations();
       } catch (err) {
-        console.error('Error resetting schedule:', err);
+        console.error('Error clearing schedule:', err);
       } finally {
         setIsSqlSyncing(false);
       }
-      saveStops(DEFAULT_INITIAL_STOPS);
-      showToast('Restored default 10-stop Monday tour.');
     }
   };
 
@@ -869,11 +838,12 @@ export default function SmartRoutingPage() {
                 <Wind className="w-3.5 h-3.5 text-emerald-600" />
                 Spatial AI Pre-Planning & Eco-Routing
               </div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold">
-                <Database className="w-3.5 h-3.5 text-emerald-600" />
-                <span>SQLite DB: Connected</span>
-                {isSqlSyncing && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>}
-              </div>
+              {isSqlSyncing && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
+                  <span>Syncing...</span>
+                </div>
+              )}
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
               Smart Routing & Trip Pre-Planner
@@ -1055,11 +1025,11 @@ export default function SmartRoutingPage() {
 
             {/* Reset to Default Button */}
             <button
-              onClick={handleResetSchedule}
-              title="Reset to 10-stop Monday tour"
+              onClick={() => fetchDestinations()}
+              title="Refresh Itinerary"
               className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition-colors shrink-0"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 ${isSqlSyncing ? 'animate-spin text-emerald-600' : ''}`} />
             </button>
           </div>
         </div>
@@ -1088,12 +1058,7 @@ export default function SmartRoutingPage() {
               >
                 + Add Destination Manually
               </button>
-              <button
-                onClick={handleResetSchedule}
-                className="px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors"
-              >
-                Load Sample 10 Stops
-              </button>
+              
             </div>
           </div>
         ) : (
@@ -1205,11 +1170,11 @@ export default function SmartRoutingPage() {
                     </div>
 
                     {/* Middle: Smart Notification Controls */}
-                    <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
                       {/* Toggle notification */}
                       <button
                         onClick={() => toggleNotification(stop.id)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-xs transition-colors ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
                           stop.notifications?.enabled
                             ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
@@ -1240,30 +1205,42 @@ export default function SmartRoutingPage() {
                         </div>
                       )}
 
-                      {/* Channel */}
+                      {/* Sound / Silent Toggle Button (Directly following notice time) */}
                       {stop.notifications?.enabled && (
-                        <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+                        <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
                           <button
-                            onClick={() => updateChannel(stop.id, 'push')}
-                            className={`p-1.5 rounded-lg text-xs ${
-                              stop.notifications?.channel === 'push'
-                                ? 'bg-emerald-100 text-emerald-700 font-bold'
-                                : 'text-slate-400 hover:text-slate-600'
+                            onClick={() => toggleSilentAlert(stop.id)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                              !stop.notifications?.isSilent
+                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                             }`}
-                            title="Push Notification"
+                            title={
+                              !stop.notifications?.isSilent
+                                ? 'Sound alert active (Device notification + AI Ringtone). Click to switch to Silent mode.'
+                                : 'Silent mode active (Device notification only, no sound). Click to enable Sound alert.'
+                            }
                           >
-                            <Bell className="w-3.5 h-3.5" />
+                            {!stop.notifications?.isSilent ? (
+                              <>
+                                <Bell className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                                <span className="text-[11px]">Sound</span>
+                              </>
+                            ) : (
+                              <>
+                                <BellOff className="w-3.5 h-3.5 text-slate-500" />
+                                <span className="text-[11px]">Silent</span>
+                              </>
+                            )}
                           </button>
+
+                          {/* Quick Test Alert Button for this destination */}
                           <button
-                            onClick={() => updateChannel(stop.id, 'whatsapp')}
-                            className={`p-1.5 rounded-lg text-xs ${
-                              stop.notifications?.channel === 'whatsapp'
-                                ? 'bg-emerald-100 text-emerald-700 font-bold'
-                                : 'text-slate-400 hover:text-slate-600'
-                            }`}
-                            title="WhatsApp Alert"
+                            onClick={() => handleTestStopAlert(stop)}
+                            className="px-2 py-1 rounded-lg text-[10px] font-extrabold bg-slate-900 hover:bg-slate-800 text-white transition-colors"
+                            title="Test alert for this destination on your device"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
+                            Test
                           </button>
                         </div>
                       )}
@@ -1530,7 +1507,7 @@ export default function SmartRoutingPage() {
                           try {
                             localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
                           } catch (e) {}
-                          showToast(`Departure time updated to ${updatedTime} in SQLite! AQI: ${data.destination.aqiForecast}`);
+                          showToast(`Departure time updated! AQI: ${data.destination.aqiForecast}`);
                           fetchDestinations();
                           return;
                         }

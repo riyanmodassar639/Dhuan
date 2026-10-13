@@ -120,6 +120,7 @@ function mapRowToStop(row) {
     notifications: {
       enabled: Boolean(row.notifications_enabled),
       leadTimeMins: row.lead_time_mins || 30,
+      isSilent: Boolean(row.is_silent),
       smogSpikeAlert: Boolean(row.smog_spike_alert),
       channel: row.channel || 'push'
     },
@@ -208,6 +209,7 @@ router.post('/destinations', async (req, res) => {
 
     const leadTime = notifications?.leadTimeMins !== undefined ? notifications.leadTimeMins : 30;
     const notifEnabled = notifications?.enabled !== undefined ? (notifications.enabled ? 1 : 0) : 1;
+    const isSilent = notifications?.isSilent !== undefined ? (notifications.isSilent ? 1 : 0) : 0;
     const spikeAlert = notifications?.smogSpikeAlert !== undefined ? (notifications.smogSpikeAlert ? 1 : 0) : 1;
     const notifChannel = notifications?.channel || 'push';
 
@@ -215,8 +217,8 @@ router.post('/destinations', async (req, res) => {
       INSERT OR REPLACE INTO planned_destinations (
         id, user_id, day, name, address, lat, lng, time, tag, vehicle,
         aqi_forecast, pm25_level, smog_status, advisory,
-        lead_time_mins, notifications_enabled, smog_spike_alert, channel, status
-      ) VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        lead_time_mins, notifications_enabled, is_silent, smog_spike_alert, channel, status
+      ) VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       destId,
       destDay,
@@ -233,6 +235,7 @@ router.post('/destinations', async (req, res) => {
       spatialInfo.advisory,
       leadTime,
       notifEnabled,
+      isSilent,
       spikeAlert,
       notifChannel,
       destStatus
@@ -294,12 +297,12 @@ router.put('/destinations/:id', async (req, res) => {
 
     let leadTime = existing.lead_time_mins;
     let notifEnabled = existing.notifications_enabled;
-    let spikeAlert = existing.smog_spike_alert;
-    let notifChannel = existing.channel;
+    let isSilent = existing.is_silent !== undefined ? existing.is_silent : 0;
 
     if (notifications) {
       if (notifications.leadTimeMins !== undefined) leadTime = notifications.leadTimeMins;
       if (notifications.enabled !== undefined) notifEnabled = notifications.enabled ? 1 : 0;
+      if (notifications.isSilent !== undefined) isSilent = notifications.isSilent ? 1 : 0;
       if (notifications.smogSpikeAlert !== undefined) spikeAlert = notifications.smogSpikeAlert ? 1 : 0;
       if (notifications.channel !== undefined) notifChannel = notifications.channel;
     }
@@ -308,7 +311,7 @@ router.put('/destinations/:id', async (req, res) => {
       UPDATE planned_destinations
       SET name = ?, address = ?, time = ?, day = ?, tag = ?, vehicle = ?,
           status = ?, aqi_forecast = ?, smog_status = ?, advisory = ?,
-          lead_time_mins = ?, notifications_enabled = ?, smog_spike_alert = ?, channel = ?,
+          lead_time_mins = ?, notifications_enabled = ?, is_silent = ?, smog_spike_alert = ?, channel = ?,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -324,6 +327,7 @@ router.put('/destinations/:id', async (req, res) => {
       updatedAdvisory,
       leadTime,
       notifEnabled,
+      isSilent,
       spikeAlert,
       notifChannel,
       id
@@ -352,20 +356,18 @@ router.delete('/destinations/:id', async (req, res) => {
   }
 });
 
-// 5. POST /api/routing/destinations/reset (Reset itinerary to authentic default)
+// 5. POST /api/routing/destinations/reset (Clear itinerary)
 router.post('/destinations/reset', async (req, res) => {
   try {
     await dbRun('DELETE FROM planned_destinations');
-    await seedPlannedDestinationsData();
-    const rows = await dbAll('SELECT * FROM planned_destinations ORDER BY id ASC');
     res.json({
       success: true,
-      message: 'Restored default verified Lahore multi-stop tour schedule.',
-      count: rows.length,
-      destinations: rows.map(mapRowToStop)
+      message: 'Itinerary cleared.',
+      count: 0,
+      destinations: []
     });
   } catch (err) {
-    console.error('Error resetting schedule:', err);
+    console.error('Error clearing itinerary:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -457,30 +459,42 @@ router.post('/destinations/optimize', async (req, res) => {
 // 7. POST /api/routing/destinations/test-alert (Trigger Smart Test Smog Alert)
 router.post('/destinations/test-alert', async (req, res) => {
   try {
-    const { day = 'Monday' } = req.body;
-    const firstStop = await dbGet(
-      'SELECT * FROM planned_destinations WHERE day = ? AND status = "scheduled" ORDER BY id ASC LIMIT 1',
-      [day]
-    );
+    const { day = 'Monday', id } = req.body;
+    let targetStop;
+    if (id) {
+      targetStop = await dbGet('SELECT * FROM planned_destinations WHERE id = ?', [id]);
+    }
+    if (!targetStop) {
+      targetStop = await dbGet(
+        'SELECT * FROM planned_destinations WHERE day = ? AND status = "scheduled" ORDER BY id ASC LIMIT 1',
+        [day]
+      );
+    }
 
-    const destName = firstStop ? firstStop.name : 'Lahore Central';
-    const stopTime = firstStop ? firstStop.time : '10:30 AM';
-    const aqi = firstStop ? firstStop.aqi_forecast : 160;
+    const destName = targetStop ? targetStop.name : 'Lahore Central';
+    const stopTime = targetStop ? targetStop.time : '10:30 AM';
+    const stopDay = targetStop ? targetStop.day : day;
+    const aqi = targetStop ? targetStop.aqi_forecast : 160;
+    const smogStatus = targetStop ? targetStop.smog_status : 'Moderate Haze';
+    const isSilent = Boolean(targetStop ? targetStop.is_silent : false);
 
-    const alertMessage = `Proactive Smog Alert: Your ${stopTime} departure to "${destName}" is approaching in 30 minutes. Ahead AQI is ${aqi}. Ensure cabin air recirculation is on.`;
+    const alertMessage = `Proactive Smog Alert: Your ${stopTime} departure to "${destName}" (${stopDay}) is approaching. Ahead AQI is ${aqi} (${smogStatus}).`;
 
     await dbRun(`
       INSERT INTO routing_alert_logs (destination_id, user_id, day, destination_name, time, aqi_level, alert_message, channel)
       VALUES (?, 'default_user', ?, ?, ?, ?, ?, 'push')
-    `, [firstStop ? firstStop.id : 'test-dest', day, destName, stopTime, aqi, alertMessage]);
+    `, [targetStop ? targetStop.id : 'test-dest', stopDay, destName, stopTime, aqi, alertMessage]);
 
     res.json({
       success: true,
       alert: {
-        title: 'DHUAN AI Proactive Smog Alert',
+        title: `DHUAN Alert: ${destName}`,
         destinationName: destName,
         time: stopTime,
+        day: stopDay,
         aqi,
+        smogStatus,
+        isSilent,
         message: alertMessage,
         timestamp: new Date().toISOString()
       }
