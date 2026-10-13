@@ -9,7 +9,7 @@ import {
   Search, MapPin, X, Navigation, Info, Image as ImageIcon, Wind, ShieldAlert, Activity, 
   Bookmark, Share2, ArrowLeft, CornerUpRight, CornerUpLeft, CornerDownLeft, ArrowUp, 
   Car, Bike, Footprints, Bus, Train, Flame, Ticket, Clock, CheckCircle2, Plus, 
-  AlertTriangle, Calendar, Bell, Layers, RotateCw, Eye, EyeOff, Radio, Sparkles, Palette
+  AlertTriangle, Calendar, Bell, Layers, RotateCw, Eye, EyeOff, Radio, Sparkles, Palette, HeartPulse
 } from 'lucide-react';
 import { solvePmaTransitRoutes, TransitRouteResult } from '@/lib/pmaTransitData';
 import { getApiEndpoint } from '@/lib/api';
@@ -451,6 +451,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [selectedStation, setSelectedStation] = useState<GroundStation | null>(null);
   const [showSmogLayer, setShowSmogLayer] = useState(true);
   const [showStationsLayer, setShowStationsLayer] = useState(true);
+  const [showHospitalsLayer, setShowHospitalsLayer] = useState(false);
+  const [hospitalsList, setHospitalsList] = useState<any[]>([]);
   const [smogOverlayUrl, setSmogOverlayUrl] = useState<string>("");
   const [mapZoom, setMapZoom] = useState<number>(12);
   const [showColorGuideModal, setShowColorGuideModal] = useState<boolean>(false);
@@ -540,6 +542,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
   useEffect(() => {
     fetchTelemetry();
+    fetch(getApiEndpoint('/emergency/hospitals?lat=31.5204&lng=74.3587'))
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && d.hospitals) setHospitalsList(d.hospitals);
+      })
+      .catch(() => {});
     const interval = setInterval(fetchTelemetry, 30000);
     return () => clearInterval(interval);
   }, [fetchTelemetry]);
@@ -2343,6 +2351,57 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             />
           );
         })}
+
+        {/* 15 Verified Lahore Emergency Hospitals Interactive Markers */}
+        {showHospitalsLayer && hospitalsList.map((hosp: any) => (
+          <Marker
+            key={`hosp-${hosp.id}`}
+            position={[hosp.lat, hosp.lng]}
+            icon={L.divIcon({
+              className: 'hospital-marker',
+              html: `<div style="background-color: #e11d48; border: 2px solid white; box-shadow: 0 4px 14px rgba(225,29,72,0.45); width: 28px; height: 28px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 15px;">
+                       +
+                     </div>`,
+              iconSize: [28, 28],
+              iconAnchor: [14, 14]
+            })}
+            zIndexOffset={1600}
+          >
+            <Popup>
+              <div className="p-1 min-w-[210px]">
+                <div className="font-bold text-slate-900 text-sm">{hosp.name}</div>
+                <div className="text-[10px] font-bold px-2 py-0.5 rounded text-white bg-rose-600 mt-1 w-fit shadow-xs">
+                  {hosp.trauma_level}
+                </div>
+                <div className="text-xs text-slate-600 mt-1.5">{hosp.emergency_dept}</div>
+                <div className="text-[11px] text-slate-500 mt-1">{hosp.address}</div>
+                <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
+                  <a
+                    href={`tel:${hosp.phone}`}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs text-center border border-rose-200 transition-colors"
+                  >
+                    📞 {hosp.phone}
+                  </a>
+                  <button
+                    onClick={() => {
+                      handleSelectPlace({
+                        name: hosp.name,
+                        lat: String(hosp.lat),
+                        lon: String(hosp.lng),
+                        display_name: hosp.address,
+                        type: 'hospital',
+                        address: { road: hosp.address, city: 'Lahore' }
+                      });
+                    }}
+                    className="py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors"
+                  >
+                    Directions
+                  </button>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
         <MapEventsHandler onMapClick={handleMapClick} onZoomChange={setMapZoom} />
       </MapContainer>
 
@@ -2595,6 +2654,20 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           >
             <Radio className="w-3.5 h-3.5 text-emerald-400" />
             <span>{stations.length} Stations</span>
+          </button>
+
+          {/* Toggle Emergency Hospitals Layer */}
+          <button
+            onClick={() => setShowHospitalsLayer(prev => !prev)}
+            title={showHospitalsLayer ? "Hide Emergency Hospitals Layer" : "Show 15 Verified Emergency Hospitals in Lahore"}
+            className={`px-3 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-[0_4px_16px_rgba(0,0,0,0.12)] border active:scale-95 ${
+              showHospitalsLayer
+                ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/20'
+                : 'bg-white/95 backdrop-blur-md text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <HeartPulse className={`w-3.5 h-3.5 ${showHospitalsLayer ? 'text-white' : 'text-rose-600'}`} />
+            <span>{showHospitalsLayer ? 'Hospitals ON' : 'Hospitals'}</span>
           </button>
 
           {/* Color Guide Modal Button */}

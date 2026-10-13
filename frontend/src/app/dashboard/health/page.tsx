@@ -198,7 +198,7 @@ export default function HealthProfilePage() {
   const [currentLahoreAqi, setCurrentLahoreAqi] = useState<number>(81);
   const [currentLahorePm25, setCurrentLahorePm25] = useState<number>(25.2);
 
-  // Load from localStorage on mount and sync atmospheric readings
+  // Load from backend SQLite on mount (with localStorage fallback) and sync atmospheric readings
   useEffect(() => {
     setMounted(true);
     // Fetch live environmental metrics from backend
@@ -212,16 +212,58 @@ export default function HealthProfilePage() {
       })
       .catch(() => {});
 
-    try {
-      const saved = localStorage.getItem('dhuan_user_health_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setProfile(parsed);
-        setFormData(parsed);
-      }
-    } catch (e) {
-      console.error('Failed to load health profile:', e);
-    }
+    // Fetch verified persistent Health Profile from SQLite database
+    fetch(getApiEndpoint('/emergency/health-profile'))
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.profile) {
+          const p = data.profile;
+          const merged = {
+            ...profile,
+            fullName: p.full_name || profile.fullName,
+            age: p.age || profile.age,
+            gender: p.gender || profile.gender,
+            bloodGroup: p.blood_group || profile.bloodGroup,
+            emergencyContact: p.emergency_contact_phone || profile.emergencyContact,
+            emergencyContactName: p.emergency_contact_name || profile.emergencyContactName,
+            primaryCommute: p.primary_commute || profile.primaryCommute,
+            asthmaSeverity: p.asthma_severity || profile.asthmaSeverity,
+            hasCopd: Boolean(p.has_copd),
+            hasAllergies: Boolean(p.has_allergies),
+            hasCardioCondition: Boolean(p.has_cardio_condition),
+            smokerStatus: p.smoker_status || profile.smokerStatus,
+            triggerAqiThreshold: p.trigger_aqi_threshold || profile.triggerAqiThreshold,
+            usesInhaler: Boolean(p.uses_inhaler),
+            inhalerName: p.inhaler_name || profile.inhalerName,
+            wearsMask: p.wears_mask || profile.wearsMask,
+            maskType: p.mask_type || profile.maskType
+          };
+          setProfile(merged);
+          setFormData(merged);
+          try {
+            localStorage.setItem('dhuan_user_health_profile', JSON.stringify(merged));
+          } catch (e) {}
+        } else {
+          // Fallback to localStorage if no profile in SQL
+          const saved = localStorage.getItem('dhuan_user_health_profile');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setProfile(parsed);
+            setFormData(parsed);
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback to localStorage on network glitch
+        try {
+          const saved = localStorage.getItem('dhuan_user_health_profile');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setProfile(parsed);
+            setFormData(parsed);
+          }
+        } catch (e) {}
+      });
   }, []);
 
   const showToast = (msg: string) => {
@@ -229,16 +271,53 @@ export default function HealthProfilePage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Save changes
-  const handleSaveProfile = (dataToSave = formData) => {
+  // Save changes to both SQLite Database and LocalStorage
+  const handleSaveProfile = async (dataToSave = formData) => {
     setProfile(dataToSave);
     setFormData(dataToSave);
     setIsEditing(false);
     try {
       localStorage.setItem('dhuan_user_health_profile', JSON.stringify(dataToSave));
-      showToast('Health Profile updated successfully!');
+      
+      // Persist to SQLite Database via Backend API
+      await fetch(getApiEndpoint('/emergency/health-profile'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: dataToSave.fullName,
+          age: dataToSave.age,
+          gender: dataToSave.gender,
+          bloodGroup: dataToSave.bloodGroup,
+          emergencyContactName: dataToSave.emergencyContactName,
+          emergencyContactPhone: dataToSave.emergencyContact,
+          primaryCommute: dataToSave.primaryCommute,
+          asthmaSeverity: dataToSave.asthmaSeverity,
+          hasCopd: dataToSave.hasCopd ? 1 : 0,
+          hasAllergies: dataToSave.hasAllergies ? 1 : 0,
+          hasCardioCondition: dataToSave.hasCardioCondition ? 1 : 0,
+          smokerStatus: dataToSave.smokerStatus,
+          triggerAqiThreshold: dataToSave.triggerAqiThreshold,
+          usesInhaler: dataToSave.usesInhaler ? 1 : 0,
+          inhalerName: dataToSave.inhalerName,
+          wearsMask: dataToSave.wearsMask,
+          maskType: dataToSave.maskType
+        })
+      });
+
+      // Record consent for health profile storage
+      await fetch(getApiEndpoint('/emergency/consents'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consentType: 'health_profile_storage',
+          granted: true
+        })
+      });
+
+      showToast('Health Profile saved to secure SQLite database & synced with SOS Emergency briefing!');
     } catch (e) {
       console.error(e);
+      showToast('Health Profile saved locally.');
     }
   };
 

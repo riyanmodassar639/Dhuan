@@ -12,7 +12,8 @@ import {
   X,
   Bell,
   MapPin,
-  Sparkles
+  Sparkles,
+  PhoneCall
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Footer from '@/components/Footer';
@@ -54,6 +55,7 @@ export default function DashboardLayout({
     { name: 'Smart Routing', href: '/dashboard/routing', icon: MapIcon },
     { name: 'Health Profile', href: '/dashboard/health', icon: ShieldAlert },
     { name: 'Ask DHUAN', href: '/dashboard/ask', icon: Sparkles },
+    { name: 'SOS & Hospitals', href: '/dashboard/emergency', icon: PhoneCall, isEmergency: true },
   ];
 
   return (
@@ -88,11 +90,17 @@ export default function DashboardLayout({
                     title={item.name}
                     className={`flex items-center gap-2 p-1.5 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap shrink-0 ${
                       isActive
-                        ? 'bg-emerald-50 text-emerald-700'
+                        ? (item.isEmergency ? 'bg-rose-100 text-rose-800 font-bold border border-rose-300' : 'bg-emerald-50 text-emerald-700')
+                        : item.isEmergency
+                        ? 'text-rose-700 bg-rose-50/70 hover:bg-rose-100 border border-rose-200/80 font-bold'
                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                     }`}
                   >
-                    <Icon className={`w-[18px] h-[18px] sm:w-4 sm:h-4 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <Icon className={`w-[18px] h-[18px] sm:w-4 sm:h-4 ${
+                      isActive 
+                        ? (item.isEmergency ? 'text-rose-600' : 'text-emerald-600') 
+                        : (item.isEmergency ? 'text-rose-600' : 'text-slate-400')
+                    }`} />
                     <span className="hidden md:block">{item.name}</span>
                   </Link>
                 );
