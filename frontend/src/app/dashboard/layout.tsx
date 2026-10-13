@@ -60,7 +60,7 @@ export default function DashboardLayout({
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
       
       {/* Top Navbar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-[3000] shadow-xs">
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             

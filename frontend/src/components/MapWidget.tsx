@@ -2748,7 +2748,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
       {/* Left Sidebar Modal for Selected Place (Google Maps Style) */}
       {selectedPlace && (
-        <div className={`absolute top-0 left-0 h-full w-full sm:w-[400px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[2500] flex flex-col transition-transform duration-300 ${isPanelCollapsed ? '-translate-x-full' : 'translate-x-0'}`}>
+        <div className={`absolute top-0 left-0 h-full w-full sm:w-[420px] bg-white shadow-[8px_0_24px_rgba(0,0,0,0.15)] z-[1500] flex flex-col transition-transform duration-300 ${isPanelCollapsed ? '-translate-x-full' : 'translate-x-0'}`}>
           
           {isDirectionsMode ? (
             <div className="flex flex-col h-full bg-slate-50">
@@ -3405,13 +3405,13 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
           ) : (
             <>
               {/* Modern Place Details Header */}
-              <div className="pt-5 pb-4 px-5 bg-white relative shrink-0 border-b border-slate-100 flex items-start gap-3 shadow-xs">
+              <div className="pt-3.5 pb-3.5 px-4 sm:px-5 bg-white relative shrink-0 border-b border-slate-100 flex items-start gap-3 shadow-xs">
                 <button 
                   onClick={() => { setSelectedPlace(null); setIsDirectionsMode(false); setRoutes([]); }}
-                  className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all active:scale-95 shrink-0 mt-0.5"
+                  className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all active:scale-95 shrink-0 mt-0.5"
                   title="Back to Map"
                 >
-                  <ArrowLeft className="w-5 h-5" />
+                  <ArrowLeft className="w-4 h-4" />
                 </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -3429,7 +3429,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight truncate">
                     {selectedPlace.display_name.split(',')[0]}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-1 line-clamp-1 leading-snug">
+                  <p className="text-xs text-slate-500 mt-0.5 line-clamp-1 leading-snug">
                     {selectedPlace.display_name}
                   </p>
                 </div>
@@ -3442,10 +3442,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                 <div className="grid grid-cols-3 gap-2.5 bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs">
                   <button 
                     onClick={handleDirectionsClick} 
-                    className="col-span-1 py-3 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-purple-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                    className="py-3 px-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-600/30 flex items-center justify-center gap-1.5 transition-all active:scale-95"
                   >
-                    <Navigation className="w-4 h-4 fill-white" />
-                    <span>Directions</span>
+                    <Navigation className="w-4 h-4 text-white fill-white shrink-0" />
+                    <span className="text-white font-black text-xs">Directions</span>
                   </button>
 
                   <button 
@@ -3483,18 +3483,12 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   selectedPlace.aqi <= 200 ? 'bg-gradient-to-br from-rose-500/10 via-rose-50/50 to-white border-rose-200/80' :
                   'bg-gradient-to-br from-purple-500/10 via-purple-50/50 to-white border-purple-200/80'
                 }`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                      </span>
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-800">Environmental Status</span>
-                    </div>
-
-                    <span className="text-[10px] font-black uppercase font-mono px-2.5 py-0.5 rounded-full bg-white/90 border border-slate-200/80 text-slate-600 shadow-2xs">
-                      {isLoadingPlaceAi ? 'Syncing AI...' : 'Live SQL & AI Model'}
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                     </span>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-800">Environmental Status</span>
                   </div>
 
                   {/* Hero AQI Metric */}
@@ -3572,63 +3566,22 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                   </div>
                 </div>
 
-                {/* 2. HEALTH RECOMMENDATIONS (Grounded in Domain AI Model) */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
-                        <ShieldAlert className="w-4 h-4" />
-                      </div>
-                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                        Health Recommendations
-                      </h3>
+                {/* 2. HEALTH RECOMMENDATIONS */}
+                <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2.5">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                    <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                      <ShieldAlert className="w-4 h-4" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                      DHUAN AI Protocol
-                    </span>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      Health Recommendations
+                    </h3>
                   </div>
 
                   {/* Primary Advisory Paragraph */}
-                  <p className="text-xs text-slate-700 font-medium leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
                     {selectedPlace.healthRecommendations?.primaryAdvisory || selectedPlace.advisory || 
                       "Air quality is acceptable for healthy individuals. Sensitive groups should monitor evening smog inversion."}
                   </p>
-
-                  {/* Actionable Protocol Pillars */}
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/70">
-                      <span className="text-sm shrink-0">😷</span>
-                      <div>
-                        <span className="font-extrabold text-amber-950 block">Protective Mask Protocol</span>
-                        <span className="text-[11px] text-amber-900">
-                          {selectedPlace.healthRecommendations?.protectiveGear || 
-                            "N95 mask recommended for motorcycle and open-air travel; optional for pedestrians."}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
-                      <span className="text-sm shrink-0">🏃</span>
-                      <div>
-                        <span className="font-extrabold text-emerald-950 block">Outdoor Physical Activity</span>
-                        <span className="text-[11px] text-emerald-900">
-                          {selectedPlace.healthRecommendations?.outdoorActivity || 
-                            "Normal outdoor exercise permitted during afternoon; avoid intense cardio directly after sunset."}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-sky-50/60 border border-sky-200/70">
-                      <span className="text-sm shrink-0">🏠</span>
-                      <div>
-                        <span className="font-extrabold text-sky-950 block">Ventilation & Indoor Care</span>
-                        <span className="text-[11px] text-sky-900">
-                          {selectedPlace.healthRecommendations?.ventilation || 
-                            "Ventilate during warm midday hours; seal windows tightly after 6:00 PM during temperature inversion."}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* 3. 24-HOUR FORECAST (AI Random Forest Model Predictions) */}
