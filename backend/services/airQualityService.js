@@ -1316,6 +1316,8 @@ module.exports = {
   getDashboardOverviewData,
   syncSpatialAreasToSql,
   getAqiStatus,
+  getSmogStatus,
+  calculateUsAqiFromPm25,
   askDhuanAssistant,
   analyzeSmartRoutesWithAi,
   monitorNavigationStepWithAi,
