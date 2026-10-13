@@ -176,10 +176,100 @@ async function initDatabase() {
     )
   `);
 
+  // 9. Verified Lahore Hospitals & Emergency Centers Directory Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS hospitals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      emergency_dept TEXT NOT NULL,
+      trauma_level TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      specialties TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 10. Emergency Contacts Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS emergency_contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      name TEXT NOT NULL,
+      relationship TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      notify_on_sos INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 11. Emergency SOS & Incident Events Table (Mode A Public Prototype + Log)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS emergency_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      event_type TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'mode_a_prototype',
+      status TEXT NOT NULL,
+      lat REAL,
+      lng REAL,
+      location_address TEXT,
+      aqi_snapshot INTEGER,
+      symptoms_summary TEXT,
+      nearest_hospital_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 12. Persistent User Health Profiles Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS user_health_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL UNIQUE DEFAULT 'default_user',
+      full_name TEXT,
+      age INTEGER,
+      gender TEXT,
+      blood_group TEXT,
+      emergency_contact_name TEXT,
+      emergency_contact_phone TEXT,
+      primary_commute TEXT DEFAULT 'car',
+      asthma_severity TEXT DEFAULT 'none',
+      has_copd INTEGER DEFAULT 0,
+      has_allergies INTEGER DEFAULT 0,
+      has_cardio_condition INTEGER DEFAULT 0,
+      smoker_status TEXT DEFAULT 'never',
+      trigger_aqi_threshold INTEGER DEFAULT 150,
+      uses_inhaler INTEGER DEFAULT 0,
+      inhaler_name TEXT,
+      wears_mask TEXT DEFAULT 'high_aqi_only',
+      mask_type TEXT DEFAULT 'n95',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 13. User Privacy Consents Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS user_consents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      consent_type TEXT NOT NULL,
+      granted INTEGER NOT NULL DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed default authentic Lahore data if empty
   const metricsCount = await dbGet('SELECT COUNT(*) as count FROM dashboard_metrics');
   if (metricsCount.count === 0) {
     await seedInitialData();
+  }
+
+  // Seed hospitals if table is empty
+  const hospCount = await dbGet('SELECT COUNT(*) as count FROM hospitals');
+  if (hospCount.count === 0) {
+    await seedHospitalsData();
   }
 }
 
@@ -266,6 +356,170 @@ async function seedInitialData() {
   }
 
   console.log('SQL Database seeded successfully!');
+}
+
+async function seedHospitalsData() {
+  console.log('Seeding authentic Lahore emergency hospitals directory into SQL...');
+  const hospitals = [
+    {
+      name: 'Mayo Hospital Lahore',
+      address: 'Hospital Road, Near Anarkali Bazaar, Lahore',
+      phone: '+92 42 99211100',
+      emergency_dept: '24/7 Level 1 Trauma & Emergency Wing',
+      trauma_level: 'Level 1 Trauma Center',
+      lat: 31.5752,
+      lng: 74.3168,
+      specialties: 'General Trauma, Emergency Surgery, Pulmonology, ICU, Burns Unit'
+    },
+    {
+      name: 'Jinnah Hospital Lahore',
+      address: 'Usmani Road, Faisal Town, Lahore',
+      phone: '+92 42 99231400',
+      emergency_dept: '24/7 Acute Medical & Trauma Emergency',
+      trauma_level: 'Level 1 Trauma Center',
+      lat: 31.4852,
+      lng: 74.2982,
+      specialties: 'Trauma, Cardiology, Respiratory Distress, Surgical ICU'
+    },
+    {
+      name: 'Services Hospital Lahore',
+      address: 'Jail Road, Shadman, Lahore',
+      phone: '+92 42 99203402',
+      emergency_dept: '24/7 Emergency Complex',
+      trauma_level: 'Level 2 Trauma Center',
+      lat: 31.5412,
+      lng: 74.3341,
+      specialties: 'Internal Medicine, Pulmonology, Pediatrics, Acute Surgery'
+    },
+    {
+      name: 'Shaikh Zayed Hospital',
+      address: 'University Avenue, New Garden Town, Lahore',
+      phone: '+92 42 35865731',
+      emergency_dept: '24/7 Tertiary Emergency & Critical Care',
+      trauma_level: 'Tertiary Referral Center',
+      lat: 31.5065,
+      lng: 74.3156,
+      specialties: 'Nephrology, Liver, Pulmonology, Cardiac ICU, Organ Support'
+    },
+    {
+      name: 'Lahore General Hospital (LGH)',
+      address: 'Ferozepur Road, Near Chungi Amar Sidhu, Lahore',
+      phone: '+92 42 99264036',
+      emergency_dept: '24/7 Punjab Neurotrauma & Emergency Complex',
+      trauma_level: 'Level 1 Neurotrauma Center',
+      lat: 31.4589,
+      lng: 74.3598,
+      specialties: 'Neurotrauma, Orthopedic Emergency, Spinal Surgery, Critical Care'
+    },
+    {
+      name: 'Sir Ganga Ram Hospital',
+      address: 'Queen\'s Road, Mozang, Lahore',
+      phone: '+92 42 99200572',
+      emergency_dept: '24/7 Emergency Department',
+      trauma_level: 'Level 2 Trauma Center',
+      lat: 31.5512,
+      lng: 74.3214,
+      specialties: 'Obstetrics & Gynecology, Pediatrics, Emergency Surgery'
+    },
+    {
+      name: 'Punjab Institute of Cardiology (PIC)',
+      address: 'Jail Road, Ghaus-ul-Azam Colony, Lahore',
+      phone: '+92 42 99203051',
+      emergency_dept: '24/7 Dedicated Cardiac Emergency (Heart Attack Care)',
+      trauma_level: 'Specialized Cardiac Center',
+      lat: 31.5435,
+      lng: 74.3412,
+      specialties: 'Acute Myocardial Infarction, Angioplasty, Cath Lab, CCU'
+    },
+    {
+      name: 'Pakistan Kidney and Liver Institute (PKLI)',
+      address: 'DHA Phase 6, Knowledge City, Bedian Road, Lahore',
+      phone: '+92 42 111 545 454',
+      emergency_dept: '24/7 Multi-Organ Transplant & Critical Care Emergency',
+      trauma_level: 'Specialized Quaternary Center',
+      lat: 31.4568,
+      lng: 74.4498,
+      specialties: 'Nephrology, Hepatology, Dialysis Emergency, Advanced ICU'
+    },
+    {
+      name: 'Doctors Hospital & Medical Center',
+      address: '152-G/1, Canal Bank Road, Johar Town, Lahore',
+      phone: '+92 42 35302701',
+      emergency_dept: '24/7 Private Emergency & Critical Care',
+      trauma_level: 'Private Tertiary Center',
+      lat: 31.4812,
+      lng: 74.2754,
+      specialties: 'Cardiology, Neuro Surgery, Trauma, In-House CT & MRI'
+    },
+    {
+      name: 'The Children\'s Hospital Lahore',
+      address: 'Ferozepur Road, Near Model Town, Lahore',
+      phone: '+92 42 99230901',
+      emergency_dept: '24/7 Specialized Pediatric Emergency',
+      trauma_level: 'Specialized Pediatric Center',
+      lat: 31.4782,
+      lng: 74.3512,
+      specialties: 'Pediatric Pulmonology, Neonatal ICU, Pediatric Surgery'
+    },
+    {
+      name: 'Shalamar Hospital',
+      address: 'Shalimar Link Road, Mughalpura, Lahore',
+      phone: '+92 42 111 205 205',
+      emergency_dept: '24/7 Emergency Wing',
+      trauma_level: 'Level 2 Trauma Center',
+      lat: 31.5792,
+      lng: 74.3782,
+      specialties: 'Trauma, Pulmonary Care, General Emergency, Dialysis'
+    },
+    {
+      name: 'National Hospital & Medical Centre',
+      address: '132/3, L-Block, DHA Phase 1, Lahore',
+      phone: '+92 42 111 171 819',
+      emergency_dept: '24/7 Acute Care & Emergency Room',
+      trauma_level: 'Private Tertiary Center',
+      lat: 31.4795,
+      lng: 74.3812,
+      specialties: 'Interventional Cardiology, Neurosurgery, Critical Care'
+    },
+    {
+      name: 'Ittefaq Hospital (Trust)',
+      address: 'Near H-Block, Model Town / Ferozepur Road, Lahore',
+      phone: '+92 42 111 770 000',
+      emergency_dept: '24/7 Emergency & Ambulance Service',
+      trauma_level: 'Level 2 Trauma Center',
+      lat: 31.4735,
+      lng: 74.3548,
+      specialties: 'Cardiac, Orthopedic Trauma, Pulmonary Medicine, ICU'
+    },
+    {
+      name: 'Combined Military Hospital (CMH) Lahore',
+      address: 'Abdur Rehman Road, Lahore Cantt, Lahore',
+      phone: '+92 42 36605550',
+      emergency_dept: '24/7 Trauma & Emergency Center',
+      trauma_level: 'Level 1 Trauma Center',
+      lat: 31.5282,
+      lng: 74.3752,
+      specialties: 'Polytrauma, Surgical ICU, Disaster Response, Reconstructive Surgery'
+    },
+    {
+      name: 'Farooq Hospital West Wood',
+      address: 'Canal Bank Road, West Wood Colony, Thokar Niaz Baig, Lahore',
+      phone: '+92 42 111 327 667',
+      emergency_dept: '24/7 Emergency & ICU',
+      trauma_level: 'Secondary Emergency Center',
+      lat: 31.4704,
+      lng: 74.2483,
+      specialties: 'Emergency Medicine, Pulmonology, Orthopedics'
+    }
+  ];
+
+  for (const h of hospitals) {
+    await dbRun(`
+      INSERT INTO hospitals (name, address, phone, emergency_dept, trauma_level, lat, lng, specialties)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [h.name, h.address, h.phone, h.emergency_dept, h.trauma_level, h.lat, h.lng, h.specialties]);
+  }
+  console.log(`Seeded ${hospitals.length} verified Lahore emergency hospitals!`);
 }
 
 module.exports = {

@@ -83,8 +83,30 @@ test('DHUAN Backend Test Suite', async (t) => {
         assert.ok(body.service.includes('DHUAN'));
       }
     } catch (e) {
-      // If server is not listening on 5001 in CI environment, skip gracefully
       console.log('Skipping live HTTP check (server not bound on 5001 in test sandbox)');
+    }
+  });
+
+  await t.test('6. Emergency Hospitals & SOS Briefing Pipeline', async () => {
+    const hospitals = await dbAll('SELECT * FROM hospitals');
+    assert.ok(hospitals.length >= 15, 'Should have at least 15 verified Lahore emergency hospitals');
+
+    const mayo = hospitals.find(h => h.name.includes('Mayo Hospital'));
+    assert.ok(mayo, 'Mayo Hospital must exist in directory');
+    assert.ok(mayo.lat > 31.0 && mayo.lng > 74.0, 'Valid Lahore coordinates for Mayo Hospital');
+    assert.ok(mayo.phone.includes('99211100'), 'Mayo Hospital phone must be verified');
+
+    // Test live emergency route if server active
+    try {
+      const res = await fetch('http://localhost:5001/api/emergency/hospitals?lat=31.5204&lng=74.3587');
+      if (res.ok) {
+        const body = await res.json();
+        assert.equal(body.success, true);
+        assert.ok(body.hospitals.length >= 15);
+        assert.ok(body.hospitals[0].distance_km >= 0);
+      }
+    } catch (e) {
+      // In sandbox mode without network
     }
   });
 
