@@ -5,7 +5,8 @@ const {
   fetchAndSyncLiveLahoreData,
   askDhuanAssistant,
   analyzeSmartRoutesWithAi,
-  monitorNavigationStepWithAi
+  monitorNavigationStepWithAi,
+  getPlaceTelemetryWithAi
 } = require('../services/airQualityService');
 const { dbRun, dbGet } = require('../db/database');
 
@@ -154,6 +155,21 @@ router.post('/routing/accept-reroute', async (req, res) => {
     res.json({ success: true, message: 'Reroute logged in database' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/dashboard/place-telemetry - Location-Specific Telemetry, AI Health Protocol & 24h AI Forecast
+router.post('/place-telemetry', async (req, res) => {
+  try {
+    const { lat, lng, name, displayName } = req.body || {};
+    if (!lat || !lng) {
+      return res.status(400).json({ success: false, error: 'Latitude and Longitude are required' });
+    }
+    const result = await getPlaceTelemetryWithAi({ lat, lng, name, displayName });
+    res.json(result);
+  } catch (err) {
+    console.error('Error in place-telemetry route:', err);
+    res.status(500).json({ success: false, error: 'Place telemetry failed', message: err.message });
   }
 });
 

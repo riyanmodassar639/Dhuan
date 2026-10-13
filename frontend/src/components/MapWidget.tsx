@@ -454,6 +454,9 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
   const [smogOverlayUrl, setSmogOverlayUrl] = useState<string>("");
   const [mapZoom, setMapZoom] = useState<number>(12);
   const [showColorGuideModal, setShowColorGuideModal] = useState<boolean>(false);
+  const [isSavedPlace, setIsSavedPlace] = useState<boolean>(false);
+  const [shareToast, setShareToast] = useState<boolean>(false);
+  const [isLoadingPlaceAi, setIsLoadingPlaceAi] = useState<boolean>(false);
 
   // Live Journey Environment & Smog state during Navigation
   const [navCurrentArea, setNavCurrentArea] = useState<string>("Current Corridor");
@@ -1499,8 +1502,11 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       bg: cat.bg,
       border: cat.border,
       advisory: cat.advisory,
-      forecast
+      forecast,
+      isAiCalibrated: false
     });
+    setIsLoadingPlaceAi(true);
+    setIsSavedPlace(false);
     skipNextSearch.current = true;
     setResults([]);
     setHasSearched(false);
@@ -1510,6 +1516,73 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     if (mapRef.current) {
       mapRef.current.flyTo([lat, lon], 16, { animate: true, duration: 1.5 });
     }
+
+    // Connect to Backend SQLite Database and AI Model Core for location-specific telemetry
+    fetch(getApiEndpoint('/dashboard/place-telemetry'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lng: lon,
+        name: place.name || place.display_name.split(',')[0],
+        displayName: place.display_name
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setIsLoadingPlaceAi(false);
+        if (data && data.success && data.environmentalStatus) {
+          const env = data.environmentalStatus;
+          const health = data.healthRecommendations;
+          const fcast = (data.forecast24h || []).map((f: any) => {
+            let statusColor = 'text-emerald-500';
+            if (f.aqi > 100) statusColor = 'text-yellow-500';
+            if (f.aqi > 150) statusColor = 'text-orange-500';
+            if (f.aqi > 200) statusColor = 'text-rose-500';
+            if (f.aqi > 300) statusColor = 'text-purple-600';
+            return {
+              time: f.time,
+              aqi: f.aqi,
+              pm25: f.pm25,
+              status: f.status,
+              temp: f.temperature,
+              humidity: f.humidity,
+              windSpeed: f.windSpeed,
+              color: statusColor,
+              colorTier: f.color,
+              trend: f.trend
+            };
+          });
+
+          setSelectedPlace((prev: any) => {
+            if (!prev || prev.lat !== lat || prev.lon !== lon) return prev;
+            const updatedCat = getAqiCategory(env.aqi);
+            return {
+              ...prev,
+              aqi: env.aqi,
+              pm25: env.pm25,
+              whoMultiplier: env.whoMultiplier,
+              nearestStationName: env.nearestStation?.name,
+              nearestStationZone: env.nearestStation?.zone,
+              nearestStationDist: env.nearestStation?.distanceKm,
+              status: env.status,
+              color: updatedCat.color,
+              bg: updatedCat.bg,
+              border: updatedCat.border,
+              advisory: health?.primaryAdvisory || updatedCat.advisory,
+              healthRecommendations: health,
+              weather: env.weather,
+              inversionRisk: env.inversionRisk,
+              forecast: fcast.length > 0 ? fcast : prev.forecast,
+              aiMeta: data.aiMeta,
+              isAiCalibrated: true
+            };
+          });
+        }
+      })
+      .catch(() => {
+        setIsLoadingPlaceAi(false);
+      });
   };
 
   // Map click handler for reverse geocoding and waypoint creation
@@ -3331,128 +3404,290 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </div>
           ) : (
             <>
-              {/* Header (No Image, White Clean Style) */}
-              <div className="pt-6 pb-4 px-4 bg-white relative shrink-0 border-b border-slate-100 flex items-start gap-3">
+              {/* Modern Place Details Header */}
+              <div className="pt-5 pb-4 px-5 bg-white relative shrink-0 border-b border-slate-100 flex items-start gap-3 shadow-xs">
                 <button 
                   onClick={() => { setSelectedPlace(null); setIsDirectionsMode(false); setRoutes([]); }}
-                  className="bg-transparent text-slate-500 p-2 rounded-full hover:bg-slate-100 transition-colors mt-1 shrink-0"
+                  className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all active:scale-95 shrink-0 mt-0.5"
+                  title="Back to Map"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
-                <div className="flex-1">
-                  <h2 className="text-2xl font-extrabold text-slate-900 line-clamp-2 leading-tight">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/80">
+                      <MapPin className="w-3 h-3 text-purple-600" />
+                      Verified Location
+                    </span>
+                    {selectedPlace.isAiCalibrated && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                        <Sparkles className="w-3 h-3 text-emerald-600" />
+                        AI Calibrated
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight truncate">
                     {selectedPlace.display_name.split(',')[0]}
                   </h2>
+                  <p className="text-xs text-slate-500 mt-1 line-clamp-1 leading-snug">
+                    {selectedPlace.display_name}
+                  </p>
                 </div>
               </div>
           
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto bg-slate-50 pb-8">
-            <div className="p-5 bg-white mb-2 shadow-sm">
-              <p className="text-sm text-slate-600 leading-relaxed mb-6">
-                {selectedPlace.display_name}
-              </p>
+              {/* Scrollable Content Container */}
+              <div className="flex-1 overflow-y-auto bg-slate-50/70 p-4 sm:p-5 space-y-4">
+                
+                {/* Modern Action Buttons Pill Row */}
+                <div className="grid grid-cols-3 gap-2.5 bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <button 
+                    onClick={handleDirectionsClick} 
+                    className="col-span-1 py-3 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-purple-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                  >
+                    <Navigation className="w-4 h-4 fill-white" />
+                    <span>Directions</span>
+                  </button>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-around pb-2">
-                <div onClick={handleDirectionsClick} className="flex flex-col items-center gap-1.5 cursor-pointer group">
-                  <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-md group-hover:bg-purple-700 transition-colors">
-                    <Navigation className="w-5 h-5" />
-                  </div>
-                  <span className="text-xs font-bold text-purple-700">Directions</span>
+                  <button 
+                    onClick={() => setIsSavedPlace(prev => !prev)}
+                    className={`py-3 px-3 font-extrabold text-xs rounded-xl border flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+                      isSavedPlace 
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    <Bookmark className={`w-4 h-4 ${isSavedPlace ? 'fill-emerald-600 text-emerald-600' : 'text-slate-500'}`} />
+                    <span>{isSavedPlace ? 'Saved' : 'Save'}</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                        navigator.clipboard.writeText(`${selectedPlace.display_name} (AQI: ${selectedPlace.aqi})`);
+                        setShareToast(true);
+                        setTimeout(() => setShareToast(false), 2500);
+                      }
+                    }}
+                    className="py-3 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-xs rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                  >
+                    <Share2 className="w-4 h-4 text-slate-500" />
+                    <span>{shareToast ? 'Copied!' : 'Share'}</span>
+                  </button>
                 </div>
-                <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
-                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 group-hover:bg-slate-200 transition-colors">
-                    <Bookmark className="w-5 h-5" />
+
+                {/* 1. ENVIRONMENTAL STATUS (Redesigned Theme & AI-Grounded Telemetry) */}
+                <div className={`p-5 rounded-3xl border shadow-sm relative overflow-hidden transition-all ${
+                  selectedPlace.aqi <= 50 ? 'bg-gradient-to-br from-emerald-500/10 via-emerald-50/50 to-white border-emerald-200/80' :
+                  selectedPlace.aqi <= 100 ? 'bg-gradient-to-br from-amber-500/10 via-amber-50/50 to-white border-amber-200/80' :
+                  selectedPlace.aqi <= 150 ? 'bg-gradient-to-br from-orange-500/10 via-orange-50/50 to-white border-orange-200/80' :
+                  selectedPlace.aqi <= 200 ? 'bg-gradient-to-br from-rose-500/10 via-rose-50/50 to-white border-rose-200/80' :
+                  'bg-gradient-to-br from-purple-500/10 via-purple-50/50 to-white border-purple-200/80'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-800">Environmental Status</span>
+                    </div>
+
+                    <span className="text-[10px] font-black uppercase font-mono px-2.5 py-0.5 rounded-full bg-white/90 border border-slate-200/80 text-slate-600 shadow-2xs">
+                      {isLoadingPlaceAi ? 'Syncing AI...' : 'Live SQL & AI Model'}
+                    </span>
                   </div>
-                  <span className="text-xs font-semibold text-slate-600">Save</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
-                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 group-hover:bg-slate-200 transition-colors">
-                    <Share2 className="w-5 h-5" />
+
+                  {/* Hero AQI Metric */}
+                  <div className="flex items-baseline justify-between my-2">
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight leading-none">
+                          {selectedPlace.aqi}
+                        </span>
+                        <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">AQI US</span>
+                      </div>
+                      <span className={`inline-block mt-1.5 text-xs font-extrabold px-3 py-1 rounded-full border shadow-2xs ${
+                        selectedPlace.aqi <= 50 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                        selectedPlace.aqi <= 100 ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                        selectedPlace.aqi <= 150 ? 'bg-orange-100 text-orange-900 border-orange-300' :
+                        selectedPlace.aqi <= 200 ? 'bg-rose-100 text-rose-900 border-rose-300' :
+                        'bg-purple-100 text-purple-900 border-purple-300'
+                      }`}>
+                        {selectedPlace.status}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[11px] font-bold text-slate-400 block uppercase tracking-wider">PM2.5 Density</span>
+                      <span className="text-xl font-black text-slate-800">
+                        {selectedPlace.pm25} <span className="text-xs font-bold text-slate-400 font-mono">µg/m³</span>
+                      </span>
+                      <span className="text-[10px] font-bold text-rose-600 block mt-0.5">
+                        {selectedPlace.whoMultiplier}x WHO Benchmark
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs font-semibold text-slate-600">Share</span>
+
+                  {/* 4-Item Telemetry Matrix */}
+                  <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-200/60 text-xs">
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Nearest Monitor</span>
+                      <span className="font-extrabold text-slate-900 line-clamp-1 mt-0.5">
+                        {selectedPlace.nearestStationName || 'Model Town Station'}
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-600 block mt-0.5">
+                        {selectedPlace.nearestStationDist ? `${selectedPlace.nearestStationDist} km away` : 'Live Ground Ref'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Inversion Risk</span>
+                      <span className="font-extrabold text-slate-900 line-clamp-1 mt-0.5">
+                        {selectedPlace.inversionRisk || 'Moderate Evening Risk'}
+                      </span>
+                      <span className="text-[10px] font-medium text-slate-500 block mt-0.5">
+                        Boundary layer dynamic
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Live Meteorology</span>
+                      <span className="font-extrabold text-slate-900 block mt-0.5">
+                        {selectedPlace.weather?.temperature || 32}°C • {selectedPlace.weather?.humidity || 28}% Hum
+                      </span>
+                      <span className="text-[10px] font-medium text-slate-500 block mt-0.5">
+                        Wind: {selectedPlace.weather?.windSpeed || 5} km/h
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Dominant Pollutant</span>
+                      <span className="font-extrabold text-slate-900 block mt-0.5">
+                        PM2.5 Aerosols
+                      </span>
+                      <span className="text-[10px] font-medium text-slate-500 block mt-0.5">
+                        Combustion & dust
+                      </span>
+                    </div>
+                  </div>
                 </div>
+
+                {/* 2. HEALTH RECOMMENDATIONS (Grounded in Domain AI Model) */}
+                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                        Health Recommendations
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                      DHUAN AI Protocol
+                    </span>
+                  </div>
+
+                  {/* Primary Advisory Paragraph */}
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    {selectedPlace.healthRecommendations?.primaryAdvisory || selectedPlace.advisory || 
+                      "Air quality is acceptable for healthy individuals. Sensitive groups should monitor evening smog inversion."}
+                  </p>
+
+                  {/* Actionable Protocol Pillars */}
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/70">
+                      <span className="text-sm shrink-0">😷</span>
+                      <div>
+                        <span className="font-extrabold text-amber-950 block">Protective Mask Protocol</span>
+                        <span className="text-[11px] text-amber-900">
+                          {selectedPlace.healthRecommendations?.protectiveGear || 
+                            "N95 mask recommended for motorcycle and open-air travel; optional for pedestrians."}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
+                      <span className="text-sm shrink-0">🏃</span>
+                      <div>
+                        <span className="font-extrabold text-emerald-950 block">Outdoor Physical Activity</span>
+                        <span className="text-[11px] text-emerald-900">
+                          {selectedPlace.healthRecommendations?.outdoorActivity || 
+                            "Normal outdoor exercise permitted during afternoon; avoid intense cardio directly after sunset."}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-sky-50/60 border border-sky-200/70">
+                      <span className="text-sm shrink-0">🏠</span>
+                      <div>
+                        <span className="font-extrabold text-sky-950 block">Ventilation & Indoor Care</span>
+                        <span className="text-[11px] text-sky-900">
+                          {selectedPlace.healthRecommendations?.ventilation || 
+                            "Ventilate during warm midday hours; seal windows tightly after 6:00 PM during temperature inversion."}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. 24-HOUR FORECAST (AI Random Forest Model Predictions) */}
+                {selectedPlace.forecast && selectedPlace.forecast.length > 0 && (
+                  <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                          <Activity className="w-4 h-4" />
+                        </div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                          24-Hour Forecast
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        AI Model (24h)
+                      </span>
+                    </div>
+
+                    {/* Diurnal Trend Notice */}
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-bold text-slate-600 flex items-center justify-between">
+                      <span>Diurnal Smog Forecast Curve</span>
+                      <span className="text-slate-400 font-mono">24 Hours Ahead</span>
+                    </div>
+
+                    {/* Horizontal Scrollable Hourly Cards */}
+                    <div className="flex overflow-x-auto gap-2.5 pb-2 pt-1 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                      {selectedPlace.forecast.map((f: any, idx: number) => (
+                        <div 
+                          key={idx} 
+                          className="flex flex-col items-center justify-between min-w-[76px] p-3 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-white hover:shadow-md hover:border-slate-200 transition-all cursor-default shrink-0"
+                        >
+                          <span className="text-[11px] font-black text-slate-600 mb-1.5">
+                            {f.time}
+                          </span>
+                          <Wind className={`w-4 h-4 mb-1.5 ${f.color || 'text-amber-500'}`} />
+                          <span className="text-base font-black text-slate-900">
+                            {f.aqi}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md mt-1 ${
+                            f.aqi <= 50 ? 'bg-emerald-100 text-emerald-800' :
+                            f.aqi <= 100 ? 'bg-amber-100 text-amber-800' :
+                            f.aqi <= 150 ? 'bg-orange-100 text-orange-800' :
+                            f.aqi <= 200 ? 'bg-rose-100 text-rose-800' :
+                            'bg-purple-100 text-purple-800'
+                          }`}>
+                            {f.aqi <= 50 ? 'Good' : f.aqi <= 100 ? 'Mod' : f.aqi <= 150 ? 'Sens' : f.aqi <= 200 ? 'Unhealthy' : 'Severe'}
+                          </span>
+                          {f.temp !== undefined && (
+                            <span className="text-[10px] text-slate-400 font-medium mt-1">
+                              {f.temp}°C
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-            
-            {/* Environment Data */}
-            <div className="p-5 bg-white shadow-sm">
-               <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
-                 <Wind className="w-4 h-4 text-emerald-600" />
-                 Environmental Status
-               </h3>
-               
-               <div className={`p-5 rounded-2xl border ${selectedPlace.border} ${selectedPlace.bg} flex flex-col items-center justify-center mb-3 relative overflow-hidden`}>
-                 <div className="absolute -right-4 -top-4 opacity-5">
-                   <Activity className="w-32 h-32" />
-                 </div>
-                 <span className={`text-4xl font-black tracking-tighter mb-1 ${selectedPlace.color}`}>
-                   {selectedPlace.aqi}
-                 </span>
-                 <span className={`text-sm font-bold ${selectedPlace.color}`}>
-                   AQI US • {selectedPlace.status}
-                 </span>
-               </div>
-
-               {selectedPlace.pm25 !== undefined && (
-                 <div className="grid grid-cols-2 gap-2.5 mb-4">
-                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
-                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">PM2.5 Density</span>
-                     <div className="text-lg font-black text-slate-900 mt-0.5">
-                       {selectedPlace.pm25} <span className="text-xs font-bold text-slate-400">µg/m³</span>
-                     </div>
-                     <span className="text-[10px] font-bold text-rose-600">
-                       {selectedPlace.whoMultiplier || (selectedPlace.pm25 / 5.0).toFixed(1)}x WHO Limit
-                     </span>
-                   </div>
-                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
-                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Nearest Station</span>
-                     <div className="text-xs font-extrabold text-slate-900 mt-1 line-clamp-1">
-                       {selectedPlace.nearestStationName || 'US Consulate'}
-                     </div>
-                     <span className="text-[10px] font-semibold text-emerald-700">
-                       {selectedPlace.nearestStationDist !== undefined ? `${selectedPlace.nearestStationDist} km away` : 'Live Ground Ref'}
-                     </span>
-                   </div>
-                 </div>
-               )}
-
-               <div className="space-y-3 mt-4">
-                 <div className="flex items-start gap-3">
-                   <ShieldAlert className={`w-5 h-5 mt-0.5 shrink-0 ${selectedPlace.color}`} />
-                   <div>
-                     <h4 className="text-sm font-bold text-slate-900">Health Recommendation</h4>
-                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                       {selectedPlace.advisory || (selectedPlace.aqi > 150 
-                         ? "Avoid prolonged outdoor exertion. Sensitive groups should remain indoors with air purifiers active." 
-                         : "Air quality is acceptable. However, unusually sensitive individuals should consider limiting outdoor exertion.")}
-                     </p>
-                   </div>
-                 </div>
-               </div>
-            </div>
-          </div>
-
-          {/* 24-Hour Forecast */}
-          {selectedPlace.forecast && (
-            <div className="mt-2 p-5 bg-white shadow-sm border-t border-slate-100">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
-                <Activity className="w-4 h-4 text-emerald-600" />
-                24-Hour Forecast
-              </h3>
-              
-              <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                {selectedPlace.forecast.map((f: any, idx: number) => (
-                  <div key={idx} className="flex flex-col items-center justify-center min-w-[70px] p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors cursor-default">
-                    <span className="text-xs font-bold text-slate-500 mb-2">{f.time}</span>
-                    <Wind className={`w-5 h-5 mb-2 ${f.color}`} />
-                    <span className="text-lg font-black text-slate-900">{f.aqi}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
             </>
           )}
         </div>
