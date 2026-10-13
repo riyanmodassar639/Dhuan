@@ -1,0 +1,52 @@
+{
+  "dataset": "Lahore Atmospheric Particulate Time-Series (8,760 hours)",
+  "evaluation_date": "2026-10-14T00:59:32Z",
+  "test_samples_count": 1748,
+  "benchmark_results": {
+    "Persistence_Baseline_T1": {
+      "model_name": "Persistence Baseline (t-1h)",
+      "type": "Baseline",
+      "mae": 3.45,
+      "rmse": 4.7,
+      "r2_score": 0.9902,
+      "accuracy_pm25_within_10ug": 95.5,
+      "inference_latency_ms": 0.01
+    },
+    "Seasonal_Baseline_T24": {
+      "model_name": "Seasonal Baseline (t-24h)",
+      "type": "Baseline",
+      "mae": 7.73,
+      "rmse": 13.6,
+      "r2_score": 0.9182,
+      "accuracy_pm25_within_10ug": 79.5,
+      "inference_latency_ms": 0.01
+    },
+    "LinearRegression": {
+      "model_name": "Multivariate Linear Regression",
+      "type": "Linear",
+      "mae": 1.84,
+      "rmse": 2.29,
+      "r2_score": 0.9977,
+      "accuracy_pm25_within_10ug": 100.0,
+      "inference_latency_ms": 0.0023
+    },
+    "GradientBoostingRegressor": {
+      "model_name": "Gradient Boosting Regressor",
+      "type": "Ensemble Boosting",
+      "mae": 2.34,
+      "rmse": 3.03,
+      "r2_score": 0.9959,
+      "accuracy_pm25_within_10ug": 99.8,
+      "inference_latency_ms": 0.0206
+    },
+    "RandomForestRegressor_Prod": {
+      "model_name": "Random Forest Regressor (Production)",
+      "type": "Ensemble Bagging",
+      "mae": 2.3,
+      "rmse": 2.97,
+      "r2_score": 0.9961,
+      "accuracy_pm25_within_10ug": 99.8,
+      "inference_latency_ms": 0.053
+    }
+  }
+}
