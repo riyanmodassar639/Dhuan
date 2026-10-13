@@ -3796,13 +3796,37 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
            {/* Footer Actions */}
            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
               <button 
-                onClick={() => {
+                onClick={async () => {
                    try {
                       const existingStr = localStorage.getItem('dhuan_planned_trips') || '[]';
                       const existing = JSON.parse(existingStr);
                       const others = existing.filter((p: any) => p.day !== prePlanDay);
                       const updated = [...others, ...prePlanStops];
                       localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
+
+                      // Synchronize into backend SQLite database
+                      for (const stop of prePlanStops) {
+                        try {
+                          await fetch(getApiEndpoint('/routing/destinations'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              id: stop.id,
+                              name: stop.name,
+                              address: stop.address || stop.name,
+                              lat: stop.lat,
+                              lng: stop.lng,
+                              time: stop.time || '10:30 AM',
+                              day: prePlanDay,
+                              tag: (stop as any).tag || 'General',
+                              vehicle: (stop as any).vehicle || 'car',
+                              status: (stop as any).status || 'scheduled'
+                            })
+                          });
+                        } catch (err) {
+                          // Keep going
+                        }
+                      }
                    } catch(e) {
                       console.error(e);
                    }

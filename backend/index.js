@@ -10,6 +10,7 @@ const { initDatabase } = require('./db/database');
 const { fetchAndSyncLiveLahoreData } = require('./services/airQualityService');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const emergencyRoutes = require('./routes/emergencyRoutes');
+const routingRoutes = require('./routes/routingRoutes');
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ app.use(morgan('dev'));
 // Mount API Routes
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/emergency', emergencyRoutes);
+app.use('/api/routing', routingRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

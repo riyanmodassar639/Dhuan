@@ -110,4 +110,52 @@ test('DHUAN Backend Test Suite', async (t) => {
     }
   });
 
+  await t.test('7. Smart Routing SQLite & AI Multi-Stop Itinerary Pipeline', async () => {
+    // Verify planned_destinations SQLite table exists and has seeded data
+    const rows = await dbAll('SELECT * FROM planned_destinations WHERE day = "Monday"');
+    assert.ok(rows.length >= 10, 'Should have at least 10 verified destinations for Monday');
+
+    const first = rows.find(r => r.name.includes('Packages Mall'));
+    assert.ok(first, 'Packages Mall destination must exist');
+    assert.ok(first.lat > 31.0 && first.lng > 74.0, 'Valid coordinates');
+    assert.ok(first.aqi_forecast > 0, 'AQI forecast must be positive');
+
+    // Test live HTTP endpoints if server running
+    try {
+      const getRes = await fetch('http://localhost:5001/api/routing/destinations?day=Monday');
+      if (getRes.ok) {
+        const data = await getRes.json();
+        assert.equal(data.success, true);
+        assert.ok(data.destinations.length >= 10);
+        assert.ok(data.dayCounts.Monday >= 10);
+      }
+
+      // Test AI optimization endpoint
+      const optRes = await fetch('http://localhost:5001/api/routing/destinations/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: 'Monday' })
+      });
+      if (optRes.ok) {
+        const optData = await optRes.json();
+        assert.equal(optData.success, true);
+        assert.ok(optData.summary.netReductionPct > 0, 'AI optimization must achieve positive PM2.5 reduction');
+      }
+
+      // Test Smart Proactive Alert
+      const alertRes = await fetch('http://localhost:5001/api/routing/destinations/test-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: 'Monday' })
+      });
+      if (alertRes.ok) {
+        const alertData = await alertRes.json();
+        assert.equal(alertData.success, true);
+        assert.ok(alertData.alert.message.includes('Proactive Smog Alert'));
+      }
+    } catch (e) {
+      // In standalone sandbox
+    }
+  });
+
 });

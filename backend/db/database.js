@@ -260,6 +260,49 @@ async function initDatabase() {
     )
   `);
 
+  // 14. Smart Routing & Multi-Stop Itinerary Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS planned_destinations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      day TEXT NOT NULL,
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      time TEXT NOT NULL,
+      tag TEXT DEFAULT 'General',
+      vehicle TEXT DEFAULT 'car',
+      aqi_forecast INTEGER NOT NULL,
+      pm25_level REAL,
+      smog_status TEXT NOT NULL,
+      advisory TEXT,
+      lead_time_mins INTEGER DEFAULT 30,
+      notifications_enabled INTEGER DEFAULT 1,
+      smog_spike_alert INTEGER DEFAULT 1,
+      channel TEXT DEFAULT 'push',
+      status TEXT DEFAULT 'scheduled',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 15. Routing Smog Spike Alert Logs Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS routing_alert_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      destination_id TEXT,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      day TEXT NOT NULL,
+      destination_name TEXT NOT NULL,
+      time TEXT NOT NULL,
+      aqi_level INTEGER NOT NULL,
+      alert_message TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT 'push',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed default authentic Lahore data if empty
   const metricsCount = await dbGet('SELECT COUNT(*) as count FROM dashboard_metrics');
   if (metricsCount.count === 0) {
@@ -270,6 +313,12 @@ async function initDatabase() {
   const hospCount = await dbGet('SELECT COUNT(*) as count FROM hospitals');
   if (hospCount.count === 0) {
     await seedHospitalsData();
+  }
+
+  // Seed planned destinations if table is empty
+  const destCount = await dbGet('SELECT COUNT(*) as count FROM planned_destinations');
+  if (destCount.count === 0) {
+    await seedPlannedDestinationsData();
   }
 }
 
@@ -522,10 +571,270 @@ async function seedHospitalsData() {
   console.log(`Seeded ${hospitals.length} verified Lahore emergency hospitals!`);
 }
 
+async function seedPlannedDestinationsData() {
+  console.log('Seeding initial verified Lahore multi-stop itineraries into SQL...');
+  const initialDestinations = [
+    {
+      id: 'stop-1',
+      day: 'Monday',
+      name: 'Packages Mall, Walton Road',
+      address: 'Walton Road, Gulshan-e-Mustafa, Lahore',
+      lat: 31.4746,
+      lng: 74.3547,
+      time: '08:30 AM',
+      tag: 'Work',
+      vehicle: 'car',
+      aqi_forecast: 245,
+      pm25_level: 85.5,
+      smog_status: 'Severe Smog Event',
+      advisory: 'Morning smog thermal inversion. Keep car AC on recirculation mode.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-2',
+      day: 'Monday',
+      name: 'Kalma Chowk Underpass',
+      address: 'Main Boulevard Gulberg, Lahore',
+      lat: 31.5034,
+      lng: 74.3318,
+      time: '09:45 AM',
+      tag: 'Meeting',
+      vehicle: 'car',
+      aqi_forecast: 198,
+      pm25_level: 62.1,
+      smog_status: 'Dense Smog Inversion',
+      advisory: 'High vehicular traffic corridor. Keep cabin sealed.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-3',
+      day: 'Monday',
+      name: 'Gaddafi Stadium & Liberty',
+      address: 'Hafeez Centre / Ferozepur Rd, Gulberg, Lahore',
+      lat: 31.5131,
+      lng: 74.3332,
+      time: '11:15 AM',
+      tag: 'Dining',
+      vehicle: 'car',
+      aqi_forecast: 115,
+      pm25_level: 23.5,
+      smog_status: 'Smog Inversion Forming',
+      advisory: 'Midday solar warming dispersing ground particulates.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-4',
+      day: 'Monday',
+      name: 'Lahore High Court / Mall Road',
+      address: 'Mall Road / Anarkali Precinct, Lahore',
+      lat: 31.5657,
+      lng: 74.3168,
+      time: '12:45 PM',
+      tag: 'Work',
+      vehicle: 'car',
+      aqi_forecast: 105,
+      pm25_level: 20.8,
+      smog_status: 'Moderate Haze',
+      advisory: 'Cleanest air window of the workday.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-5',
+      day: 'Monday',
+      name: 'Liberty Market Roundabout',
+      address: 'Liberty Roundabout, Gulberg III, Lahore',
+      lat: 31.5109,
+      lng: 74.3444,
+      time: '02:00 PM',
+      tag: 'Shopping',
+      vehicle: 'walk',
+      aqi_forecast: 108,
+      pm25_level: 21.6,
+      smog_status: 'Smog Inversion Forming',
+      advisory: 'Optimal window for brief outdoor movement.',
+      lead_time_mins: 15,
+      notifications_enabled: 0,
+      smog_spike_alert: 0,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-6',
+      day: 'Monday',
+      name: 'Lahore Gymkhana Club',
+      address: 'Upper Mall Road, Lahore Cantt',
+      lat: 31.5367,
+      lng: 74.3644,
+      time: '03:30 PM',
+      tag: 'Fitness',
+      vehicle: 'car',
+      aqi_forecast: 122,
+      pm25_level: 25.1,
+      smog_status: 'Smog Inversion Forming',
+      advisory: 'Tree-lined green belt provides natural PM2.5 filtration.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 0,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-7',
+      day: 'Monday',
+      name: 'Johar Town G1 Market',
+      address: 'Khayaban-e-Firdousi, Johar Town, Lahore',
+      lat: 31.4697,
+      lng: 74.2988,
+      time: '05:00 PM',
+      tag: 'Meeting',
+      vehicle: 'car',
+      aqi_forecast: 185,
+      pm25_level: 57.0,
+      smog_status: 'Dense Smog Inversion',
+      advisory: 'Early evening temperature inversion beginning. Wear N95 mask.',
+      lead_time_mins: 45,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'whatsapp',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-8',
+      day: 'Monday',
+      name: 'Defence Raya Golf Resort',
+      address: 'Sector M, DHA Phase 6, Lahore',
+      lat: 31.4552,
+      lng: 74.4371,
+      time: '06:30 PM',
+      tag: 'Meeting',
+      vehicle: 'car',
+      aqi_forecast: 230,
+      pm25_level: 78.4,
+      smog_status: 'Severe Smog Event',
+      advisory: 'Evening smog surge detected along Southern Ring Road corridor.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-9',
+      day: 'Monday',
+      name: 'DHA Phase 5 Commercial Avenue',
+      address: 'Main Commercial, Phase 5 DHA, Lahore',
+      lat: 31.4722,
+      lng: 74.4019,
+      time: '08:00 PM',
+      tag: 'Shopping',
+      vehicle: 'car',
+      aqi_forecast: 175,
+      pm25_level: 52.2,
+      smog_status: 'Dense Smog Inversion',
+      advisory: 'High vehicular emissions in commercial zone. Keep cabin sealed.',
+      lead_time_mins: 15,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-10',
+      day: 'Monday',
+      name: 'Askari 11 Gate 2',
+      address: 'Bedian Road / Ring Road Interchange, Lahore',
+      lat: 31.4485,
+      lng: 74.4558,
+      time: '09:15 PM',
+      tag: 'Home',
+      vehicle: 'car',
+      aqi_forecast: 145,
+      pm25_level: 34.0,
+      smog_status: 'Smog Inversion Forming',
+      advisory: 'Traffic easing. Safe journey home.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 0,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-tue-1',
+      day: 'Tuesday',
+      name: 'Shaukat Khanum Memorial Hospital',
+      address: 'Khayaban-e-Jinnah, Johar Town, Lahore',
+      lat: 31.4645,
+      lng: 74.2798,
+      time: '10:00 AM',
+      tag: 'Medical',
+      vehicle: 'car',
+      aqi_forecast: 160,
+      pm25_level: 46.5,
+      smog_status: 'Dense Smog Inversion',
+      advisory: 'Hospital precinct with HEPA clean-room access.',
+      lead_time_mins: 30,
+      notifications_enabled: 1,
+      smog_spike_alert: 1,
+      channel: 'push',
+      status: 'scheduled'
+    },
+    {
+      id: 'stop-tue-2',
+      day: 'Tuesday',
+      name: 'Emporium Mall by Nishat',
+      address: 'Abdul Haque Rd, Johar Town, Lahore',
+      lat: 31.4674,
+      lng: 74.2678,
+      time: '02:30 PM',
+      tag: 'Shopping',
+      vehicle: 'car',
+      aqi_forecast: 110,
+      pm25_level: 22.2,
+      smog_status: 'Smog Inversion Forming',
+      advisory: 'Indoor air filtered mall. Clean air haven.',
+      lead_time_mins: 15,
+      notifications_enabled: 1,
+      smog_spike_alert: 0,
+      channel: 'push',
+      status: 'scheduled'
+    }
+  ];
+
+  for (const d of initialDestinations) {
+    await dbRun(`
+      INSERT OR REPLACE INTO planned_destinations 
+      (id, user_id, day, name, address, lat, lng, time, tag, vehicle, aqi_forecast, pm25_level, smog_status, advisory, lead_time_mins, notifications_enabled, smog_spike_alert, channel, status)
+      VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      d.id, d.day, d.name, d.address, d.lat, d.lng, d.time, d.tag, d.vehicle,
+      d.aqi_forecast, d.pm25_level, d.smog_status, d.advisory,
+      d.lead_time_mins, d.notifications_enabled, d.smog_spike_alert, d.channel, d.status
+    ]);
+  }
+  console.log(`Seeded ${initialDestinations.length} verified multi-stop itinerary destinations into SQL!`);
+}
+
 module.exports = {
   db,
   dbRun,
   dbAll,
   dbGet,
-  initDatabase
+  initDatabase,
+  seedPlannedDestinationsData
 };

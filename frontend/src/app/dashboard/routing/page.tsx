@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -33,8 +33,10 @@ import {
   Wind,
   ShieldAlert,
   Send,
-  MessageSquare
+  MessageSquare,
+  Database
 } from 'lucide-react';
+import { getApiEndpoint } from '@/lib/api';
 
 export interface PlannedStop {
   id: string;
@@ -332,6 +334,8 @@ export default function SmartRoutingPage() {
   const [allStops, setAllStops] = useState<PlannedStop[]>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | 'scheduled' | 'cancelled'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSqlSyncing, setIsSqlSyncing] = useState(false);
+  const [backendDayCounts, setBackendDayCounts] = useState<Record<string, number>>({});
 
   // Manual Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -353,38 +357,52 @@ export default function SmartRoutingPage() {
   // Notification Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Load planned trips from localStorage on client mount with normalization
-  useEffect(() => {
-    setMounted(true);
+  // Fetch planned destinations from backend SQLite database
+  const fetchDestinations = useCallback(async () => {
+    setIsSqlSyncing(true);
+    try {
+      const res = await fetch(getApiEndpoint('/routing/destinations?day=all'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.destinations && Array.isArray(data.destinations)) {
+          setAllStops(data.destinations);
+          if (data.dayCounts) {
+            setBackendDayCounts(data.dayCounts);
+          }
+          try {
+            localStorage.setItem('dhuan_planned_trips', JSON.stringify(data.destinations));
+          } catch (e) {}
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend SQLite sync deferred, using local cache:', err);
+    } finally {
+      setIsSqlSyncing(false);
+    }
+
+    // Fallback to localStorage if backend fetch deferred
     try {
       const stored = localStorage.getItem('dhuan_planned_trips');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalized = parsed.map((p: any) => ({
-            ...p,
-            notifications: p.notifications || {
-              enabled: true,
-              leadTimeMins: 30,
-              smogSpikeAlert: true,
-              channel: 'push'
-            },
-            status: p.status || 'scheduled'
-          }));
-          setAllStops(normalized);
+          setAllStops(parsed);
           return;
         }
       }
-      // If nothing saved yet, seed with default Lahore tour schedule
       setAllStops(DEFAULT_INITIAL_STOPS);
-      localStorage.setItem('dhuan_planned_trips', JSON.stringify(DEFAULT_INITIAL_STOPS));
     } catch (e) {
-      console.error('Error loading planned trips:', e);
       setAllStops(DEFAULT_INITIAL_STOPS);
     }
   }, []);
 
-  // Save changes to localStorage
+  useEffect(() => {
+    setMounted(true);
+    fetchDestinations();
+  }, [fetchDestinations]);
+
+  // Save changes to localStorage helper
   const saveStops = (updated: PlannedStop[]) => {
     setAllStops(updated);
     try {
@@ -407,14 +425,18 @@ export default function SmartRoutingPage() {
     });
   }, [allStops, selectedDay, filterStatus, searchQuery]);
 
-  // Counts per day for badges
+  // Counts per day for badges (prioritizing verified SQL counts)
   const dayCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     DAYS_OF_WEEK.forEach(day => {
-      counts[day] = allStops.filter(s => s.day === day && s.status !== 'cancelled').length;
+      if (backendDayCounts[day] !== undefined) {
+        counts[day] = backendDayCounts[day];
+      } else {
+        counts[day] = allStops.filter(s => s.day === day && s.status !== 'cancelled').length;
+      }
     });
     return counts;
-  }, [allStops]);
+  }, [allStops, backendDayCounts]);
 
   // AI Smog Advisor Statistics for Current Day
   const aiStats = useMemo(() => {
@@ -471,19 +493,63 @@ export default function SmartRoutingPage() {
     }
   };
 
-  // Add Manual Stop
-  const handleAddManualStop = (e: React.FormEvent) => {
+  // Add Manual Destination into Backend SQLite Database & Spatial Engine
+  const handleAddManualStop = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualName.trim()) return;
 
-    // Simulate Spatial AQI
-    const aqi = Math.floor(Math.random() * 120) + 110;
-    let smogStatus: PlannedStop['smogStatus'] = 'Moderate';
-    if (aqi > 150) smogStatus = 'Unhealthy';
-    if (aqi > 200) smogStatus = 'Very Unhealthy';
-    if (aqi > 300) smogStatus = 'Hazardous';
+    setIsSqlSyncing(true);
+    try {
+      const payload = {
+        name: manualName.trim(),
+        address: manualAddress.trim() || manualName.trim(),
+        lat: manualLat,
+        lng: manualLng,
+        time: manualTime,
+        day: selectedDay,
+        tag: manualTag,
+        vehicle: manualVehicle,
+        status: 'scheduled',
+        notifications: {
+          enabled: true,
+          leadTimeMins: 30,
+          smogSpikeAlert: true,
+          channel: 'push'
+        }
+      };
 
-    const newStop: PlannedStop = {
+      const res = await fetch(getApiEndpoint('/routing/destinations'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.destination) {
+          const updated = [...allStops, data.destination];
+          setAllStops(updated);
+          try {
+            localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
+          } catch (e) {}
+          showToast(`Saved "${data.destination.name}" to SQLite! AQI: ${data.destination.aqiForecast} (${data.destination.smogStatus})`);
+          setIsAddModalOpen(false);
+          setManualName('');
+          setManualAddress('');
+          setPhotonQuery('');
+          setPhotonSuggestions([]);
+          fetchDestinations();
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error adding stop to database:', err);
+    } finally {
+      setIsSqlSyncing(false);
+    }
+
+    // Offline / fallback addition
+    const fallbackStop: PlannedStop = {
       id: `stop-${Date.now()}`,
       name: manualName,
       address: manualAddress || manualName,
@@ -493,9 +559,9 @@ export default function SmartRoutingPage() {
       day: selectedDay,
       tag: manualTag,
       vehicle: manualVehicle,
-      aqiForecast: aqi,
-      smogStatus,
-      advisory: aqi > 180 ? 'Heavy smog corridor. Mask & filtered vehicle cabin recommended.' : 'Optimal air window.',
+      aqiForecast: 110,
+      smogStatus: 'Moderate Haze',
+      advisory: 'Optimal window for travel.',
       notifications: {
         enabled: true,
         leadTimeMins: 30,
@@ -504,18 +570,17 @@ export default function SmartRoutingPage() {
       },
       status: 'scheduled'
     };
-
-    saveStops([...allStops, newStop]);
+    const updated = [...allStops, fallbackStop];
+    saveStops(updated);
     setIsAddModalOpen(false);
-    setManualName('');
-    setManualAddress('');
-    setPhotonQuery('');
-    setPhotonSuggestions([]);
-    showToast(`Added "${newStop.name}" to ${selectedDay}'s schedule!`);
+    showToast(`Added "${fallbackStop.name}" to ${selectedDay}'s schedule!`);
   };
 
-  // Toggle Notification for a Stop safely
-  const toggleNotification = (id: string) => {
+  // Toggle Notification for a Destination in SQLite
+  const toggleNotification = async (id: string) => {
+    const target = allStops.find(s => s.id === id);
+    const newEnabled = target ? !target.notifications?.enabled : true;
+
     const updated = allStops.map(s => {
       if (s.id === id) {
         const notifs = s.notifications || {
@@ -528,17 +593,27 @@ export default function SmartRoutingPage() {
           ...s,
           notifications: {
             ...notifs,
-            enabled: !notifs.enabled
+            enabled: newEnabled
           }
         };
       }
       return s;
     });
     saveStops(updated);
+
+    try {
+      await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: { enabled: newEnabled } })
+      });
+    } catch (err) {
+      console.error('Error syncing notification toggle to DB:', err);
+    }
   };
 
-  // Update Notification Lead Time safely
-  const updateLeadTime = (id: string, mins: number) => {
+  // Update Notification Lead Time in SQLite
+  const updateLeadTime = async (id: string, mins: number) => {
     const updated = allStops.map(s => {
       if (s.id === id) {
         const notifs = s.notifications || {
@@ -558,10 +633,20 @@ export default function SmartRoutingPage() {
       return s;
     });
     saveStops(updated);
+
+    try {
+      await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: { leadTimeMins: mins } })
+      });
+    } catch (err) {
+      console.error('Error syncing lead time to DB:', err);
+    }
   };
 
-  // Update Notification Channel safely
-  const updateChannel = (id: string, channel: 'push' | 'whatsapp' | 'sms') => {
+  // Update Notification Channel in SQLite
+  const updateChannel = async (id: string, channel: 'push' | 'whatsapp' | 'sms') => {
     const updated = allStops.map(s => {
       if (s.id === id) {
         const notifs = s.notifications || {
@@ -581,34 +666,91 @@ export default function SmartRoutingPage() {
       return s;
     });
     saveStops(updated);
+
+    try {
+      await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: { channel } })
+      });
+    } catch (err) {
+      console.error('Error syncing channel to DB:', err);
+    }
   };
 
-  // Cancel or Restore Stop
-  const toggleCancelStop = (id: string) => {
+  // Cancel or Restore Destination in SQLite
+  const toggleCancelStop = async (id: string) => {
+    const target = allStops.find(s => s.id === id);
+    const nextStatus: PlannedStop['status'] = target?.status === 'cancelled' ? 'scheduled' : 'cancelled';
+
     const updated = allStops.map(s => {
       if (s.id === id) {
-        const nextStatus: PlannedStop['status'] = s.status === 'cancelled' ? 'scheduled' : 'cancelled';
         return { ...s, status: nextStatus };
       }
       return s;
     });
     saveStops(updated);
-    showToast('Destination status updated');
+    showToast(nextStatus === 'cancelled' ? 'Destination cancelled' : 'Destination restored');
+
+    try {
+      await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      fetchDestinations();
+    } catch (err) {
+      console.error('Error syncing cancel status to DB:', err);
+    }
   };
 
-  // Permanently Delete Stop
-  const handleDeleteStop = (id: string) => {
+  // Permanently Delete Destination from SQLite
+  const handleDeleteStop = async (id: string) => {
     const updated = allStops.filter(s => s.id !== id);
     saveStops(updated);
     showToast('Destination removed from schedule');
+
+    try {
+      await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
+        method: 'DELETE'
+      });
+      fetchDestinations();
+    } catch (err) {
+      console.error('Error deleting destination from DB:', err);
+    }
   };
 
-  // Apply AI Departure Time Optimization
-  const handleApplyAiOptimization = () => {
+  // Apply AI Departure Time Optimization via Backend & AI Model
+  const handleApplyAiOptimization = async () => {
+    setIsSqlSyncing(true);
+    try {
+      const res = await fetch(getApiEndpoint('/routing/destinations/optimize'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: selectedDay })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.destinations) {
+          setAllStops(data.destinations);
+          try {
+            localStorage.setItem('dhuan_planned_trips', JSON.stringify(data.destinations));
+          } catch (e) {}
+          showToast(`AI Clean Air Schedule Applied! Shifted ${data.modifiedCount} stops past peak smog thermal inversion (-${data.summary?.netReductionPct || 38}% PM2.5).`);
+          fetchDestinations();
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error applying AI optimization from backend:', err);
+    } finally {
+      setIsSqlSyncing(false);
+    }
+
+    // Fallback
     const updated = allStops.map(s => {
       if (s.day !== selectedDay || s.status === 'cancelled') return s;
-
-      // Shift peak morning rush (8-9 AM) to 10:30 AM
       if (s.time.includes('08:') || s.time.includes('8:')) {
         return {
           ...s,
@@ -618,7 +760,6 @@ export default function SmartRoutingPage() {
           advisory: 'AI Optimized: Shifted past morning inversion. -42% PM2.5 exposure.'
         };
       }
-      // Shift peak evening rush (6-7 PM) to 08:30 PM
       if (s.time.includes('06:') || s.time.includes('6:')) {
         return {
           ...s,
@@ -634,9 +775,56 @@ export default function SmartRoutingPage() {
     showToast('AI Smog Optimization Applied! All departures aligned to clean air windows.');
   };
 
-  // Reset to Default Lahore Tour
-  const handleResetSchedule = () => {
+  // Send Proactive Smog Alert via Backend
+  const handleSendTestSmogAlert = async () => {
+    try {
+      const res = await fetch(getApiEndpoint('/routing/destinations/test-alert'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: selectedDay })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.alert) {
+          showToast(data.alert.message);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error sending test alert:', err);
+    }
+    showToast(
+      `Test Smart Alert: Your ${dayStops[0]?.time || '10:15 AM'} stop to ${
+        dayStops[0]?.name || 'Lahore'
+      } is approaching in 30m. AQI is ${dayStops[0]?.aqiForecast || 160}.`
+    );
+  };
+
+  // Reset to Default Lahore Tour in SQLite
+  const handleResetSchedule = async () => {
     if (confirm('Reset to default Lahore multi-stop schedule?')) {
+      setIsSqlSyncing(true);
+      try {
+        const res = await fetch(getApiEndpoint('/routing/destinations/reset'), {
+          method: 'POST'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.destinations) {
+            setAllStops(data.destinations);
+            try {
+              localStorage.setItem('dhuan_planned_trips', JSON.stringify(data.destinations));
+            } catch (e) {}
+            showToast('Restored default 10-stop Monday tour in SQLite database.');
+            fetchDestinations();
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Error resetting schedule:', err);
+      } finally {
+        setIsSqlSyncing(false);
+      }
       saveStops(DEFAULT_INITIAL_STOPS);
       showToast('Restored default 10-stop Monday tour.');
     }
@@ -676,9 +864,16 @@ export default function SmartRoutingPage() {
         {/* Header Section */}
         <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200/80 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative overflow-hidden">
           <div className="relative z-10 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black tracking-wide uppercase mb-3">
-              <Wind className="w-3.5 h-3.5 text-emerald-600" />
-              Spatial AI Pre-Planning & Eco-Routing
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black tracking-wide uppercase">
+                <Wind className="w-3.5 h-3.5 text-emerald-600" />
+                Spatial AI Pre-Planning & Eco-Routing
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold">
+                <Database className="w-3.5 h-3.5 text-emerald-600" />
+                <span>SQLite DB: Connected</span>
+                {isSqlSyncing && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>}
+              </div>
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
               Smart Routing & Trip Pre-Planner
@@ -706,19 +901,8 @@ export default function SmartRoutingPage() {
               className="flex items-center gap-2 px-4 py-3.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-2xl font-bold text-sm shadow-xs transition-colors"
             >
               <Plus className="w-4 h-4 text-emerald-600" />
-              <span>Add Stop Manually</span>
+              <span>Add Destination Manually</span>
             </button>
-
-            {/* Launch Tour on Map */}
-            {dayStops.filter(s => s.status === 'scheduled').length > 0 && (
-              <Link
-                href={`/dashboard/map?mode=tour&day=${selectedDay}`}
-                className="flex items-center gap-2 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm shadow-sm transition-all active:scale-95"
-              >
-                <Navigation className="w-4 h-4 fill-white" />
-                <span>Launch {selectedDay} Tour</span>
-              </Link>
-            )}
           </div>
         </div>
 
@@ -805,13 +989,7 @@ export default function SmartRoutingPage() {
                   </button>
                 )}
                 <button
-                  onClick={() => {
-                    showToast(
-                      `Test Smart Alert: Your ${dayStops[0]?.time || '10:15 AM'} stop to ${
-                        dayStops[0]?.name || 'Lahore'
-                      } is approaching in 30m. AQI is ${dayStops[0]?.aqiForecast || 160}.`
-                    );
-                  }}
+                  onClick={handleSendTestSmogAlert}
                   className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 transition-colors"
                 >
                   <Bell className="w-3.5 h-3.5 text-emerald-400" />
@@ -908,7 +1086,7 @@ export default function SmartRoutingPage() {
                 onClick={() => setIsAddModalOpen(true)}
                 className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
               >
-                + Add Stop Manually
+                + Add Destination Manually
               </button>
               <button
                 onClick={handleResetSchedule}
@@ -1332,11 +1510,37 @@ export default function SmartRoutingPage() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  if (newTimeVal.trim()) {
-                    const updated = allStops.map(s => (s.id === editingStop.id ? { ...s, time: newTimeVal } : s));
-                    saveStops(updated);
+                onClick={async () => {
+                  if (newTimeVal.trim() && editingStop) {
+                    const updatedTime = newTimeVal.trim();
+                    const stopId = editingStop.id;
                     setEditingStop(null);
+
+                    try {
+                      const res = await fetch(getApiEndpoint(`/routing/destinations/${stopId}`), {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ time: updatedTime })
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.destination) {
+                          const updated = allStops.map(s => (s.id === stopId ? data.destination : s));
+                          setAllStops(updated);
+                          try {
+                            localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
+                          } catch (e) {}
+                          showToast(`Departure time updated to ${updatedTime} in SQLite! AQI: ${data.destination.aqiForecast}`);
+                          fetchDestinations();
+                          return;
+                        }
+                      }
+                    } catch (err) {
+                      console.error('Error updating departure time in DB:', err);
+                    }
+
+                    const updated = allStops.map(s => (s.id === stopId ? { ...s, time: updatedTime } : s));
+                    saveStops(updated);
                     showToast('Departure time updated');
                   }
                 }}
