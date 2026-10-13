@@ -2509,8 +2509,8 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
         </div>
       )}
 
-      {/* Floating Google-Maps-Style Search Bar */}
-      {!isNavigating && (
+      {/* Floating Google-Maps-Style Search Bar (Hidden during active directions or navigation) */}
+      {!isNavigating && !isDirectionsMode && (
         <div className="absolute top-4 left-4 z-[2000] w-[calc(100%-32px)] sm:w-[380px]">
         <form onSubmit={handleSearch} className="relative bg-white rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.15)] flex items-center px-4 py-3 border border-slate-200">
           <Search className="w-5 h-5 text-slate-500 mr-3 shrink-0" />
@@ -3011,46 +3011,51 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                 </div>
               ) : (
                 <div className="flex flex-col h-full bg-slate-50">
-                   <div className="bg-white p-4 pt-6 shadow-sm relative z-10 border-b border-slate-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <button onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-bold transition-colors w-fit p-2 -ml-2 rounded-full hover:bg-slate-100">
-                      <ArrowLeft className="w-5 h-5" />
-                    </button>
+                   <div className="bg-white p-4 pt-4 shadow-sm relative z-10 border-b border-slate-200">
+                     {/* Header Row: Back Button & 4 Vehicle Modes (Car, Bike, Walk, Public Transport) */}
+                     <div className="flex items-center gap-2 mb-3">
+                       <button 
+                         onClick={() => { setIsDirectionsMode(false); setRoutes([]); }} 
+                         className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all shrink-0 active:scale-95"
+                         title="Back"
+                       >
+                         <ArrowLeft className="w-5 h-5" />
+                       </button>
 
-                    {/* 4 Vehicle Modes (Car, Bike, Walk, Public Transport) */}
-                    <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-0.5 border border-slate-200/70">
-                       {[
-                         { id: 'car', label: 'Car', icon: Car },
-                         { id: 'bike', label: 'Bike', icon: Bike },
-                         { id: 'walk', label: 'Walk', icon: Footprints },
-                         { id: 'transit', label: 'Transit', icon: Bus },
-                       ].map((v) => {
-                         const Icon = v.icon;
-                         const isSelected = selectedVehicle === v.id;
-                         return (
-                           <button
-                             key={v.id}
-                             onClick={async () => {
-                               setSelectedVehicle(v.id as any);
-                               const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
-                               if (selectedPlace) {
-                                 await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], v.id as any, routeStops, routePreference);
-                               }
-                             }}
-                             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                               isSelected 
-                                 ? 'bg-purple-600 text-white shadow-sm' 
-                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                             }`}
-                             title={v.label}
-                           >
-                             <Icon className="w-3.5 h-3.5" />
-                             <span className="text-[11px]">{v.label}</span>
-                           </button>
-                         );
-                       })}
-                    </div>
-                  </div>
+                       {/* 4 Vehicle Modes (Car, Bike, Walk, Public Transport) */}
+                       <div className="grid grid-cols-4 flex-1 bg-slate-100 p-1 rounded-2xl gap-1 border border-slate-200/80">
+                          {[
+                            { id: 'car', label: 'Car', icon: Car },
+                            { id: 'bike', label: 'Bike', icon: Bike },
+                            { id: 'walk', label: 'Walk', icon: Footprints },
+                            { id: 'transit', label: 'Transit', icon: Bus },
+                          ].map((v) => {
+                            const Icon = v.icon;
+                            const isSelected = selectedVehicle === v.id;
+                            return (
+                              <button
+                                key={v.id}
+                                onClick={async () => {
+                                  setSelectedVehicle(v.id as any);
+                                  const origin = routeOriginCoords || userLocation || [31.5204, 74.3587];
+                                  if (selectedPlace) {
+                                    await fetchRoutesAndEnhance(origin, [selectedPlace.lat, selectedPlace.lon], v.id as any, routeStops, routePreference);
+                                  }
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-black transition-all ${
+                                  isSelected 
+                                    ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30' 
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                                }`}
+                                title={v.label}
+                              >
+                                <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-slate-500'}`} />
+                                <span className="text-[11px] font-black">{v.label}</span>
+                              </button>
+                            );
+                          })}
+                       </div>
+                     </div>
 
                   {/* AI Route Optimization Preference Toggle (Safest Low-Smog vs Fastest Time) */}
                   <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80 mb-3.5">
