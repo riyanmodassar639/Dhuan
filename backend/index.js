@@ -11,6 +11,7 @@ const { fetchAndSyncLiveLahoreData } = require('./services/airQualityService');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const emergencyRoutes = require('./routes/emergencyRoutes');
 const routingRoutes = require('./routes/routingRoutes');
+const dataExplorerRoutes = require('./routes/dataExplorerRoutes');
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use(morgan('dev'));
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/routing', routingRoutes);
+app.use(dataExplorerRoutes);
 
 // Root landing page (Resolves "Cannot GET /" when opened directly in browser)
 app.get(['/', '/health', '/api'], (req, res) => {
@@ -244,8 +246,11 @@ app.get(['/', '/health', '/api'], (req, res) => {
     </div>
 
     <div class="actions">
+      <a href="/data" class="btn-primary" style="background:#3b82f6; color:#ffffff;">
+        🗄️ Open Database & Data Explorer &rarr;
+      </a>
       <a href="http://localhost:3000/dashboard" class="btn-primary" target="_blank">
-        Open DHUAN Web Application (Port 3000) &rarr;
+        Open Web App (Port 3000) &rarr;
       </a>
     </div>
   </div>
