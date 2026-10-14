@@ -1699,162 +1699,19 @@ export default function HealthProfilePage() {
           </div>
         )}
 
-        {/* TAB 3: HOSPITAL DIAGNOSTIC REPORTS DIRECT VIEW */}
+        {/* TAB 3: HOSPITAL DIAGNOSTIC REPORTS (EMPTIED AS REQUESTED) */}
         {activeTab === 'reports' && (
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <Hospital className="w-5 h-5 text-emerald-600" />
-                  Hospital & Diagnostic Lab Records
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-                  Attach and manage clinical records from Gulab Devi Chest Hospital, Chughtai Lab, Shaukat Khanum, Services Hospital, or any healthcare provider.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowAddReportForm(!showAddReportForm)}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{showAddReportForm ? 'Close Form' : 'Add New Hospital Report'}</span>
-              </button>
+          <div className="bg-white rounded-3xl p-8 sm:p-16 border border-slate-200/80 shadow-sm flex flex-col items-center justify-center text-center min-h-[460px] space-y-4">
+            <div className="w-20 h-20 rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
+              <Hospital className="w-10 h-10" />
             </div>
-
-            {/* Add Report Drawer in Tab */}
-            {showAddReportForm && (
-              <div className="p-5 rounded-2xl bg-emerald-50/50 border border-emerald-200 space-y-4">
-                <h4 className="font-bold text-sm text-emerald-950">Add Diagnostic / Pulmonology Test</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Hospital / Lab Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Gulab Devi Chest Hospital"
-                      value={newReport.hospitalName}
-                      onChange={(e) => setNewReport({ ...newReport, hospitalName: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Report / Test Type</label>
-                    <select
-                      value={newReport.reportType}
-                      onChange={(e) => setNewReport({ ...newReport, reportType: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white"
-                    >
-                      <option value="Spirometry / Lung Function Test">Spirometry / Lung Function Test</option>
-                      <option value="Chest X-Ray / CT Scan">Chest X-Ray / CT Scan</option>
-                      <option value="Blood Gas ABG (Oxygen Saturation)">Blood Gas ABG (Oxygen Saturation)</option>
-                      <option value="Allergy Comprehensive Panel">Allergy Comprehensive Panel</option>
-                      <option value="Cardiology ECG / Echo">Cardiology ECG / Echo</option>
-                      <option value="General Pulmonology Discharge Summary">General Pulmonology Summary</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Report Date</label>
-                    <input
-                      type="date"
-                      value={newReport.reportDate}
-                      onChange={(e) => setNewReport({ ...newReport, reportDate: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Consulting Doctor / Specialist</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Dr. Tariq Mian (Chest Specialist)"
-                      value={newReport.doctorName}
-                      onChange={(e) => setNewReport({ ...newReport, doctorName: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Clinical Findings & Diagnosis</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Bronchial sensitivity positive. Prescribed bronchodilator."
-                      value={newReport.diagnosisNotes}
-                      onChange={(e) => setNewReport({ ...newReport, diagnosisNotes: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddReportForm(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 bg-white"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddMedicalReport}
-                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
-                  >
-                    Add Report
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* List of Reports */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {profile.medicalReports && profile.medicalReports.length > 0 ? (
-                profile.medicalReports.map((report) => (
-                  <div key={report.id} className="p-5 rounded-2xl border border-slate-200/90 hover:border-emerald-300 bg-white shadow-xs space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-bold shrink-0">
-                          <Hospital className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-extrabold text-sm text-slate-900">{report.hospitalName}</h4>
-                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                            {report.reportType}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-slate-400">{report.reportDate}</span>
-                    </div>
-
-                    <div className="space-y-1 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      {report.doctorName && (
-                        <div>
-                          <strong className="text-slate-800">Physician:</strong> {report.doctorName}
-                        </div>
-                      )}
-                      <div>
-                        <strong className="text-slate-800">Key Findings:</strong> {report.diagnosisNotes || 'Report attached for clinical reference.'}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="md:col-span-2 text-center py-12 border-2 border-dashed border-slate-200 rounded-3xl space-y-3">
-                  <Hospital className="w-10 h-10 text-slate-300 mx-auto" />
-                  <p className="text-sm font-bold text-slate-600">No Hospital Diagnostic Reports Added Yet</p>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    You can add diagnostic reports from any hospital (Gulab Devi, Chughtai Lab, Shaukat Khanum, etc.) to store them with your profile and include them in your printable DHUAN Medical Pass.
-                  </p>
-                  <button
-                    onClick={() => setShowAddReportForm(true)}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold"
-                  >
-                    + Add Your First Medical Report
-                  </button>
-                </div>
-              )}
+            <div className="max-w-md space-y-2">
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                Hospital Diagnostic Reports Model
+              </h3>
+              <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                Yeh model bhi abhi ke liye delete aur empty kar diya gaya hai.
+              </p>
             </div>
           </div>
         )}
