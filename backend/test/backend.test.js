@@ -119,20 +119,28 @@ test('DHUAN Backend Test Suite', async (t) => {
     assert.ok(cols.includes('day'), 'has day column');
     assert.ok(cols.includes('is_silent'), 'has is_silent column');
     assert.ok(cols.includes('notifications_enabled'), 'has notifications_enabled column');
+    assert.ok(cols.includes('start_name'), 'has start_name column');
+    assert.ok(cols.includes('start_address'), 'has start_address column');
+    assert.ok(cols.includes('start_lat'), 'has start_lat column');
+    assert.ok(cols.includes('start_lng'), 'has start_lng column');
+    assert.ok(cols.includes('start_type'), 'has start_type column');
 
-    // Test inserting a destination dynamically
+    // Test inserting a destination dynamically with custom starting location
     const testId = `test-dest-${Date.now()}`;
     await dbRun(`
       INSERT INTO planned_destinations (
         id, user_id, day, name, address, lat, lng, time, tag, vehicle,
+        start_name, start_address, start_lat, start_lng, start_type,
         aqi_forecast, pm25_level, smog_status, advisory,
         lead_time_mins, notifications_enabled, is_silent, smog_spike_alert, channel, status
-      ) VALUES (?, 'default_user', 'Monday', 'Lahore Gymkhana', 'Upper Mall, Lahore', 31.5333, 74.3498, '10:30 AM', 'Fitness', 'car', 120, 42.5, 'Moderate Haze', 'Keep vehicle AC on internal circulation.', 30, 1, 0, 1, 'push', 'scheduled')
+      ) VALUES (?, 'default_user', 'Monday', 'Lahore Gymkhana', 'Upper Mall, Lahore', 31.5333, 74.3498, '10:30 AM', 'Fitness', 'car', 'Home Garden Town', 'Garden Town, Lahore', 31.5012, 74.3211, 'custom', 120, 42.5, 'Moderate Haze', 'Keep vehicle AC on internal circulation.', 30, 1, 0, 1, 'push', 'scheduled')
     `, [testId]);
 
     const created = await dbGet('SELECT * FROM planned_destinations WHERE id = ?', [testId]);
     assert.ok(created, 'Destination must be created in SQLite');
     assert.equal(created.name, 'Lahore Gymkhana');
+    assert.equal(created.start_name, 'Home Garden Town');
+    assert.equal(created.start_type, 'custom');
     assert.equal(created.is_silent, 0);
 
     // Test live HTTP endpoints if server running

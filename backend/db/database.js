@@ -270,6 +270,11 @@ async function initDatabase() {
       address TEXT NOT NULL,
       lat REAL NOT NULL,
       lng REAL NOT NULL,
+      start_name TEXT DEFAULT 'Current Location',
+      start_address TEXT,
+      start_lat REAL,
+      start_lng REAL,
+      start_type TEXT DEFAULT 'current',
       time TEXT NOT NULL,
       tag TEXT DEFAULT 'General',
       vehicle TEXT DEFAULT 'car',
@@ -287,6 +292,13 @@ async function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Auto-migrate start location columns if existing table doesn't have them
+  try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_name TEXT DEFAULT "Current Location"'); } catch (e) {}
+  try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_address TEXT'); } catch (e) {}
+  try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_lat REAL'); } catch (e) {}
+  try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_lng REAL'); } catch (e) {}
+  try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_type TEXT DEFAULT "current"'); } catch (e) {}
 
   // 15. Routing Smog Spike Alert Logs Table
   await dbRun(`

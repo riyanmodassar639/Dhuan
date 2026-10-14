@@ -58,6 +58,11 @@ export interface PlannedStop {
     channel: 'push';
   };
   status: 'scheduled' | 'completed' | 'cancelled';
+  startName?: string;
+  startAddress?: string;
+  startLat?: number;
+  startLng?: number;
+  startType?: 'current' | 'custom';
 }
 
 const DAYS_OF_WEEK = [
@@ -218,6 +223,32 @@ export default function SmartRoutingPage() {
   const [photonSuggestions, setPhotonSuggestions] = useState<any[]>([]);
   const [isSearchingPhoton, setIsSearchingPhoton] = useState(false);
 
+  // Manual Starting Location State
+  const [manualStartType, setManualStartType] = useState<'current' | 'custom'>('current');
+  const [manualStartName, setManualStartName] = useState('My Current Location');
+  const [manualStartAddress, setManualStartAddress] = useState('GPS Live Coordinates');
+  const [manualStartLat, setManualStartLat] = useState(31.5204);
+  const [manualStartLng, setManualStartLng] = useState(74.3587);
+  const [startPhotonQuery, setStartPhotonQuery] = useState('');
+  const [startPhotonSuggestions, setStartPhotonSuggestions] = useState<any[]>([]);
+  const [isSearchingStartPhoton, setIsSearchingStartPhoton] = useState(false);
+
+  // Dedicated Map Destination Modal State (Separate from manual modal!)
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [mapDestName, setMapDestName] = useState('');
+  const [mapDestAddress, setMapDestAddress] = useState('');
+  const [mapDestLat, setMapDestLat] = useState(31.5204);
+  const [mapDestLng, setMapDestLng] = useState(74.3587);
+  const [mapDestDay, setMapDestDay] = useState('Monday');
+  const [mapDestTime, setMapDestTime] = useState('10:30 AM');
+  const [mapDestTag, setMapDestTag] = useState('Work');
+  const [mapDestVehicle, setMapDestVehicle] = useState<'car' | 'bike' | 'walk' | 'transit'>('car');
+  const [mapStartType, setMapStartType] = useState<'current' | 'custom'>('current');
+  const [mapStartName, setMapStartName] = useState('My Current Location');
+  const [mapStartAddress, setMapStartAddress] = useState('GPS Live Coordinates');
+  const [mapStartLat, setMapStartLat] = useState(31.5204);
+  const [mapStartLng, setMapStartLng] = useState(74.3587);
+
   // Edit Time Modal State
   const [editingStop, setEditingStop] = useState<PlannedStop | null>(null);
   const [newTimeVal, setNewTimeVal] = useState('');
@@ -279,21 +310,34 @@ export default function SmartRoutingPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('addFromMap') === 'true') {
-        const mapName = params.get('name') || '';
-        const mapAddress = params.get('address') || mapName;
-        const mapLat = parseFloat(params.get('lat') || '31.5204');
-        const mapLng = parseFloat(params.get('lng') || '74.3587');
-        const mapDay = params.get('day') || 'Monday';
+        const mName = params.get('name') || 'Selected Destination';
+        const mAddress = params.get('address') || mName;
+        const mLat = parseFloat(params.get('lat') || '31.5204');
+        const mLng = parseFloat(params.get('lng') || '74.3587');
+        const mDay = params.get('day') || 'Monday';
 
-        setManualName(mapName);
-        setManualAddress(mapAddress);
-        setManualLat(mapLat);
-        setManualLng(mapLng);
-        setManualDay(mapDay);
-        if (DAYS_OF_WEEK.includes(mapDay)) {
-          setSelectedDay(mapDay);
+        const sType = (params.get('startType') === 'custom' ? 'custom' : 'current') as 'current' | 'custom';
+        const sName = params.get('startName') || (sType === 'current' ? 'My Current Location' : 'Custom Starting Point');
+        const sAddress = params.get('startAddress') || (sType === 'current' ? 'GPS Live Coordinates' : sName);
+        const sLat = parseFloat(params.get('startLat') || '31.5204');
+        const sLng = parseFloat(params.get('startLng') || '74.3587');
+
+        setMapDestName(mName);
+        setMapDestAddress(mAddress);
+        setMapDestLat(mLat);
+        setMapDestLng(mLng);
+        setMapDestDay(mDay);
+        setMapStartType(sType);
+        setMapStartName(sName);
+        setMapStartAddress(sAddress);
+        setMapStartLat(sLat);
+        setMapStartLng(sLng);
+
+        if (DAYS_OF_WEEK.includes(mDay)) {
+          setSelectedDay(mDay);
         }
-        setIsAddModalOpen(true);
+        // User requested: Do NOT open manual modal. Open dedicated Map Modal!
+        setIsMapModalOpen(true);
         window.history.replaceState({}, '', '/dashboard/routing');
       }
     }
@@ -361,7 +405,7 @@ export default function SmartRoutingPage() {
     };
   }, [allStops, selectedDay]);
 
-  // Handle Photon Search for Manual Add
+  // Handle Photon Search for Manual Add Destination
   const handlePhotonSearch = (val: string) => {
     setPhotonQuery(val);
     if (val.trim().length > 2) {
@@ -390,12 +434,46 @@ export default function SmartRoutingPage() {
     }
   };
 
+  // Handle Photon Search for Starting Location
+  const handleStartPhotonSearch = (val: string) => {
+    setStartPhotonQuery(val);
+    if (val.trim().length > 2) {
+      setIsSearchingStartPhoton(true);
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val.trim())}&lat=31.5204&lon=74.3587&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.features) {
+            setStartPhotonSuggestions(
+              data.features.map((f: any) => ({
+                lat: f.geometry.coordinates[1],
+                lon: f.geometry.coordinates[0],
+                name: f.properties.name || f.properties.street || val,
+                address: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ')
+              }))
+            );
+          }
+          setIsSearchingStartPhoton(false);
+        })
+        .catch(() => {
+          setIsSearchingStartPhoton(false);
+          setStartPhotonSuggestions([]);
+        });
+    } else {
+      setStartPhotonSuggestions([]);
+    }
+  };
+
   // Add Manual Destination into Backend Database & Spatial Engine
   const handleAddManualStop = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualName.trim()) return;
 
     setIsSqlSyncing(true);
+    const startName = manualStartType === 'current' ? 'My Current Location' : (manualStartName.trim() || 'Custom Starting Location');
+    const startAddress = manualStartType === 'current' ? 'GPS Live Coordinates' : (manualStartAddress.trim() || manualStartName.trim());
+    const startLat = manualStartType === 'current' ? 31.5204 : manualStartLat;
+    const startLng = manualStartType === 'current' ? 74.3587 : manualStartLng;
+
     try {
       const payload = {
         name: manualName.trim(),
@@ -407,6 +485,11 @@ export default function SmartRoutingPage() {
         tag: manualTag,
         vehicle: manualVehicle,
         status: 'scheduled',
+        startType: manualStartType,
+        startName,
+        startAddress,
+        startLat,
+        startLng,
         notifications: {
           enabled: true,
           leadTimeMins: 30,
@@ -446,6 +529,11 @@ export default function SmartRoutingPage() {
           setManualAddress('');
           setPhotonQuery('');
           setPhotonSuggestions([]);
+          setManualStartType('current');
+          setManualStartName('My Current Location');
+          setManualStartAddress('GPS Live Coordinates');
+          setStartPhotonQuery('');
+          setStartPhotonSuggestions([]);
           fetchDestinations();
           return;
         }
@@ -471,6 +559,11 @@ export default function SmartRoutingPage() {
       aqiForecast: 110,
       smogStatus: 'Moderate Haze',
       advisory: 'Optimal window for travel.',
+      startType: manualStartType,
+      startName,
+      startAddress,
+      startLat,
+      startLng,
       notifications: {
         enabled: true,
         leadTimeMins: 30,
@@ -489,7 +582,121 @@ export default function SmartRoutingPage() {
     setIsAddModalOpen(false);
     setManualName('');
     setManualAddress('');
+    setManualStartType('current');
+    setManualStartName('My Current Location');
+    setManualStartAddress('GPS Live Coordinates');
     showToast(manualDay === 'All' ? 'Added destination to ALL 7 days!' : `Added "${manualName}" to ${manualDay}!`);
+  };
+
+  // Add Dedicated Map Destination into Backend Database & Spatial Engine
+  const handleAddMapStop = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mapDestName.trim()) return;
+
+    setIsSqlSyncing(true);
+    const startName = mapStartType === 'current' ? 'My Current Location' : (mapStartName.trim() || 'Custom Starting Location');
+    const startAddress = mapStartType === 'current' ? 'GPS Live Coordinates' : (mapStartAddress.trim() || mapStartName.trim());
+    const startLat = mapStartType === 'current' ? 31.5204 : mapStartLat;
+    const startLng = mapStartType === 'current' ? 74.3587 : mapStartLng;
+
+    try {
+      const payload = {
+        name: mapDestName.trim(),
+        address: mapDestAddress.trim() || mapDestName.trim(),
+        lat: mapDestLat,
+        lng: mapDestLng,
+        time: mapDestTime,
+        day: mapDestDay,
+        tag: mapDestTag,
+        vehicle: mapDestVehicle,
+        status: 'scheduled',
+        startType: mapStartType,
+        startName,
+        startAddress,
+        startLat,
+        startLng,
+        notifications: {
+          enabled: true,
+          leadTimeMins: 30,
+          isSilent: false,
+          smogSpikeAlert: true,
+          channel: 'push'
+        }
+      };
+
+      const res = await fetch(getApiEndpoint('/routing/destinations'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const newlyAdded = data.destinations || (data.destination ? [data.destination] : []);
+        if (newlyAdded.length > 0) {
+          const updated = [...allStops, ...newlyAdded];
+          setAllStops(updated);
+          try {
+            localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
+          } catch (e) {}
+
+          if (mapDestDay !== 'All' && selectedDay !== mapDestDay && DAYS_OF_WEEK.includes(mapDestDay)) {
+            setSelectedDay(mapDestDay);
+          }
+
+          showToast(
+            mapDestDay === 'All'
+              ? `Map Destination "${mapDestName.trim()}" added to ALL 7 days!`
+              : `Map Destination "${mapDestName.trim()}" added to ${mapDestDay}! Projected AQI: ${newlyAdded[0].aqiForecast}`
+          );
+          setIsMapModalOpen(false);
+          fetchDestinations();
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error adding map destination to database:', err);
+    } finally {
+      setIsSqlSyncing(false);
+    }
+
+    // Fallback
+    const targetDays = mapDestDay === 'All' ? DAYS_OF_WEEK : [mapDestDay];
+    const fallbackStops: PlannedStop[] = targetDays.map(d => ({
+      id: `dest-${Date.now()}-${d.toLowerCase().slice(0, 3)}`,
+      name: mapDestName,
+      address: mapDestAddress || mapDestName,
+      lat: mapDestLat,
+      lng: mapDestLng,
+      time: mapDestTime,
+      day: d,
+      tag: mapDestTag,
+      vehicle: mapDestVehicle,
+      aqiForecast: 120,
+      smogStatus: 'Moderate Haze',
+      advisory: 'Optimal window for travel.',
+      startType: mapStartType,
+      startName,
+      startAddress,
+      startLat,
+      startLng,
+      notifications: {
+        enabled: true,
+        leadTimeMins: 30,
+        isSilent: false,
+        smogSpikeAlert: true,
+        channel: 'push'
+      },
+      status: 'scheduled'
+    }));
+
+    const updated = [...allStops, ...fallbackStops];
+    saveStops(updated);
+    if (mapDestDay !== 'All' && selectedDay !== mapDestDay && DAYS_OF_WEEK.includes(mapDestDay)) {
+      setSelectedDay(mapDestDay);
+    }
+    setIsMapModalOpen(false);
+    showToast(mapDestDay === 'All' ? 'Added map destination to ALL 7 days!' : `Added "${mapDestName}" to ${mapDestDay}!`);
   };
 
   // Toggle Notification for a Destination in database
@@ -1182,7 +1389,7 @@ export default function SmartRoutingPage() {
                           )}
                         </div>
 
-                        {/* Name & Address */}
+                        {/* Name & Address & Route Segment */}
                         <h4
                           className={`text-base sm:text-lg font-black text-slate-900 tracking-tight ${
                             isCancelled ? 'line-through text-slate-400' : ''
@@ -1193,6 +1400,19 @@ export default function SmartRoutingPage() {
                         <p className="text-xs text-slate-500 font-medium truncate max-w-xl">
                           {stop.address}
                         </p>
+
+                        {/* Starting Location -> Destination Segment */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>From: {stop.startName || (stop.startType === 'custom' ? 'Custom Origin' : 'My Current Location')}</span>
+                          </span>
+                          <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold border border-slate-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                            <span>To: {stop.name}</span>
+                          </span>
+                        </div>
 
                         {/* AQI Forecast & Advisory */}
                         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -1258,7 +1478,11 @@ export default function SmartRoutingPage() {
                         <Link
                           href={`/dashboard/map?destLat=${stop.lat}&destLng=${stop.lng}&destName=${encodeURIComponent(
                             stop.name
-                          )}`}
+                          )}${
+                            stop.startType === 'custom' && stop.startLat && stop.startLng
+                              ? `&originLat=${stop.startLat}&originLng=${stop.startLng}&originName=${encodeURIComponent(stop.startName || '')}`
+                              : ''
+                          }`}
                           className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors shrink-0"
                           title="Navigate to destination now on live map"
                         >
@@ -1315,10 +1539,99 @@ export default function SmartRoutingPage() {
             </div>
 
             <form onSubmit={handleAddManualStop} className="space-y-4">
-              {/* Photon Autocomplete Place Search */}
+              {/* STARTING LOCATION SECTION */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Starting Location</span>
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                    {manualStartType === 'current' ? '📍 GPS Current Location' : '🗺️ Custom Location'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualStartType('current');
+                      setManualStartName('My Current Location');
+                      setManualStartAddress('GPS Live Coordinates');
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      manualStartType === 'current'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>Current Location</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setManualStartType('custom')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      manualStartType === 'custom'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Custom Origin</span>
+                  </button>
+                </div>
+
+                {manualStartType === 'custom' && (
+                  <div className="pt-1.5 space-y-2">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={startPhotonQuery}
+                        onChange={e => handleStartPhotonSearch(e.target.value)}
+                        placeholder="Search starting place (e.g. Home, Thokar, Gulberg)..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-600"
+                      />
+                      {isSearchingStartPhoton && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                      )}
+                    </div>
+
+                    {startPhotonSuggestions.length > 0 && (
+                      <div className="bg-white border border-slate-200 rounded-xl shadow-lg divide-y divide-slate-100 max-h-36 overflow-y-auto">
+                        {startPhotonSuggestions.map((sug, i) => (
+                          <div
+                            key={i}
+                            onClick={() => {
+                              setManualStartName(sug.name);
+                              setManualStartAddress(sug.address);
+                              setManualStartLat(sug.lat);
+                              setManualStartLng(sug.lon);
+                              setStartPhotonQuery(sug.name);
+                              setStartPhotonSuggestions([]);
+                            }}
+                            className="p-2 hover:bg-emerald-50 cursor-pointer text-xs"
+                          >
+                            <p className="font-bold text-slate-900">{sug.name}</p>
+                            <p className="text-[10px] text-slate-500 truncate">{sug.address}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-[11px] text-slate-600 font-medium px-1">
+                      <span className="font-bold text-slate-800">Selected:</span>
+                      <span className="truncate">{manualStartName} ({manualStartAddress})</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* DESTINATION SECTION */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Location Search (Lahore)
+                  Destination Location Search (Lahore)
                 </label>
                 <div className="relative">
                   <input
@@ -1479,6 +1792,224 @@ export default function SmartRoutingPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
+                >
+                  Save to Schedule
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED MAP DESTINATION MODAL (Separate from Manual Modal) */}
+      {isMapModalOpen && (
+        <div className="fixed inset-0 z-[9990] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black uppercase tracking-wider mb-1">
+                  <MapPin className="w-3 h-3 text-emerald-600" />
+                  <span>Sourced from Interactive Map</span>
+                </div>
+                <h3 className="text-xl font-black text-slate-900">Add Map Destination</h3>
+                <p className="text-xs text-slate-500 font-medium">Configure schedule & trip details for this location</p>
+              </div>
+              <button
+                onClick={() => setIsMapModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMapStop} className="space-y-4">
+              {/* ROUTE OVERVIEW BOX (START -> DESTINATION) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                {/* 1. Origin (Starting Location) */}
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                    A
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Starting Point</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMapStartType('current');
+                            setMapStartName('My Current Location');
+                            setMapStartAddress('GPS Live Coordinates');
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                            mapStartType === 'current'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          Current GPS
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMapStartType('custom')}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                            mapStartType === 'custom'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          Custom
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs font-black text-slate-900 truncate mt-0.5">{mapStartName}</p>
+                    <p className="text-[10px] text-slate-500 truncate">{mapStartAddress}</p>
+                  </div>
+                </div>
+
+                <div className="border-l-2 border-dashed border-slate-300 ml-3 h-3"></div>
+
+                {/* 2. Destination */}
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                    B
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase">Map Destination</span>
+                    <p className="text-xs font-black text-slate-900 truncate mt-0.5">{mapDestName}</p>
+                    <p className="text-[10px] text-slate-500 truncate">{mapDestAddress}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Destination Title / Custom Label */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Destination Title / Label
+                </label>
+                <input
+                  type="text"
+                  value={mapDestName}
+                  onChange={e => setMapDestName(e.target.value)}
+                  placeholder="e.g. Office HQ, Mall of Lahore, Hospital"
+                  required
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                />
+              </div>
+
+              {/* Day Selector (Specific day or All days) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Scheduled Day
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-600">
+                    {mapDestDay === 'All' ? '🌟 All 7 Days' : mapDestDay}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                  {[...DAYS_OF_WEEK, 'All'].map(d => {
+                    const isSel = mapDestDay === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setMapDestDay(d)}
+                        className={`py-2 px-1 text-center rounded-xl text-xs font-extrabold transition-all ${
+                          isSel
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {d === 'All' ? '🌟 All' : d.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Scheduled Time & Category Tag */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Scheduled Time
+                  </label>
+                  <input
+                    type="text"
+                    value={mapDestTime}
+                    onChange={e => setMapDestTime(e.target.value)}
+                    placeholder="e.g. 10:30 AM"
+                    required
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Category Tag
+                  </label>
+                  <select
+                    value={mapDestTag}
+                    onChange={e => setMapDestTag(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                  >
+                    <option value="Work">Work</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="Shopping">Shopping</option>
+                    <option value="Medical">Medical</option>
+                    <option value="Dining">Dining</option>
+                    <option value="Fitness">Fitness</option>
+                    <option value="Home">Home</option>
+                    <option value="Personal">Personal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Vehicle Mode */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Travel Vehicle Mode
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { key: 'car', label: 'Car', icon: Car },
+                    { key: 'bike', label: 'Bike', icon: Bike },
+                    { key: 'walk', label: 'Walk', icon: Footprints },
+                    { key: 'transit', label: 'Transit', icon: Bus }
+                  ].map(v => {
+                    const Icon = v.icon;
+                    const isSel = mapDestVehicle === v.key;
+                    return (
+                      <button
+                        key={v.key}
+                        type="button"
+                        onClick={() => setMapDestVehicle(v.key as any)}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                          isSel
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 mb-1" />
+                        <span>{v.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsMapModalOpen(false)}
                   className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
                 >
                   Cancel

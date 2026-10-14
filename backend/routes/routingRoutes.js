@@ -109,6 +109,11 @@ function mapRowToStop(row) {
     address: row.address,
     lat: row.lat,
     lng: row.lng,
+    startName: row.start_name || 'Current Location',
+    startAddress: row.start_address || '',
+    startLat: row.start_lat !== null && row.start_lat !== undefined ? row.start_lat : null,
+    startLng: row.start_lng !== null && row.start_lng !== undefined ? row.start_lng : null,
+    startType: row.start_type || 'current',
     time: row.time,
     day: row.day,
     tag: row.tag || 'General',
@@ -185,6 +190,11 @@ router.post('/destinations', async (req, res) => {
       address,
       lat,
       lng,
+      startName,
+      startAddress,
+      startLat,
+      startLng,
+      startType,
       time,
       day,
       tag,
@@ -204,6 +214,12 @@ router.post('/destinations', async (req, res) => {
     const destTag = tag || 'General';
     const destStatus = status || 'scheduled';
 
+    const destStartType = startType || 'current';
+    const destStartName = destStartType === 'current' ? 'Current Location' : (startName || 'Custom Location');
+    const destStartAddress = startAddress || (destStartType === 'current' ? 'My Current Device Location' : destStartName);
+    const destStartLat = startLat !== undefined && startLat !== null ? Number(startLat) : null;
+    const destStartLng = startLng !== undefined && startLng !== null ? Number(startLng) : null;
+
     // Calculate real spatial AQI and PM2.5 from 14 Lahore stations
     const spatialInfo = await calculateSpatialAqiForCoord(Number(lat), Number(lng), destVehicle, destTime);
 
@@ -222,10 +238,12 @@ router.post('/destinations', async (req, res) => {
 
       await dbRun(`
         INSERT OR REPLACE INTO planned_destinations (
-          id, user_id, day, name, address, lat, lng, time, tag, vehicle,
+          id, user_id, day, name, address, lat, lng,
+          start_name, start_address, start_lat, start_lng, start_type,
+          time, tag, vehicle,
           aqi_forecast, pm25_level, smog_status, advisory,
           lead_time_mins, notifications_enabled, is_silent, smog_spike_alert, channel, status
-        ) VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, 'default_user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         singleDestId,
         d,
@@ -233,6 +251,11 @@ router.post('/destinations', async (req, res) => {
         address || name,
         Number(lat),
         Number(lng),
+        destStartName,
+        destStartAddress,
+        destStartLat,
+        destStartLng,
+        destStartType,
         destTime,
         destTag,
         destVehicle,
@@ -277,6 +300,11 @@ router.put('/destinations/:id', async (req, res) => {
     const {
       name,
       address,
+      startName,
+      startAddress,
+      startLat,
+      startLng,
+      startType,
       time,
       day,
       tag,
@@ -296,6 +324,12 @@ router.put('/destinations/:id', async (req, res) => {
     const updatedAddress = address !== undefined ? address : existing.address;
     const updatedTag = tag !== undefined ? tag : existing.tag;
 
+    const updatedStartName = startName !== undefined ? startName : existing.start_name;
+    const updatedStartAddress = startAddress !== undefined ? startAddress : existing.start_address;
+    const updatedStartLat = startLat !== undefined ? (startLat !== null ? Number(startLat) : null) : existing.start_lat;
+    const updatedStartLng = startLng !== undefined ? (startLng !== null ? Number(startLng) : null) : existing.start_lng;
+    const updatedStartType = startType !== undefined ? startType : existing.start_type;
+
     let updatedAqi = aqiForecast !== undefined ? aqiForecast : existing.aqi_forecast;
     let updatedSmogStatus = smogStatus !== undefined ? smogStatus : existing.smog_status;
     let updatedAdvisory = advisory !== undefined ? advisory : existing.advisory;
@@ -311,6 +345,8 @@ router.put('/destinations/:id', async (req, res) => {
     let leadTime = existing.lead_time_mins;
     let notifEnabled = existing.notifications_enabled;
     let isSilent = existing.is_silent !== undefined ? existing.is_silent : 0;
+    let spikeAlert = existing.smog_spike_alert !== undefined ? existing.smog_spike_alert : 1;
+    let notifChannel = existing.channel || 'push';
 
     if (notifications) {
       if (notifications.leadTimeMins !== undefined) leadTime = notifications.leadTimeMins;
@@ -322,7 +358,9 @@ router.put('/destinations/:id', async (req, res) => {
 
     await dbRun(`
       UPDATE planned_destinations
-      SET name = ?, address = ?, time = ?, day = ?, tag = ?, vehicle = ?,
+      SET name = ?, address = ?,
+          start_name = ?, start_address = ?, start_lat = ?, start_lng = ?, start_type = ?,
+          time = ?, day = ?, tag = ?, vehicle = ?,
           status = ?, aqi_forecast = ?, smog_status = ?, advisory = ?,
           lead_time_mins = ?, notifications_enabled = ?, is_silent = ?, smog_spike_alert = ?, channel = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -330,6 +368,11 @@ router.put('/destinations/:id', async (req, res) => {
     `, [
       updatedName,
       updatedAddress,
+      updatedStartName,
+      updatedStartAddress,
+      updatedStartLat,
+      updatedStartLng,
+      updatedStartType,
       updatedTime,
       updatedDay,
       updatedTag,

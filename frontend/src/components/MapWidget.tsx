@@ -417,6 +417,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     smogStatus: string;
     advisory?: string;
   }>>([]);
+  const [prePlanStartType, setPrePlanStartType] = useState<'current' | 'custom'>('current');
+  const [prePlanStartPoint, setPrePlanStartPoint] = useState<{
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [prePlanActiveTarget, setPrePlanActiveTarget] = useState<'destination' | 'start'>('destination');
 
   // Search State
   const [query, setQuery] = useState('');
@@ -792,7 +800,10 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
       if (params.get('mode') === 'preplan') {
         setIsPrePlanMode(true);
         setPrePlanDay(day);
-        setPrePlanStops([]); // Clean selection for picking 1 destination
+        setPrePlanStops([]);
+        setPrePlanStartType('current');
+        setPrePlanStartPoint(null);
+        setPrePlanActiveTarget('destination');
       } else if (params.get('destLat') && params.get('destLng')) {
         const dLat = parseFloat(params.get('destLat')!);
         const dLng = parseFloat(params.get('destLng')!);
@@ -816,7 +827,14 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
         setSelectedPlace(targetPlace);
         setIsDirectionsMode(true);
-        const origin = userLocation || [31.5204, 74.3587];
+        let origin: [number, number] = userLocation || [31.5204, 74.3587];
+        if (params.get('originLat') && params.get('originLng')) {
+          const oLat = parseFloat(params.get('originLat')!);
+          const oLng = parseFloat(params.get('originLng')!);
+          if (!isNaN(oLat) && !isNaN(oLng)) {
+            origin = [oLat, oLng];
+          }
+        }
         fetchRoutesAndEnhance(origin, [dLat, dLng]);
       } else if (params.get('mode') === 'tour') {
         try {
@@ -1411,6 +1429,22 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
     const lon = parseFloat(place.lon);
     
     if (isPrePlanMode) {
+      if (prePlanActiveTarget === 'start') {
+        setPrePlanStartPoint({
+          name: place.name || place.display_name.split(',')[0],
+          address: place.display_name,
+          lat,
+          lng: lon
+        });
+        setPrePlanActiveTarget('destination');
+        setQuery('');
+        setResults([]);
+        setHasSearched(false);
+        if (mapRef.current) {
+          mapRef.current.flyTo([lat, lon], 15, { animate: true, duration: 1.2 });
+        }
+        return;
+      }
       const aqi = getSpatialAqi(lat, lon);
       const cat = getAqiCategory(aqi);
       const defaultTimes = ["09:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:45 PM", "09:00 PM"];
@@ -1625,6 +1659,17 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
              const prop = data.features[0].properties;
              name = prop.name || prop.street || name;
              address = [prop.name, prop.street, prop.city].filter(Boolean).join(', ') || name;
+          }
+
+          if (prePlanActiveTarget === 'start') {
+             setPrePlanStartPoint({
+                name,
+                address,
+                lat,
+                lng
+             });
+             setPrePlanActiveTarget('destination');
+             return;
           }
 
           const aqi = getSpatialAqi(lat, lng);
@@ -2139,6 +2184,27 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
             </Marker>
           );
         })}
+
+        {/* Pre-Plan Custom Starting Point Marker (A) */}
+        {isPrePlanMode && prePlanStartType === 'custom' && prePlanStartPoint && (
+          <Marker
+            position={[prePlanStartPoint.lat, prePlanStartPoint.lng]}
+            icon={L.divIcon({
+              className: 'preplan-start-marker',
+              html: `<div style="background: linear-gradient(135deg, #1e293b, #0f172a); border: 2.5px solid #3b82f6; box-shadow: 0 6px 16px rgba(0,0,0,0.45); width: 34px; height: 34px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 14px;">
+                       A
+                     </div>`,
+              iconSize: [34, 34],
+              iconAnchor: [17, 17]
+            })}
+            zIndexOffset={1850}
+          >
+            <Popup>
+              <div className="font-extrabold text-slate-900 text-sm">📍 Starting Point: {prePlanStartPoint.name}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{prePlanStartPoint.address}</div>
+            </Popup>
+          </Marker>
+        )}
 
         {/* Pre-Plan Selected Stops Markers (1, 2, 3...) */}
         {isPrePlanMode && prePlanStops.map((st, sIdx) => (
@@ -3717,73 +3783,193 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
 
       {/* Pre-Plan Destinations Picker Modal (Triggered when mode=preplan) */}
       {isPrePlanMode && (
-        <div className="absolute top-4 right-4 z-[3000] w-[calc(100%-32px)] sm:w-[380px] bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_16px_45px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col max-h-[85vh] animate-in slide-in-from-right-4 duration-300 overflow-hidden">
+        <div className="absolute top-4 right-4 z-[3000] w-[calc(100%-32px)] sm:w-[400px] bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_16px_45px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col max-h-[88vh] animate-in slide-in-from-right-4 duration-300 overflow-hidden">
            {/* Header */}
            <div className="p-4 bg-slate-900 border-b border-slate-800 text-white flex items-center justify-between shadow-sm">
               <div>
                  <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-emerald-400" />
-                    <span className="font-extrabold text-sm uppercase tracking-wider">{prePlanDay} Itinerary</span>
+                    <span className="font-extrabold text-sm uppercase tracking-wider">{prePlanDay} Route Planner</span>
                  </div>
-                 <p className="text-[11px] text-slate-400 mt-0.5">Click map to pick 1 destination</p>
+                 <p className="text-[11px] text-slate-400 mt-0.5">Select Starting Point & Destination on map</p>
               </div>
               <span className="bg-emerald-500 text-slate-900 font-extrabold text-xs px-2.5 py-1 rounded-full shadow-xs">
-                 {prePlanStops.length > 0 ? '1 Selected' : '0 Selected'}
+                 {prePlanStops.length > 0 ? (prePlanStartType === 'custom' && prePlanStartPoint ? '2 Locations' : 'Ready') : 'Pick Locations'}
               </span>
            </div>
 
-           {/* Picked Destination Info */}
-           <div className="p-3 overflow-y-auto space-y-2.5 flex-1 divide-y divide-slate-100 max-h-[380px]">
-              {prePlanStops.length === 0 ? (
-                 <div className="text-center py-8 px-4 text-slate-400">
-                    <MapPin className="w-8 h-8 mx-auto mb-2 text-emerald-500 animate-bounce" />
-                    <p className="text-xs font-bold text-slate-700">No destination picked yet</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Tap any road, shop or landmark on the map to pick your destination for {prePlanDay}.</p>
+           {/* Content Sections */}
+           <div className="p-3.5 overflow-y-auto space-y-3.5 flex-1 divide-y divide-slate-100 max-h-[460px]">
+              {/* 1. STARTING POINT SECTION */}
+              <div className="space-y-2">
+                 <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                       <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                       1. Starting Point
+                    </span>
+                    <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-200 text-[10px] font-bold">
+                       <button
+                         onClick={() => {
+                            setPrePlanStartType('current');
+                            setPrePlanActiveTarget('destination');
+                         }}
+                         className={`px-2 py-0.5 rounded-md transition-colors ${
+                            prePlanStartType === 'current'
+                              ? 'bg-slate-900 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                         }`}
+                       >
+                          📍 Current Location
+                       </button>
+                       <button
+                         onClick={() => {
+                            setPrePlanStartType('custom');
+                            setPrePlanActiveTarget('start');
+                         }}
+                         className={`px-2 py-0.5 rounded-md transition-colors ${
+                            prePlanStartType === 'custom'
+                              ? 'bg-slate-900 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                         }`}
+                       >
+                          🗺️ Pick on Map
+                       </button>
+                    </div>
                  </div>
-              ) : (
-                 prePlanStops.map((st) => (
-                    <div key={st.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-start justify-between gap-2.5">
-                       <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
-                             1
+
+                 {prePlanStartType === 'current' ? (
+                    <div className="p-2.5 bg-blue-50/70 border border-blue-200/80 rounded-xl flex items-center gap-2.5">
+                       <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs shrink-0">
+                          A
+                       </div>
+                       <div className="flex-1 min-w-0">
+                          <p className="text-xs font-black text-slate-900">My Current Location (Live GPS)</p>
+                          <p className="text-[10px] text-slate-500 truncate">
+                             {userLocation ? `Lat: ${userLocation[0].toFixed(4)}, Lng: ${userLocation[1].toFixed(4)} (Lahore)` : 'Using device live GPS coordinates'}
+                          </p>
+                       </div>
+                    </div>
+                 ) : (
+                    <div>
+                       {prePlanStartPoint ? (
+                          <div className="p-2.5 bg-blue-50/70 border border-blue-200/80 rounded-xl flex items-start justify-between gap-2">
+                             <div className="flex items-start gap-2 flex-1 min-w-0">
+                                <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                                   A
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                   <p className="text-xs font-black text-slate-900 truncate">{prePlanStartPoint.name}</p>
+                                   <p className="text-[10px] text-slate-500 truncate">{prePlanStartPoint.address}</p>
+                                </div>
+                             </div>
+                             <button
+                               onClick={() => setPrePlanStartPoint(null)}
+                               className="text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-slate-200"
+                               title="Clear custom start point"
+                             >
+                                <X className="w-3.5 h-3.5" />
+                             </button>
+                          </div>
+                       ) : (
+                          <button
+                            onClick={() => setPrePlanActiveTarget('start')}
+                            className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                               prePlanActiveTarget === 'start'
+                                 ? 'bg-blue-600 text-white border-blue-600 animate-pulse'
+                                 : 'bg-white hover:bg-slate-50 text-blue-700 border-blue-200'
+                            }`}
+                          >
+                             <MapPin className="w-3.5 h-3.5" />
+                             <span>{prePlanActiveTarget === 'start' ? '👉 Now Click Map to Set Starting Point' : 'Click to Pick Start Point on Map'}</span>
+                          </button>
+                       )}
+                    </div>
+                 )}
+              </div>
+
+              {/* 2. DESTINATION SECTION */}
+              <div className="pt-3 space-y-2">
+                 <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                       <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                       2. Destination
+                    </span>
+                    <button
+                      onClick={() => setPrePlanActiveTarget('destination')}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                         prePlanActiveTarget === 'destination'
+                           ? 'bg-emerald-600 text-white border-emerald-600'
+                           : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                       {prePlanActiveTarget === 'destination' ? 'Active Picking' : 'Set on Map'}
+                    </button>
+                 </div>
+
+                 {prePlanStops.length > 0 ? (
+                    <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-start justify-between gap-2">
+                       <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                             B
                           </div>
                           <div className="flex-1 min-w-0">
-                             <h4 className="text-xs font-black text-slate-900 truncate">{st.name}</h4>
-                             <p className="text-[10px] text-slate-500 truncate">{st.address}</p>
-                             <div className="mt-1.5 flex items-center gap-1.5">
-                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded text-emerald-700 bg-emerald-50 border border-emerald-200">
-                                   AQI {st.aqiForecast} • {st.smogStatus}
+                             <p className="text-xs font-black text-slate-900 truncate">{prePlanStops[0].name}</p>
+                             <p className="text-[10px] text-slate-500 truncate">{prePlanStops[0].address}</p>
+                             <div className="mt-1">
+                                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded text-emerald-800 bg-emerald-100 border border-emerald-200">
+                                   AQI {prePlanStops[0].aqiForecast} • {prePlanStops[0].smogStatus}
                                 </span>
                              </div>
                           </div>
                        </div>
-
-                       {/* Clear Stop */}
-                       <button 
+                       <button
                          onClick={() => setPrePlanStops([])}
-                         className="text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
+                         className="text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-slate-200"
                          title="Remove destination"
                        >
-                          <X className="w-4 h-4" />
+                          <X className="w-3.5 h-3.5" />
                        </button>
                     </div>
-                 ))
-              )}
+                 ) : (
+                    <button
+                      onClick={() => setPrePlanActiveTarget('destination')}
+                      className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                         prePlanActiveTarget === 'destination'
+                           ? 'bg-emerald-600 text-white border-emerald-600 animate-pulse'
+                           : 'bg-white hover:bg-slate-50 text-emerald-700 border-emerald-200'
+                      }`}
+                    >
+                       <MapPin className="w-3.5 h-3.5" />
+                       <span>{prePlanActiveTarget === 'destination' ? '👉 Now Click Map to Set Destination' : 'Click to Pick Destination on Map'}</span>
+                    </button>
+                 )}
+              </div>
            </div>
 
            {/* Footer Actions */}
            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
               <button 
-                disabled={prePlanStops.length === 0}
+                disabled={prePlanStops.length === 0 || (prePlanStartType === 'custom' && !prePlanStartPoint)}
                 onClick={() => {
                    if (prePlanStops.length === 0) return;
-                   const stop = prePlanStops[0];
+                   const dest = prePlanStops[0];
+                   const isCustomStart = prePlanStartType === 'custom' && prePlanStartPoint;
+                   const startLat = isCustomStart ? prePlanStartPoint.lat : (userLocation?.[0] || 31.5204);
+                   const startLng = isCustomStart ? prePlanStartPoint.lng : (userLocation?.[1] || 74.3587);
+                   const startName = isCustomStart ? prePlanStartPoint.name : 'Current Location';
+                   const startAddress = isCustomStart ? (prePlanStartPoint.address || prePlanStartPoint.name) : 'My Current Device Location';
+
                    const params = new URLSearchParams({
                      addFromMap: 'true',
-                     name: stop.name,
-                     address: stop.address || stop.name,
-                     lat: String(stop.lat),
-                     lng: String(stop.lng),
+                     name: dest.name,
+                     address: dest.address || dest.name,
+                     lat: String(dest.lat),
+                     lng: String(dest.lng),
+                     startType: isCustomStart ? 'custom' : 'current',
+                     startName: startName,
+                     startAddress: startAddress,
+                     startLat: String(startLat),
+                     startLng: String(startLng),
                      day: prePlanDay
                    });
                    router.push(`/dashboard/routing?${params.toString()}`);
@@ -3791,7 +3977,7 @@ export default function MapWidget({ fullScreen = false }: { fullScreen?: boolean
                 className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Done (1 Destination)</span>
+                <span>Done (Configure Itinerary)</span>
               </button>
 
               <button 
