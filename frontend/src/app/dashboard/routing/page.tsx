@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   MapPin,
+  Pencil,
   Clock,
   Calendar,
   Bell,
@@ -282,9 +283,26 @@ export default function SmartRoutingPage() {
   const [mapStartLat, setMapStartLat] = useState(31.5204);
   const [mapStartLng, setMapStartLng] = useState(74.3587);
 
-  // Edit Time Modal State
-  const [editingStop, setEditingStop] = useState<PlannedStop | null>(null);
-  const [newTimeVal, setNewTimeVal] = useState('');
+  // Full Edit Destination Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editStopId, setEditStopId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editLat, setEditLat] = useState(31.5204);
+  const [editLng, setEditLng] = useState(74.3587);
+  const [editDay, setEditDay] = useState('Monday');
+  const [editTime, setEditTime] = useState('10:30 AM');
+  const [editTag, setEditTag] = useState('Work');
+  const [editVehicle, setEditVehicle] = useState<'car' | 'bike' | 'walk' | 'transit'>('car');
+  const [editStartType, setEditStartType] = useState<'current' | 'custom'>('current');
+  const [editStartName, setEditStartName] = useState('My Current Location');
+  const [editStartAddress, setEditStartAddress] = useState('GPS Live Coordinates');
+  const [editStartLat, setEditStartLat] = useState(31.5204);
+  const [editStartLng, setEditStartLng] = useState(74.3587);
+  const [editLeadTime, setEditLeadTime] = useState(30);
+  const [editPhotonQuery, setEditPhotonQuery] = useState('');
+  const [editPhotonSuggestions, setEditPhotonSuggestions] = useState<any[]>([]);
+  const [isSearchingEditPhoton, setIsSearchingEditPhoton] = useState(false);
 
   // Notification Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -619,6 +637,153 @@ export default function SmartRoutingPage() {
     setManualStartName('My Current Location');
     setManualStartAddress('GPS Live Coordinates');
     showToast(manualDay === 'All' ? 'Added destination to ALL 7 days!' : `Added "${manualName}" to ${manualDay}!`);
+  };
+
+  // Open Edit Modal with selected stop data
+  const handleOpenEditModal = (stop: PlannedStop) => {
+    setEditStopId(stop.id);
+    setEditName(stop.name);
+    setEditAddress(stop.address);
+    setEditLat(stop.lat);
+    setEditLng(stop.lng);
+    setEditDay(stop.day);
+    setEditTime(stop.time);
+    setEditTag(stop.tag || 'Work');
+    setEditVehicle(stop.vehicle || 'car');
+    setEditStartType(stop.startType || 'current');
+    setEditStartName(stop.startName || 'My Current Location');
+    setEditStartAddress(stop.startAddress || 'GPS Live Coordinates');
+    setEditStartLat(stop.startLat || 31.5204);
+    setEditStartLng(stop.startLng || 74.3587);
+    setEditLeadTime(stop.notifications?.leadTimeMins || 30);
+    setEditPhotonQuery('');
+    setEditPhotonSuggestions([]);
+    setIsEditModalOpen(true);
+  };
+
+  // Search destination for Edit modal
+  const handleEditPhotonSearch = (val: string) => {
+    setEditPhotonQuery(val);
+    if (val.trim().length > 2) {
+      setIsSearchingEditPhoton(true);
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val.trim())}&lat=31.5204&lon=74.3587&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.features) {
+            setEditPhotonSuggestions(
+              data.features.map((f: any) => ({
+                lat: f.geometry.coordinates[1],
+                lon: f.geometry.coordinates[0],
+                name: f.properties.name || f.properties.street || val,
+                address: [f.properties.name, f.properties.street, f.properties.city].filter(Boolean).join(', ')
+              }))
+            );
+          }
+          setIsSearchingEditPhoton(false);
+        })
+        .catch(() => {
+          setIsSearchingEditPhoton(false);
+          setEditPhotonSuggestions([]);
+        });
+    } else {
+      setEditPhotonSuggestions([]);
+    }
+  };
+
+  // Save updated destination to backend database
+  const handleSaveEditStop = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editStopId || !editName.trim()) return;
+
+    setIsSqlSyncing(true);
+    const startName = editStartType === 'current' ? 'My Current Location' : (editStartName.trim() || 'Custom Starting Location');
+    const startAddress = editStartType === 'current' ? 'GPS Live Coordinates' : (editStartAddress.trim() || editStartName.trim());
+    const startLat = editStartType === 'current' ? 31.5204 : editStartLat;
+    const startLng = editStartType === 'current' ? 74.3587 : editStartLng;
+
+    const payload = {
+      name: editName.trim(),
+      address: editAddress.trim() || editName.trim(),
+      lat: editLat,
+      lng: editLng,
+      time: editTime.trim(),
+      day: editDay,
+      tag: editTag,
+      vehicle: editVehicle,
+      startType: editStartType,
+      startName,
+      startAddress,
+      startLat,
+      startLng,
+      notifications: {
+        leadTimeMins: editLeadTime
+      }
+    };
+
+    try {
+      const res = await fetch(getApiEndpoint(`/routing/destinations/${editStopId}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.destination) {
+          const updated = allStops.map(s => (s.id === editStopId ? data.destination : s));
+          setAllStops(updated);
+          try {
+            localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
+          } catch (e) {}
+
+          if (selectedDay !== editDay && DAYS_OF_WEEK.includes(editDay)) {
+            setSelectedDay(editDay);
+          }
+
+          showToast(`Destination "${editName.trim()}" updated successfully!`);
+          setIsEditModalOpen(false);
+          fetchDestinations();
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error updating destination in DB:', err);
+    } finally {
+      setIsSqlSyncing(false);
+    }
+
+    // Fallback local update
+    const updated = allStops.map(s => {
+      if (s.id === editStopId) {
+        return {
+          ...s,
+          name: editName.trim(),
+          address: editAddress.trim() || editName.trim(),
+          lat: editLat,
+          lng: editLng,
+          time: editTime.trim(),
+          day: editDay,
+          tag: editTag,
+          vehicle: editVehicle,
+          startType: editStartType,
+          startName,
+          startAddress,
+          startLat,
+          startLng,
+          notifications: {
+            ...s.notifications,
+            leadTimeMins: editLeadTime
+          }
+        };
+      }
+      return s;
+    });
+    saveStops(updated);
+    if (selectedDay !== editDay && DAYS_OF_WEEK.includes(editDay)) {
+      setSelectedDay(editDay);
+    }
+    setIsEditModalOpen(false);
+    showToast(`Destination "${editName.trim()}" updated!`);
   };
 
   // Add Dedicated Map Destination into Backend Database & Spatial Engine
@@ -1262,13 +1427,7 @@ export default function SmartRoutingPage() {
                     <span>Apply AI Clean Air Schedule</span>
                   </button>
                 )}
-                <button
-                  onClick={handleSendTestSmogAlert}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 transition-colors"
-                >
-                  <Bell className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Send Test Smog Alert</span>
-                </button>
+                
               </div>
             </div>
           </div>
@@ -1385,18 +1544,18 @@ export default function SmartRoutingPage() {
               return (
                 <div
                   key={stop.id}
-                  className={`bg-white rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                  className={`bg-white rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md overflow-hidden ${
                     isCancelled
                       ? 'border-slate-200 opacity-60 bg-slate-50/50'
                       : 'border-slate-200/80 hover:border-emerald-200'
                   }`}
                 >
-                  <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    {/* Left: Index badge, details & timings */}
-                    <div className="flex items-start gap-4">
+                  <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 overflow-hidden">
+                    {/* Left Column: Number + Info (with min-w-0 and truncate to prevent button overflow) */}
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1 overflow-hidden">
                       {/* Step Number Circle */}
                       <div
-                        className={`w-10 h-10 rounded-2xl font-black text-sm flex items-center justify-center shrink-0 shadow-xs ${
+                        className={`w-9 h-9 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center shrink-0 shadow-xs ${
                           isCancelled
                             ? 'bg-slate-200 text-slate-500'
                             : 'bg-slate-900 text-white border border-slate-800'
@@ -1405,29 +1564,26 @@ export default function SmartRoutingPage() {
                         {index + 1}
                       </div>
 
-                      <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="space-y-1.5 min-w-0 flex-1 overflow-hidden">
                         {/* Time & Category Tag */}
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                           <button
-                            onClick={() => {
-                              setEditingStop(stop);
-                              setNewTimeVal(stop.time);
-                            }}
+                            onClick={() => handleOpenEditModal(stop)}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-black text-slate-800 transition-colors"
-                            title="Click to edit departure time"
+                            title="Click to edit schedule"
                           >
                             <Clock className="w-3.5 h-3.5 text-emerald-600" />
                             <span>{stop.time}</span>
                           </button>
 
                           {stop.tag && (
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                               {stop.tag}
                             </span>
                           )}
 
                           {stop.vehicle && (
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
                               {stop.vehicle === 'car' && <Car className="w-3 h-3 text-slate-500" />}
                               {stop.vehicle === 'bike' && <Bike className="w-3 h-3 text-slate-500" />}
                               {stop.vehicle === 'walk' && <Footprints className="w-3 h-3 text-slate-500" />}
@@ -1443,33 +1599,40 @@ export default function SmartRoutingPage() {
                           )}
                         </div>
 
-                        {/* Name & Address & Route Segment */}
+                        {/* Name & Address & Route Segment (with strict truncate so long text NEVER overflows) */}
                         <h4
-                          className={`text-base sm:text-lg font-black text-slate-900 tracking-tight ${
+                          className={`text-base sm:text-lg font-black text-slate-900 tracking-tight truncate max-w-full ${
                             isCancelled ? 'line-through text-slate-400' : ''
                           }`}
+                          title={stop.name}
                         >
                           {stop.name}
                         </h4>
-                        <p className="text-xs text-slate-500 font-medium truncate max-w-xl">
+                        <p className="text-xs text-slate-500 font-medium truncate max-w-full" title={stop.address}>
                           {stop.address}
                         </p>
 
                         {/* Starting Location -> Destination Segment */}
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-1">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            <span>From: {stop.startName || (stop.startType === 'custom' ? 'Custom Origin' : 'My Current Location')}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-0.5">
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 max-w-[260px] truncate"
+                            title={stop.startName || 'Current Location'}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                            <span className="truncate">From: {stop.startName || (stop.startType === 'custom' ? 'Custom Origin' : 'Current Location')}</span>
                           </span>
                           <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold border border-slate-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                            <span>To: {stop.name}</span>
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold border border-slate-200 max-w-[260px] truncate"
+                            title={stop.name}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                            <span className="truncate">To: {stop.name}</span>
                           </span>
                         </div>
 
                         {/* AQI Forecast & Advisory */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-black border ${aqiColorClass}`}
                           >
@@ -1477,20 +1640,20 @@ export default function SmartRoutingPage() {
                             AQI {stop.aqiForecast} • {stop.smogStatus}
                           </span>
                           {stop.advisory && (
-                            <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                            <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1 truncate max-w-md">
                               <Info className="w-3 h-3 text-slate-400 shrink-0" />
-                              {stop.advisory}
+                              <span className="truncate">{stop.advisory}</span>
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Right: Consolidated Controls (Notice, Sound Icon, Navigate, Cancel, Delete) */}
-                    <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 xl:pt-0 border-t xl:border-t-0 border-slate-100 justify-start xl:justify-end">
-                      {/* Notice Time & Trigger Indicator */}
+                    {/* Right Column: 2 Clean Rows (Notice timing on top, Action buttons on bottom) - Never overflows! */}
+                    <div className="flex flex-col items-start lg:items-end gap-2.5 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                      {/* Row 1: Notice Timing & Live Alert Badge */}
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <div className="bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200/80 flex items-center gap-1.5">
+                        <div className="bg-slate-50 px-2 py-0.5 rounded-xl border border-slate-200/80 flex items-center gap-1">
                           <span className="text-[11px] font-bold text-slate-500">Notice:</span>
                           {[15, 30, 45].map(mins => (
                             <button
@@ -1519,66 +1682,79 @@ export default function SmartRoutingPage() {
                         </button>
                       </div>
 
-                      {/* Sound / Silent Toggle Icon Button (ONLY LOGO, NO TEXT) */}
-                      <button
-                        onClick={() => toggleSilentAlert(stop.id)}
-                        className={`p-2 rounded-xl transition-all border ${
-                          !stop.notifications?.isSilent
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                            : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200'
-                        }`}
-                        title={
-                          !stop.notifications?.isSilent
-                            ? 'Sound alert active (Device notification + AI Ringtone). Click to switch to Silent mode.'
-                            : 'Silent mode active (Device notification only, no sound). Click to enable Sound alert.'
-                        }
-                      >
-                        {!stop.notifications?.isSilent ? (
-                          <Bell className="w-4 h-4 text-emerald-600 animate-pulse" />
-                        ) : (
-                          <BellOff className="w-4 h-4 text-slate-500" />
-                        )}
-                      </button>
-
-                      {/* Navigate Now */}
-                      {!isCancelled && (
-                        <Link
-                          href={`/dashboard/map?destLat=${stop.lat}&destLng=${stop.lng}&destName=${encodeURIComponent(
-                            stop.name
-                          )}${
-                            stop.startType === 'custom' && stop.startLat && stop.startLng
-                              ? `&originLat=${stop.startLat}&originLng=${stop.startLng}&originName=${encodeURIComponent(stop.startName || '')}`
-                              : ''
+                      {/* Row 2: Action Buttons (Sound Toggle, Edit, Navigate, Cancel, Delete) */}
+                      <div className="flex flex-wrap items-center gap-1.5 justify-start lg:justify-end">
+                        {/* Sound / Silent Toggle */}
+                        <button
+                          onClick={() => toggleSilentAlert(stop.id)}
+                          className={`p-1.5 rounded-xl transition-all border ${
+                            !stop.notifications?.isSilent
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200'
                           }`}
-                          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors shrink-0"
-                          title="Navigate to destination now on live map"
+                          title={
+                            !stop.notifications?.isSilent
+                              ? 'Sound alert active (Device notification + AI Voice). Click to mute.'
+                              : 'Silent mode active. Click to enable sound.'
+                          }
                         >
-                          <Navigation className="w-3.5 h-3.5" />
-                          <span>Navigate</span>
-                        </Link>
-                      )}
+                          {!stop.notifications?.isSilent ? (
+                            <Bell className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                          ) : (
+                            <BellOff className="w-3.5 h-3.5 text-slate-500" />
+                          )}
+                        </button>
 
-                      {/* Cancel / Restore Button */}
-                      <button
-                        onClick={() => toggleCancelStop(stop.id)}
-                        className={`px-3 py-2 rounded-xl font-bold text-xs transition-colors shrink-0 ${
-                          isCancelled
-                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                        }`}
-                        title={isCancelled ? 'Reactivate stop' : 'Cancel this destination'}
-                      >
-                        {isCancelled ? 'Restore' : 'Cancel'}
-                      </button>
+                        {/* Edit Destination Button */}
+                        <button
+                          onClick={() => handleOpenEditModal(stop)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs transition-colors shrink-0 active:scale-95"
+                          title="Edit destination details & schedule"
+                        >
+                          <Pencil className="w-3 h-3 text-slate-600" />
+                          <span>Edit</span>
+                        </button>
 
-                      {/* Delete Stop */}
-                      <button
-                        onClick={() => handleDeleteStop(stop.id)}
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors shrink-0"
-                        title="Delete stop permanently"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        {/* Navigate Now */}
+                        {!isCancelled && (
+                          <Link
+                            href={`/dashboard/map?destLat=${stop.lat}&destLng=${stop.lng}&destName=${encodeURIComponent(
+                              stop.name
+                            )}${
+                              stop.startType === 'custom' && stop.startLat && stop.startLng
+                                ? `&originLat=${stop.startLat}&originLng=${stop.startLng}&originName=${encodeURIComponent(stop.startName || '')}`
+                                : ''
+                            }`}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-colors shrink-0"
+                            title="Navigate to destination now on live map"
+                          >
+                            <Navigation className="w-3 h-3" />
+                            <span>Navigate</span>
+                          </Link>
+                        )}
+
+                        {/* Cancel / Restore Button */}
+                        <button
+                          onClick={() => toggleCancelStop(stop.id)}
+                          className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors shrink-0 ${
+                            isCancelled
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                          }`}
+                          title={isCancelled ? 'Reactivate stop' : 'Cancel this destination'}
+                        >
+                          {isCancelled ? 'Restore' : 'Cancel'}
+                        </button>
+
+                        {/* Delete Stop */}
+                        <button
+                          onClick={() => handleDeleteStop(stop.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors shrink-0"
+                          title="Delete stop permanently"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2094,72 +2270,253 @@ export default function SmartRoutingPage() {
       )}
 
       {/* Edit Departure Time Modal */}
-      {editingStop && (
+      {/* FULL EDIT DESTINATION SCHEDULE MODAL */}
+      {isEditModalOpen && (
         <div className="fixed inset-0 z-[9990] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 space-y-4">
-            <h3 className="text-lg font-black text-slate-900">Adjust Departure Time</h3>
-            <p className="text-xs text-slate-500 font-medium">{editingStop.name}</p>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Departure Time
-              </label>
-              <input
-                type="text"
-                value={newTimeVal}
-                onChange={e => setNewTimeVal(e.target.value)}
-                placeholder="e.g. 11:00 AM"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase">
+                  <Pencil className="w-3 h-3 text-emerald-600" />
+                  <span>Edit Schedule & Route</span>
+                </div>
+                <h3 className="text-xl font-black text-slate-900 mt-1">Edit Destination</h3>
+              </div>
               <button
-                onClick={() => setEditingStop(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold text-xs"
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
               >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (newTimeVal.trim() && editingStop) {
-                    const updatedTime = newTimeVal.trim();
-                    const stopId = editingStop.id;
-                    setEditingStop(null);
-
-                    try {
-                      const res = await fetch(getApiEndpoint(`/routing/destinations/${stopId}`), {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ time: updatedTime })
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        if (data.destination) {
-                          const updated = allStops.map(s => (s.id === stopId ? data.destination : s));
-                          setAllStops(updated);
-                          try {
-                            localStorage.setItem('dhuan_planned_trips', JSON.stringify(updated));
-                          } catch (e) {}
-                          showToast(`Departure time updated! AQI: ${data.destination.aqiForecast}`);
-                          fetchDestinations();
-                          return;
-                        }
-                      }
-                    } catch (err) {
-                      console.error('Error updating departure time in DB:', err);
-                    }
-
-                    const updated = allStops.map(s => (s.id === stopId ? { ...s, time: updatedTime } : s));
-                    saveStops(updated);
-                    showToast('Departure time updated');
-                  }
-                }}
-                className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-sm hover:bg-emerald-700"
-              >
-                Save
+                <X className="w-5 h-5" />
               </button>
             </div>
+
+            <form onSubmit={handleSaveEditStop} className="space-y-4">
+              {/* 1. STARTING LOCATION SECTION */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Starting Point</span>
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                    {editStartType === 'current' ? '📍 GPS Current Location' : '🗺️ Custom Location'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditStartType('current');
+                      setEditStartName('My Current Location');
+                      setEditStartAddress('GPS Live Coordinates');
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      editStartType === 'current'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>Current Location</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditStartType('custom')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      editStartType === 'custom'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Custom Origin</span>
+                  </button>
+                </div>
+
+                {editStartType === 'custom' && (
+                  <div className="pt-1.5 space-y-1.5">
+                    <input
+                      type="text"
+                      value={editStartName}
+                      onChange={e => setEditStartName(e.target.value)}
+                      placeholder="e.g. Home, Office, Garden Town..."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 2. DESTINATION DETAILS */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Destination Title
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="e.g. Office HQ, Mall of Lahore"
+                  required
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Address / Landmark
+                </label>
+                <input
+                  type="text"
+                  value={editAddress}
+                  onChange={e => setEditAddress(e.target.value)}
+                  placeholder="e.g. Main Boulevard, Gulberg"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                />
+              </div>
+
+              {/* 3. SCHEDULED DAY SELECTOR */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Scheduled Day
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-600">
+                    {editDay}
+                  </span>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {DAYS_OF_WEEK.map(d => {
+                    const isSel = editDay === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setEditDay(d)}
+                        className={`py-1.5 px-1 text-center rounded-xl text-xs font-extrabold transition-all ${
+                          isSel
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {d.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. TIME & CATEGORY TAG */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Scheduled Time
+                  </label>
+                  <input
+                    type="text"
+                    value={editTime}
+                    onChange={e => setEditTime(e.target.value)}
+                    placeholder="e.g. 10:30 AM"
+                    required
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Category Tag
+                  </label>
+                  <select
+                    value={editTag}
+                    onChange={e => setEditTag(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-600 transition-all"
+                  >
+                    <option value="Work">Work</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="Shopping">Shopping</option>
+                    <option value="Medical">Medical</option>
+                    <option value="Dining">Dining</option>
+                    <option value="Fitness">Fitness</option>
+                    <option value="Home">Home</option>
+                    <option value="Personal">Personal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 5. VEHICLE MODE */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Travel Vehicle Mode
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { key: 'car', label: 'Car', icon: Car },
+                    { key: 'bike', label: 'Bike', icon: Bike },
+                    { key: 'walk', label: 'Walk', icon: Footprints },
+                    { key: 'transit', label: 'Transit', icon: Bus }
+                  ].map(v => {
+                    const Icon = v.icon;
+                    const isSel = editVehicle === v.key;
+                    return (
+                      <button
+                        key={v.key}
+                        type="button"
+                        onClick={() => setEditVehicle(v.key as any)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs font-bold transition-all ${
+                          isSel
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 mb-0.5" />
+                        <span>{v.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 6. NOTICE LEAD TIME */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Notice Alert Lead Time
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[15, 30, 45].map(mins => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setEditLeadTime(mins)}
+                      className={`py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                        editLeadTime === mins
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {mins} Minutes
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
