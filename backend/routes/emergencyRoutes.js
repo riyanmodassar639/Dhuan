@@ -227,9 +227,9 @@ function calculateHealthMetrics(profile, liveAqi = 81, livePm25 = 25.2) {
   if (profile.has_lung_cancer_risk) score += 24;
   if (profile.has_cardio_condition) score += 20;
   if (profile.has_allergies) score += 10;
-  if (profile.has_eye_irritation) score += 6;
-  if (profile.has_ent_irritation) score += 6;
-  if (profile.has_headaches_fatigue) score += 8;
+  if (profile.has_eye_irritation) score += 8;
+  if (profile.has_ent_irritation) score += 8;
+  if (profile.has_headaches_fatigue) score += 10;
 
   // Cohorts & age
   if (profile.has_pregnant) score += 20;
@@ -258,7 +258,161 @@ function calculateHealthMetrics(profile, liveAqi = 81, livePm25 = 25.2) {
   if (profile.mask_type === 'n95') score -= 8;
   if (profile.has_hepa_purifier) score -= 10;
 
+  // Collect active health conditions & generate condition-specific advisories
+  const activeConditions = [];
+  const detailedAdvisories = [];
+  const actionBadges = [];
+
+  if (profile.asthma_severity && profile.asthma_severity !== 'none') {
+    activeConditions.push(`${profile.asthma_severity.charAt(0).toUpperCase() + profile.asthma_severity.slice(1)} Asthma`);
+    detailedAdvisories.push({
+      id: 'asthma',
+      title: 'Asthma Airway Hyper-responsiveness',
+      advice: `Your ${profile.asthma_severity} asthma increases risk of acute bronchospasm during Lahore smog inversions. Pre-medicate with inhaler prior to stepping outdoors.`,
+      severity: profile.asthma_severity === 'severe' ? 'critical' : 'warning'
+    });
+    actionBadges.push({ id: 'inhaler', label: 'Keep Rescue Inhaler in Pocket', type: 'blue' });
+  }
+
+  if (profile.has_bronchitis) {
+    activeConditions.push('Chronic Bronchitis');
+    detailedAdvisories.push({
+      id: 'bronchitis',
+      title: 'Bronchial Mucosal Inflammation',
+      advice: 'Airborne particulates severely irritate inflamed bronchial linings, triggering chronic productive cough and nocturnal wheezing. Avoid morning thermal inversion fog.',
+      severity: 'warning'
+    });
+    actionBadges.push({ id: 'bronchitis', label: 'Bronchial Warm Air Protection', type: 'amber' });
+  }
+
+  if (profile.has_reduced_lung_capacity) {
+    activeConditions.push('Reduced Lung Function');
+    detailedAdvisories.push({
+      id: 'reduced_capacity',
+      title: 'Diminished Pulmonary Capacity',
+      advice: 'Reduced lung function limits arterial oxygen diffusion under heavy smog. Strictly prohibit strenuous outdoor aerobic workouts, jogging, or cycling.',
+      severity: 'critical'
+    });
+    actionBadges.push({ id: 'cardio_ban', label: 'Zero Strenuous Outdoor Exercise', type: 'rose' });
+  }
+
+  if (profile.has_eye_irritation) {
+    activeConditions.push('Eye Irritation & Burning');
+    detailedAdvisories.push({
+      id: 'eye_irritation',
+      title: 'Ocular Conjunctival Burning',
+      advice: 'High atmospheric levels of photochemical oxidants and acidic smog cause stinging and watery eyes. Wear wrap-around glasses outdoors and use preservative-free lubricating eye drops.',
+      severity: 'info'
+    });
+    actionBadges.push({ id: 'eye_drops', label: 'Wrap-around Eyewear / Eye Drops', type: 'cyan' });
+  }
+
+  if (profile.has_ent_irritation) {
+    activeConditions.push('Nose & Throat Irritation');
+    detailedAdvisories.push({
+      id: 'ent_irritation',
+      title: 'Upper Respiratory & Pharyngeal Irritation',
+      advice: 'Nitrogen dioxide and particulate soot irritate mucosal membranes, inducing sneezing and raw throat. Rinse nasal sinuses with isotonic saline solution twice daily.',
+      severity: 'info'
+    });
+    actionBadges.push({ id: 'saline_rinse', label: 'Saline Nasal Rinse & Warm Gargle', type: 'yellow' });
+  }
+
+  if (profile.has_headaches_fatigue) {
+    activeConditions.push('Headaches & Fatigue');
+    detailedAdvisories.push({
+      id: 'headaches_fatigue',
+      title: 'Smog-Induced Hypoxia & Neurological Fatigue',
+      advice: 'Fine particulates elevate systemic inflammatory cytokines and lower cerebral oxygenation, resulting in dull smog headaches and chronic tiredness. Maintain active indoor hydration and work in HEPA-filtered air.',
+      severity: 'info'
+    });
+    actionBadges.push({ id: 'hydration', label: 'High Hydration & Indoor Rest', type: 'purple' });
+  }
+
+  if (profile.has_cardio_condition) {
+    activeConditions.push('Cardiovascular Disease Risk');
+    detailedAdvisories.push({
+      id: 'cardio',
+      title: 'Cardiovascular & Vascular Constriction Risk',
+      advice: 'PM2.5 particles penetrate directly into capillaries, triggering systemic endothelial dysfunction, arterial plaque instability, and blood pressure spikes. Monitor BP regularly.',
+      severity: 'critical'
+    });
+    actionBadges.push({ id: 'bp_monitor', label: 'Monitor Blood Pressure & Cardiac Strain', type: 'rose' });
+  }
+
+  if (profile.has_lung_cancer_risk) {
+    activeConditions.push('Long-Term Lung Cancer Risk');
+    detailedAdvisories.push({
+      id: 'cancer_risk',
+      title: 'Elevated Carcinogenic Particulate Sensitivity',
+      advice: 'Long-term exposure to polycyclic aromatic hydrocarbons (PAHs) in Lahore smog increases oncological cell transformation risk. Strictly wear N95 airtight respirators.',
+      severity: 'warning'
+    });
+    actionBadges.push({ id: 'n95_strict', label: 'Strict Airtight N95 / KN95 Respirator', type: 'emerald' });
+  }
+
+  if (profile.has_pregnant) {
+    activeConditions.push('Pregnancy-Related Vulnerability');
+    detailedAdvisories.push({
+      id: 'pregnancy',
+      title: 'Maternal & Prenatal Airway Defense',
+      advice: 'Prenatal smog exposure correlates with fetal hypoxia, increased risk of low birth weight, and premature delivery. Strictly remain indoors during AQI > 150 with continuous HEPA purification.',
+      severity: 'critical'
+    });
+    actionBadges.push({ id: 'maternal_hepa', label: 'Continuous Indoor HEPA Air Purifier', type: 'pink' });
+  }
+
+  if (profile.has_child) {
+    activeConditions.push('Pediatric Vulnerability (Child)');
+    detailedAdvisories.push({
+      id: 'child',
+      title: 'Pediatric Lung Development Hazard',
+      advice: 'Children inhale up to 50% more air per pound of body weight than adults, leading to deeper alveolar deposition of soot and stunted lung growth. Restrict outdoor play.',
+      severity: 'warning'
+    });
+    actionBadges.push({ id: 'child_indoor', label: 'Keep Children Indoors During Peak Smog', type: 'blue' });
+  }
+
+  if (profile.has_elderly || profile.age > 60) {
+    activeConditions.push('Senior Citizen (60+) Risk');
+    detailedAdvisories.push({
+      id: 'elderly',
+      title: 'Senior Respiratory Mucosal Fragility',
+      advice: 'Diminished ciliary clearance in seniors allows soot to settle deeper in bronchioles. Avoid early morning walks during peak temperature inversion (06:30 - 09:30 AM).',
+      severity: 'warning'
+    });
+    actionBadges.push({ id: 'senior_care', label: 'Avoid Morning Walks During Smog Fog', type: 'slate' });
+  }
+
+  // Active smog symptoms
+  let activeSymptoms = [];
+  try {
+    if (profile.smog_symptoms_json) {
+      activeSymptoms = JSON.parse(profile.smog_symptoms_json);
+    }
+  } catch (e) {}
+
+  if (Array.isArray(activeSymptoms) && activeSymptoms.length > 0) {
+    for (const sym of activeSymptoms) {
+      score += 4;
+    }
+  }
+
   score = Math.max(5, Math.min(99, score));
+
+  // Always include standard N95 badge if not already added
+  if (!actionBadges.some(b => b.id === 'n95_strict')) {
+    actionBadges.unshift({ id: 'n95_standard', label: 'Wear N95 Mask Outdoors', type: 'emerald' });
+  }
+  actionBadges.push({ id: 'avoid_peak', label: 'Avoid Morning Smog (07:30 - 09:30 AM)', type: 'amber' });
+
+  // Generate triggers text
+  let triggersText = '';
+  if (activeConditions.length > 0) {
+    triggersText = `Triggered by ${activeConditions.slice(0, 3).join(', ')}${activeConditions.length > 3 ? ` +${activeConditions.length - 3} more` : ''} + daily ${commuteMins}m ${profile.primary_commute || 'commute'}.`;
+  } else {
+    triggersText = `Baseline respiratory sensitivity (no chronic smog conditions) + daily ${commuteMins}m ${profile.primary_commute || 'commute'}.`;
+  }
 
   let tier = 'Low';
   let tierColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
@@ -300,6 +454,10 @@ function calculateHealthMetrics(profile, liveAqi = 81, livePm25 = 25.2) {
     tierColor,
     progressBg,
     advisory,
+    triggersText,
+    activeConditions,
+    detailedAdvisories,
+    actionBadges,
     safeMinutesUnmasked,
     safeMinutesMasked,
     totalDailyPm25Ug,
