@@ -155,23 +155,56 @@ function speakAiVoiceAnnouncement(text: string) {
   }
 }
 
+// Compute exact notice trigger time string (e.g. 10:30 AM minus 15m = 10:15 AM)
+export function computeNoticeAlertTimeString(departureTime: string, leadTimeMins: number): string {
+  const match = departureTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!match) return departureTime;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const meridiem = match[3].toUpperCase();
+
+  if (meridiem === 'PM' && hours < 12) hours += 12;
+  if (meridiem === 'AM' && hours === 12) hours = 0;
+
+  let totalMins = hours * 60 + minutes - leadTimeMins;
+  if (totalMins < 0) totalMins += 24 * 60;
+
+  let alertHours = Math.floor(totalMins / 60) % 24;
+  const alertMins = totalMins % 60;
+  const alertMeridiem = alertHours >= 12 ? 'PM' : 'AM';
+  if (alertHours > 12) alertHours -= 12;
+  if (alertHours === 0) alertHours = 12;
+
+  const paddedMins = alertMins < 10 ? `0${alertMins}` : alertMins;
+  return `${alertHours}:${paddedMins} ${alertMeridiem}`;
+}
+
 // Device Notification Engine (Native OS Notification like WhatsApp Web + AI Ringtone Sound)
 async function triggerDeviceSmogAlert(params: {
   day: string;
   destinationName: string;
+  startName?: string;
+  startType?: string;
   time: string;
   aqi: number;
   smogStatus: string;
   isSilent?: boolean;
+  leadTimeMins?: number;
 }) {
-  const { day, destinationName, time, aqi, smogStatus, isSilent } = params;
+  const { day, destinationName, startName, startType, time, aqi, smogStatus, isSilent, leadTimeMins = 30 } = params;
+
+  // Determine starting location display and spoken wording
+  const isCurrentLoc = !startName || startType === 'current' || startName.toLowerCase().includes('current');
+  const originDisplay = isCurrentLoc ? 'Current Location' : startName;
+  const originSpoken = isCurrentLoc ? 'your current location' : startName;
 
   // 1. Send Device Notification (Appears on user's device/OS outside webpage like WhatsApp Web)
   if (typeof window !== 'undefined' && 'Notification' in window) {
+    const notifBody = `${day} (${time}) • ${leadTimeMins}m notice\nFrom: ${originDisplay} ➔ To: ${destinationName}\nAhead Smog: AQI ${aqi} (${smogStatus}). Take protective travel measures.`;
     if (Notification.permission === 'granted') {
       try {
         new Notification(`DHUAN Alert: ${destinationName}`, {
-          body: `${day} schedule (${time}) • Smog AQI ${aqi} (${smogStatus}). Take protective travel measures.`,
+          body: notifBody,
           icon: '/favicon.ico',
           tag: `dhuan-device-${Date.now()}`
         });
@@ -183,7 +216,7 @@ async function triggerDeviceSmogAlert(params: {
         const perm = await Notification.requestPermission();
         if (perm === 'granted') {
           new Notification(`DHUAN Alert: ${destinationName}`, {
-            body: `${day} schedule (${time}) • Smog AQI ${aqi} (${smogStatus}). Take protective travel measures.`,
+            body: notifBody,
             icon: '/favicon.ico'
           });
         }
@@ -194,7 +227,7 @@ async function triggerDeviceSmogAlert(params: {
   // 2. Play AI Voice Ringtone Sound if NOT silenced by user
   if (!isSilent) {
     await playDhuanAlertChime();
-    const spokenText = `Dhuan alert. ${day} schedule. Departure for ${destinationName} at ${time}. Smog level is AQI ${aqi}, ${smogStatus}.`;
+    const spokenText = `Dhuan alert. ${day} schedule. ${leadTimeMins} minutes notice before departure from ${originSpoken} to ${destinationName} scheduled for ${time}. Ahead smog level is AQI ${aqi}, ${smogStatus}. Take protective travel precautions.`;
     speakAiVoiceAnnouncement(spokenText);
   }
 }
@@ -737,6 +770,7 @@ export default function SmartRoutingPage() {
 
   // Update Notification Lead Time in database
   const updateLeadTime = async (id: string, mins: number) => {
+    const target = allStops.find(s => s.id === id);
     const updated = allStops.map(s => {
       if (s.id === id) {
         const notifs = s.notifications || {
@@ -756,6 +790,13 @@ export default function SmartRoutingPage() {
       return s;
     });
     saveStops(updated);
+
+    const alertTimeStr = target ? computeNoticeAlertTimeString(target.time, mins) : '';
+    showToast(
+      alertTimeStr
+        ? `Notice set to ${mins}m! Device alert scheduled at ${alertTimeStr} (${mins} mins before ${target?.time || 'departure'}).`
+        : `Notice set to ${mins} minutes before departure.`
+    );
 
     try {
       await fetch(getApiEndpoint(`/routing/destinations/${id}`), {
@@ -815,9 +856,12 @@ export default function SmartRoutingPage() {
     await triggerDeviceSmogAlert({
       day: stop.day,
       destinationName: stop.name,
+      startName: stop.startName,
+      startType: stop.startType,
       time: stop.time,
       aqi: stop.aqiForecast,
       smogStatus: stop.smogStatus,
+      leadTimeMins: stop.notifications?.leadTimeMins || 30,
       isSilent: stop.notifications?.isSilent ?? false
     });
 
@@ -862,27 +906,31 @@ export default function SmartRoutingPage() {
         if (meridiem === 'AM' && stopHours === 12) stopHours = 0;
 
         const stopTimeInMins = stopHours * 60 + stopMinutes;
-        const leadTime = stop.notifications.leadTimeMins || 30;
-        const targetAlertTimeInMins = stopTimeInMins - leadTime;
+        const leadTime = stop.notifications?.leadTimeMins || 30;
+        let targetAlertTimeInMins = stopTimeInMins - leadTime;
+        if (targetAlertTimeInMins < 0) targetAlertTimeInMins += 24 * 60;
 
-        const alertKey = `${stop.id}-${currentDay}-${stop.time}-${now.toDateString()}`;
+        const alertKey = `${stop.id}-${currentDay}-${stop.time}-${leadTime}-${now.toDateString()}`;
         if (
           currentTimeInMins >= targetAlertTimeInMins &&
-          currentTimeInMins <= targetAlertTimeInMins + 2 &&
+          currentTimeInMins <= targetAlertTimeInMins + 1 &&
           !alertedStopsRef.current.has(alertKey)
         ) {
           alertedStopsRef.current.add(alertKey);
           triggerDeviceSmogAlert({
             day: stop.day,
             destinationName: stop.name,
+            startName: stop.startName,
+            startType: stop.startType,
             time: stop.time,
             aqi: stop.aqiForecast,
             smogStatus: stop.smogStatus,
-            isSilent: stop.notifications.isSilent ?? false
+            leadTimeMins: leadTime,
+            isSilent: stop.notifications?.isSilent ?? false
           });
         }
       });
-    }, 20000);
+    }, 10000);
 
     return () => clearInterval(checkInterval);
   }, [allStops]);
@@ -1004,9 +1052,12 @@ export default function SmartRoutingPage() {
           await triggerDeviceSmogAlert({
             day: data.alert.day || selectedDay,
             destinationName: data.alert.destinationName || dayStops[0]?.name || 'Lahore',
+            startName: data.alert.startName || dayStops[0]?.startName,
+            startType: data.alert.startType || dayStops[0]?.startType,
             time: data.alert.time || dayStops[0]?.time || '10:00 AM',
             aqi: data.alert.aqi || dayStops[0]?.aqiForecast || 160,
             smogStatus: data.alert.smogStatus || dayStops[0]?.smogStatus || 'Moderate Haze',
+            leadTimeMins: data.alert.leadTimeMins || dayStops[0]?.notifications?.leadTimeMins || 30,
             isSilent: data.alert.isSilent ?? dayStops[0]?.notifications?.isSilent ?? false
           });
           return;
@@ -1021,9 +1072,12 @@ export default function SmartRoutingPage() {
       await triggerDeviceSmogAlert({
         day: firstActive.day,
         destinationName: firstActive.name,
+        startName: firstActive.startName,
+        startType: firstActive.startType,
         time: firstActive.time,
         aqi: firstActive.aqiForecast,
         smogStatus: firstActive.smogStatus,
+        leadTimeMins: firstActive.notifications?.leadTimeMins || 30,
         isSilent: firstActive.notifications?.isSilent ?? false
       });
     }
@@ -1434,22 +1488,35 @@ export default function SmartRoutingPage() {
 
                     {/* Right: Consolidated Controls (Notice, Sound Icon, Navigate, Cancel, Delete) */}
                     <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 xl:pt-0 border-t xl:border-t-0 border-slate-100 justify-start xl:justify-end">
-                      {/* Notice Time */}
-                      <div className="bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200/80 flex items-center gap-1.5">
-                        <span className="text-[11px] font-bold text-slate-500">Notice:</span>
-                        {[15, 30, 45].map(mins => (
-                          <button
-                            key={mins}
-                            onClick={() => updateLeadTime(stop.id, mins)}
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-colors ${
-                              stop.notifications?.leadTimeMins === mins
-                                ? 'bg-slate-900 text-white'
-                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            {mins}m
-                          </button>
-                        ))}
+                      {/* Notice Time & Trigger Indicator */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200/80 flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold text-slate-500">Notice:</span>
+                          {[15, 30, 45].map(mins => (
+                            <button
+                              key={mins}
+                              onClick={() => updateLeadTime(stop.id, mins)}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-colors ${
+                                (stop.notifications?.leadTimeMins || 30) === mins
+                                  ? 'bg-slate-900 text-white shadow-xs'
+                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                              }`}
+                              title={`Set notice alert to ${mins} minutes before departure`}
+                            >
+                              {mins}m
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Calculated Alert Time Badge (Click to preview voice alert!) */}
+                        <button
+                          type="button"
+                          onClick={() => handleTestStopAlert(stop)}
+                          className="text-[10px] font-extrabold px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors shrink-0 flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs"
+                          title={`Click to preview AI voice announcement! Scheduled to fire at ${computeNoticeAlertTimeString(stop.time, stop.notifications?.leadTimeMins || 30)}`}
+                        >
+                          <span>⏰ Alert at {computeNoticeAlertTimeString(stop.time, stop.notifications?.leadTimeMins || 30)}</span>
+                        </button>
                       </div>
 
                       {/* Sound / Silent Toggle Icon Button (ONLY LOGO, NO TEXT) */}

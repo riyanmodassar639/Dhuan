@@ -546,6 +546,9 @@ router.post('/destinations/test-alert', async (req, res) => {
       alert: {
         title: `DHUAN Alert: ${destName}`,
         destinationName: destName,
+        startName: targetStop ? targetStop.start_name : 'Current Location',
+        startType: targetStop ? targetStop.start_type : 'current',
+        leadTimeMins: targetStop ? (targetStop.lead_time_mins || 30) : 30,
         time: stopTime,
         day: stopDay,
         aqi,
