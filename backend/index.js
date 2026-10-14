@@ -35,6 +35,245 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/routing', routingRoutes);
 
+// Root landing page (Resolves "Cannot GET /" when opened directly in browser)
+app.get(['/', '/health', '/api'], (req, res) => {
+  // If browser request, return interactive status page
+  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    return res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DHUAN Backend API — Server Status</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🟢</text></svg>">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 24px;
+      max-width: 640px;
+      width: 100%;
+      padding: 36px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid #10b981;
+      color: #34d399;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .meta-box {
+      background: #0f172a;
+      border: 1px solid #334155;
+      padding: 14px;
+      border-radius: 14px;
+    }
+    .meta-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .meta-val {
+      font-size: 14px;
+      font-weight: 800;
+      color: #e2e8f0;
+      margin-top: 4px;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .links-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .api-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      color: #38bdf8;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: monospace;
+      transition: all 0.2s;
+    }
+    .api-link:hover {
+      background: #1e293b;
+      border-color: #38bdf8;
+      transform: translateX(3px);
+    }
+    .api-desc {
+      font-family: -apple-system, sans-serif;
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      border-top: 1px solid #334155;
+      padding-top: 20px;
+    }
+    .btn-primary {
+      flex: 1;
+      padding: 14px;
+      background: #10b981;
+      color: #0f172a;
+      text-align: center;
+      border-radius: 14px;
+      font-weight: 800;
+      font-size: 14px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover {
+      background: #34d399;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">
+      <div class="pulse-dot"></div>
+      <span>Backend & SQLite API Online</span>
+    </div>
+    <h1>DHUAN Environmental Intelligence API</h1>
+    <p>Aapka DHUAN Node.js backend server successfully chal raha hai. Yeh REST API server hai jo frontend Next.js app ko live smog forecasts, dynamic SQLite routing, aur emergency hospitals data supply karta hai.</p>
+
+    <div class="meta-grid">
+      <div class="meta-box">
+        <div class="meta-label">HTTPS Port</div>
+        <div class="meta-val">https://localhost:5000</div>
+      </div>
+      <div class="meta-box">
+        <div class="meta-label">HTTP Internal Port</div>
+        <div class="meta-val">http://localhost:5001</div>
+      </div>
+      <div class="meta-box">
+        <div class="meta-label">Database</div>
+        <div class="meta-val">SQLite (dhuan.sqlite)</div>
+      </div>
+      <div class="meta-box">
+        <div class="meta-label">Status</div>
+        <div class="meta-val" style="color: #34d399;">200 OK &bull; Healthy</div>
+      </div>
+    </div>
+
+    <div class="section-title">Verified Active REST API Endpoints:</div>
+    <div class="links-list">
+      <a href="/api/health" class="api-link" target="_blank">
+        <span>GET /api/health</span>
+        <span class="api-desc">Health Check & Status</span>
+      </a>
+      <a href="/api/dashboard/overview" class="api-link" target="_blank">
+        <span>GET /api/dashboard/overview</span>
+        <span class="api-desc">Lahore Real-Time AQI & Forecast</span>
+      </a>
+      <a href="/api/routing/destinations?day=Monday" class="api-link" target="_blank">
+        <span>GET /api/routing/destinations</span>
+        <span class="api-desc">Smart Routing & SQLite Trips</span>
+      </a>
+      <a href="/api/emergency/hospitals?lat=31.5204&lng=74.3587" class="api-link" target="_blank">
+        <span>GET /api/emergency/hospitals</span>
+        <span class="api-desc">Lahore Verified Hospitals Directory</span>
+      </a>
+    </div>
+
+    <div class="actions">
+      <a href="http://localhost:3000/dashboard" class="btn-primary" target="_blank">
+        Open DHUAN Web Application (Port 3000) &rarr;
+      </a>
+    </div>
+  </div>
+</body>
+</html>`);
+  }
+
+  // JSON fallback for API clients
+  res.json({
+    status: 'ok',
+    service: 'DHUAN Node.js & SQL Backend (HTTPS Enabled)',
+    database: 'SQLite (dhuan.sqlite)',
+    ports: {
+      https: 5000,
+      http: 5001
+    },
+    endpoints: {
+      health: '/api/health',
+      overview: '/api/dashboard/overview',
+      routing: '/api/routing/destinations',
+      emergency: '/api/emergency/hospitals',
+      simulator: '/api/dashboard/simulator/run'
+    },
+    frontendUrl: 'http://localhost:3000',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
