@@ -313,6 +313,17 @@ async function initDatabase() {
   try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_hepa_purifier INTEGER DEFAULT 1'); } catch (e) {}
   try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN symptom_logs TEXT'); } catch (e) {}
   try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN is_profile_created INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_bronchitis INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_eye_irritation INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_ent_irritation INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_headaches_fatigue INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_reduced_lung_capacity INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_lung_cancer_risk INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_pregnant INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_elderly INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_child INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN smog_symptoms_json TEXT'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN medical_reports TEXT'); } catch (e) {}
 
   // 15. Routing Smog Spike Alert Logs Table
   await dbRun(`
@@ -326,6 +337,22 @@ async function initDatabase() {
       aqi_level INTEGER NOT NULL,
       alert_message TEXT NOT NULL,
       channel TEXT NOT NULL DEFAULT 'push',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 16. User Medical Reports Table (Hospital & Diagnostic Lab Records)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS user_medical_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      hospital_name TEXT NOT NULL,
+      report_type TEXT NOT NULL,
+      report_date TEXT NOT NULL,
+      doctor_name TEXT,
+      diagnosis_notes TEXT,
+      file_name TEXT,
+      file_data TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);

@@ -214,7 +214,14 @@ router.get('/health-profile', async (req, res) => {
     const userId = req.query.userId || 'default_user';
     const profile = await dbGet('SELECT * FROM user_health_profiles WHERE user_id = ?', [userId]);
     const hasProfile = Boolean(profile && profile.full_name && profile.full_name.trim().length > 0 && profile.is_profile_created !== 0);
-    res.json({ success: true, hasProfile, profile: profile || null });
+    
+    // Also attach medical reports from user_medical_reports table if available
+    let reports = [];
+    try {
+      reports = await dbAll('SELECT * FROM user_medical_reports WHERE user_id = ? ORDER BY report_date DESC, id DESC', [userId]);
+    } catch (e) {}
+
+    res.json({ success: true, hasProfile, profile: profile || null, medicalReports: reports });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -245,7 +252,19 @@ router.post('/health-profile', async (req, res) => {
       wearsMask = 'high_aqi_only',
       maskType = 'n95',
       hasHepaPurifier = 1,
-      symptomLogs = []
+      symptomLogs = [],
+      // Comprehensive Smog-Specific Health Conditions
+      hasBronchitis = 0,
+      hasEyeIrritation = 0,
+      hasEntIrritation = 0,
+      hasHeadachesFatigue = 0,
+      hasReducedLungCapacity = 0,
+      hasLungCancerRisk = 0,
+      hasPregnant = 0,
+      hasElderly = 0,
+      hasChild = 0,
+      smogSymptoms = [],
+      medicalReports = []
     } = req.body || {};
 
     if (!fullName || fullName.trim().length === 0) {
@@ -253,14 +272,19 @@ router.post('/health-profile', async (req, res) => {
     }
 
     const symptomLogsStr = typeof symptomLogs === 'string' ? symptomLogs : JSON.stringify(symptomLogs || []);
+    const smogSymptomsStr = typeof smogSymptoms === 'string' ? smogSymptoms : JSON.stringify(smogSymptoms || []);
+    const medicalReportsStr = typeof medicalReports === 'string' ? medicalReports : JSON.stringify(medicalReports || []);
 
     await dbRun(`
       INSERT INTO user_health_profiles (
         user_id, full_name, age, gender, blood_group, emergency_contact_name, emergency_contact_phone,
         primary_commute, daily_commute_minutes, asthma_severity, has_copd, has_allergies, has_cardio_condition,
         smoker_status, is_vulnerable_cohort, trigger_aqi_threshold, uses_inhaler, inhaler_name, last_preventive_dose,
-        wears_mask, mask_type, has_hepa_purifier, symptom_logs, is_profile_created, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+        wears_mask, mask_type, has_hepa_purifier, symptom_logs, is_profile_created,
+        has_bronchitis, has_eye_irritation, has_ent_irritation, has_headaches_fatigue,
+        has_reduced_lung_capacity, has_lung_cancer_risk, has_pregnant, has_elderly, has_child,
+        smog_symptoms_json, medical_reports, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET
         full_name = excluded.full_name,
         age = excluded.age,
@@ -285,6 +309,17 @@ router.post('/health-profile', async (req, res) => {
         has_hepa_purifier = excluded.has_hepa_purifier,
         symptom_logs = excluded.symptom_logs,
         is_profile_created = 1,
+        has_bronchitis = excluded.has_bronchitis,
+        has_eye_irritation = excluded.has_eye_irritation,
+        has_ent_irritation = excluded.has_ent_irritation,
+        has_headaches_fatigue = excluded.has_headaches_fatigue,
+        has_reduced_lung_capacity = excluded.has_reduced_lung_capacity,
+        has_lung_cancer_risk = excluded.has_lung_cancer_risk,
+        has_pregnant = excluded.has_pregnant,
+        has_elderly = excluded.has_elderly,
+        has_child = excluded.has_child,
+        smog_symptoms_json = excluded.smog_symptoms_json,
+        medical_reports = excluded.medical_reports,
         updated_at = CURRENT_TIMESTAMP
     `, [
       userId, fullName.trim(), parseInt(age) || 30, gender, bloodGroup, emergencyContactName, emergencyContactPhone,
@@ -292,11 +327,30 @@ router.post('/health-profile', async (req, res) => {
       hasCopd ? 1 : 0, hasAllergies ? 1 : 0, hasCardioCondition ? 1 : 0,
       smokerStatus, isVulnerableCohort ? 1 : 0, parseInt(triggerAqiThreshold) || 140,
       usesInhaler ? 1 : 0, inhalerName || '', lastPreventiveDose || '',
-      wearsMask, maskType, hasHepaPurifier ? 1 : 0, symptomLogsStr
+      wearsMask, maskType, hasHepaPurifier ? 1 : 0, symptomLogsStr,
+      hasBronchitis ? 1 : 0, hasEyeIrritation ? 1 : 0, hasEntIrritation ? 1 : 0, hasHeadachesFatigue ? 1 : 0,
+      hasReducedLungCapacity ? 1 : 0, hasLungCancerRisk ? 1 : 0, hasPregnant ? 1 : 0, hasElderly ? 1 : 0, hasChild ? 1 : 0,
+      smogSymptomsStr, medicalReportsStr
     ]);
 
+    // Also persist individual medical reports to user_medical_reports table if provided
+    if (Array.isArray(medicalReports) && medicalReports.length > 0) {
+      for (const rep of medicalReports) {
+        if (rep.hospitalName && rep.reportType) {
+          await dbRun(`
+            INSERT INTO user_medical_reports (user_id, hospital_name, report_type, report_date, doctor_name, diagnosis_notes, file_name, file_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            userId, rep.hospitalName, rep.reportType, rep.reportDate || new Date().toISOString().split('T')[0],
+            rep.doctorName || '', rep.diagnosisNotes || '', rep.fileName || '', rep.fileData || ''
+          ]);
+        }
+      }
+    }
+
     const updated = await dbGet('SELECT * FROM user_health_profiles WHERE user_id = ?', [userId]);
-    res.json({ success: true, hasProfile: true, profile: updated });
+    const reports = await dbAll('SELECT * FROM user_medical_reports WHERE user_id = ? ORDER BY report_date DESC, id DESC', [userId]);
+    res.json({ success: true, hasProfile: true, profile: updated, medicalReports: reports });
   } catch (err) {
     console.error('Error saving health profile:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -307,7 +361,59 @@ router.delete('/health-profile', async (req, res) => {
   try {
     const userId = req.query.userId || 'default_user';
     await dbRun('DELETE FROM user_health_profiles WHERE user_id = ?', [userId]);
-    res.json({ success: true, hasProfile: false, message: 'Medical profile successfully deleted from SQLite database.' });
+    await dbRun('DELETE FROM user_medical_reports WHERE user_id = ?', [userId]);
+    res.json({ success: true, hasProfile: false, message: 'Medical profile and attached records successfully deleted from SQLite database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. User Medical Reports Separate Endpoints (Optional Hospital / Lab Records)
+router.get('/medical-reports', async (req, res) => {
+  try {
+    const userId = req.query.userId || 'default_user';
+    const reports = await dbAll('SELECT * FROM user_medical_reports WHERE user_id = ? ORDER BY report_date DESC, id DESC', [userId]);
+    res.json({ success: true, reports });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/medical-reports', async (req, res) => {
+  try {
+    const {
+      userId = 'default_user',
+      hospitalName,
+      reportType,
+      reportDate = new Date().toISOString().split('T')[0],
+      doctorName = '',
+      diagnosisNotes = '',
+      fileName = '',
+      fileData = ''
+    } = req.body || {};
+
+    if (!hospitalName || !reportType) {
+      return res.status(400).json({ success: false, error: 'Hospital/Lab Name and Report Type are required.' });
+    }
+
+    const result = await dbRun(`
+      INSERT INTO user_medical_reports (user_id, hospital_name, report_type, report_date, doctor_name, diagnosis_notes, file_name, file_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [userId, hospitalName.trim(), reportType.trim(), reportDate, doctorName.trim(), diagnosisNotes.trim(), fileName, fileData]);
+
+    const created = await dbGet('SELECT * FROM user_medical_reports WHERE id = ?', [result.lastID]);
+    res.json({ success: true, report: created });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/medical-reports/:id', async (req, res) => {
+  try {
+    const userId = req.query.userId || 'default_user';
+    const id = req.params.id;
+    await dbRun('DELETE FROM user_medical_reports WHERE id = ? AND user_id = ?', [id, userId]);
+    res.json({ success: true, message: 'Medical report deleted.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
