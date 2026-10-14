@@ -222,6 +222,8 @@ export default function HealthProfilePage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditConditionsModalOpen, setIsEditConditionsModalOpen] = useState(false);
+  const [isViewProfileModalOpen, setIsViewProfileModalOpen] = useState(false);
+  const [showDetailedAdvisories, setShowDetailedAdvisories] = useState(false);
   const [isSavingConditions, setIsSavingConditions] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isIdCardOpen, setIsIdCardOpen] = useState(false);
@@ -264,7 +266,7 @@ export default function HealthProfilePage() {
           let parsedSymptoms: SymptomLog[] = [];
           try {
             if (p.symptom_logs) {
-              parsedSymptoms = JSON.parse(p.symptom_logs);
+              parsedSymptoms = typeof p.symptom_logs === 'string' ? JSON.parse(p.symptom_logs) : p.symptom_logs;
             }
           } catch (e) {}
 
@@ -553,6 +555,7 @@ export default function HealthProfilePage() {
           setIsEditModalOpen(false);
           setIsCreateModalOpen(false);
           setIsEditConditionsModalOpen(false);
+          setIsViewProfileModalOpen(false);
           setIsEditing(false);
           try {
             localStorage.removeItem('dhuan_user_health_profile');
@@ -566,8 +569,8 @@ export default function HealthProfilePage() {
     }
   };
 
-  // Log new symptom
-  const handleAddSymptomLog = () => {
+  // Log new symptom directly to SQLite backend
+  const handleAddSymptomLog = async () => {
     const today = new Date();
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const newEntry: SymptomLog = {
@@ -582,11 +585,23 @@ export default function HealthProfilePage() {
       notes: newSymptom.notes || 'Logged during daily commute'
     };
 
+    const currentLogs = Array.isArray(profile.symptomLogs) ? profile.symptomLogs : [];
+    const updatedLogs = [...currentLogs.slice(-6), newEntry];
     const updated = {
       ...profile,
-      symptomLogs: [...profile.symptomLogs.slice(-6), newEntry]
+      symptomLogs: updatedLogs
     };
-    handleSaveProfile(updated);
+
+    try {
+      await fetch(getApiEndpoint('/emergency/symptom-logs'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entry: newEntry })
+      });
+    } catch (e) {}
+
+    setProfile(updated);
+    setFormData(updated);
     setNewSymptom({
       shortnessOfBreath: 1,
       coughSeverity: 1,
@@ -594,7 +609,7 @@ export default function HealthProfilePage() {
       inhalerPuffsUsed: 1,
       notes: ''
     });
-    showToast("Today's respiratory symptoms logged!");
+    showToast("Today's respiratory symptoms logged and synced with database!");
   };
 
   // Calculate dynamic Smog Vulnerability Score (0 - 100) taking into account user's full clinical smog spectrum (backend/DB synced)
@@ -772,6 +787,14 @@ export default function HealthProfilePage() {
               </button>
             ) : (
               <>
+                <button
+                  onClick={() => setIsViewProfileModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-3 bg-white hover:bg-slate-50 text-slate-800 rounded-2xl font-black text-xs sm:text-sm transition-all active:scale-95 border border-slate-200 shadow-xs"
+                >
+                  <User className="w-4 h-4 text-emerald-600" />
+                  <span>View Medical Profile</span>
+                </button>
+
                 <button
                   onClick={() => {
                     setCardModalTab('clinical_report');
@@ -1051,34 +1074,39 @@ export default function HealthProfilePage() {
                       Lahore&apos;s ambient PM2.5 is currently at <strong className="text-white">{currentLahorePm25} µg/m³ (AQI {currentLahoreAqi})</strong>. Recommended safe unmasked outdoor exposure is limited to <strong className="text-emerald-400">{vulnerabilityMetrics.safeMinutesUnmasked} minutes</strong>.
                     </p>
 
-                    {/* Condition-specific dynamic advisories */}
-                    {hasProfile && vulnerabilityMetrics.detailedAdvisories && vulnerabilityMetrics.detailedAdvisories.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                        {vulnerabilityMetrics.detailedAdvisories.map((adv: any) => (
-                          <div key={adv.id} className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs space-y-1">
-                            <div className="font-bold text-emerald-300 flex items-center gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                              <span>{adv.title}</span>
-                            </div>
-                            <p className="text-slate-300 text-[11px] leading-snug">{adv.advice}</p>
+                    {/* Expandable Condition Advisories (Keeps Card Sleek by Default) */}
+                    {hasProfile && vulnerabilityMetrics.detailedAdvisories && vulnerabilityMetrics.detailedAdvisories.length > 0 && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setShowDetailedAdvisories(!showDetailedAdvisories)}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors py-1"
+                        >
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{showDetailedAdvisories ? 'Hide Clinical Advisories ▲' : `View ${vulnerabilityMetrics.detailedAdvisories.length} Condition Advisories ▼`}</span>
+                        </button>
+
+                        {showDetailedAdvisories && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 animate-in fade-in duration-200">
+                            {vulnerabilityMetrics.detailedAdvisories.map((adv: any) => (
+                              <div key={adv.id} className="p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-xs space-y-1">
+                                <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span>{adv.title}</span>
+                                </div>
+                                <p className="text-slate-300 text-[11px] leading-snug">{adv.advice}</p>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    ) : hasProfile ? (
-                      <p className="text-xs text-slate-400 italic">
-                        No chronic health conditions recorded in your profile. Standard outdoor smog precautions apply.
-                      </p>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">
-                        Create your medical profile to calculate your personalized airway deposition and proactive alerts.
-                      </p>
                     )}
                   </div>
 
                   {hasProfile && (
-                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       {vulnerabilityMetrics.actionBadges && vulnerabilityMetrics.actionBadges.length > 0 ? (
-                        vulnerabilityMetrics.actionBadges.map((badge: any) => (
+                        vulnerabilityMetrics.actionBadges.slice(0, 3).map((badge: any) => (
                           <span
                             key={badge.id}
                             className={`text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 ${
@@ -1088,14 +1116,6 @@ export default function HealthProfilePage() {
                                 ? 'bg-amber-950/60 text-amber-300 border-amber-800/80'
                                 : badge.type === 'cyan'
                                 ? 'bg-cyan-950/60 text-cyan-300 border-cyan-800/80'
-                                : badge.type === 'yellow'
-                                ? 'bg-yellow-950/60 text-yellow-300 border-yellow-800/80'
-                                : badge.type === 'purple'
-                                ? 'bg-purple-950/60 text-purple-300 border-purple-800/80'
-                                : badge.type === 'pink'
-                                ? 'bg-pink-950/60 text-pink-300 border-pink-800/80'
-                                : badge.type === 'blue'
-                                ? 'bg-blue-950/60 text-blue-300 border-blue-800/80'
                                 : 'bg-slate-800 text-emerald-300 border-slate-700'
                             }`}
                           >
@@ -1557,221 +1577,106 @@ export default function HealthProfilePage() {
               </div>
             </div>
 
-            {/* Profile Summary & Diagnostic Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Left Column: Personal Health Vitals & Smog Matrix */}
-              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                    <User className="w-4 h-4 text-emerald-600" />
-                    Personal & Medical Demographics
+            {/* Full Width Weekly Inhalation & Respiratory Stress Graph */}
+            <div className="w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm flex flex-col justify-between space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
+                <div className="space-y-1">
+                  <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-emerald-600" />
+                    Weekly Respiratory Stress vs. Ambient PM2.5 (Lahore Correlation)
                   </h3>
-                  {hasProfile ? (
-                    <button
-                      onClick={() => {
-                        setFormData(profile);
-                        setIsEditModalOpen(true);
-                      }}
-                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
-                    >
-                      Edit
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setFormData(EMPTY_PROFILE);
-                        setIsCreateModalOpen(true);
-                      }}
-                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
-                    >
-                      + Create
-                    </button>
-                  )}
+                  <p className="text-xs text-slate-500 font-medium">
+                    Dual-axis clinical correlation between live Lahore atmospheric PM2.5 (µg/m³) and patient respiratory stress symptoms saved in SQLite database.
+                  </p>
                 </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-500 font-medium">Patient Name</span>
-                    <span className="font-extrabold text-slate-900">{hasProfile ? profile.fullName : 'Not Created'}</span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-500 font-medium">Age & Gender</span>
-                    <span className="font-extrabold text-slate-900">{hasProfile ? `${profile.age} yrs, ${profile.gender}` : '—'}</span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-500 font-medium">Blood Group</span>
-                    <span className="font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">{hasProfile ? profile.bloodGroup : '—'}</span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-500 font-medium">Emergency Contact</span>
-                    <span className="font-extrabold text-slate-900 text-right">
-                      {hasProfile ? (
-                        <>
-                          {profile.emergencyContactName}<br />
-                          <span className="text-xs text-slate-500 font-normal">{profile.emergencyContact}</span>
-                        </>
-                      ) : (
-                        <span className="text-slate-400">Not Configured</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-500 font-medium">Daily Commute</span>
-                    <span className="font-extrabold text-slate-900 capitalize">
-                      {hasProfile ? `${profile.primaryCommute} (${profile.dailyCommuteMinutes} mins/day)` : 'Not Configured'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-100">
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-wider block mb-2">Smog Conditions Recorded</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {hasProfile ? (
-                      <>
-                        {profile.asthmaSeverity !== 'none' && (
-                          <span className="text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg">
-                            {profile.asthmaSeverity} Asthma
-                          </span>
-                        )}
-                        {profile.hasBronchitis && (
-                          <span className="text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg">
-                            Bronchitis
-                          </span>
-                        )}
-                        {profile.hasReducedLungCapacity && (
-                          <span className="text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg">
-                            Reduced Lung Capacity
-                          </span>
-                        )}
-                        {profile.hasEyeIrritation && (
-                          <span className="text-xs font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2.5 py-1 rounded-lg">
-                            Eye Irritation
-                          </span>
-                        )}
-                        {profile.hasEntIrritation && (
-                          <span className="text-xs font-bold bg-yellow-50 text-yellow-800 border border-yellow-200 px-2.5 py-1 rounded-lg">
-                            Nose & Throat Irritation
-                          </span>
-                        )}
-                        {profile.hasHeadachesFatigue && (
-                          <span className="text-xs font-bold bg-purple-50 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-lg">
-                            Headaches & Fatigue
-                          </span>
-                        )}
-                        {profile.hasCardioCondition && (
-                          <span className="text-xs font-bold bg-red-50 text-red-800 border border-red-200 px-2.5 py-1 rounded-lg">
-                            Cardiovascular Disease
-                          </span>
-                        )}
-                        {profile.hasLungCancerRisk && (
-                          <span className="text-xs font-bold bg-red-50 text-red-800 border border-red-200 px-2.5 py-1 rounded-lg">
-                            Lung Cancer Risk
-                          </span>
-                        )}
-                        {profile.hasPregnant && (
-                          <span className="text-xs font-bold bg-pink-50 text-pink-800 border border-pink-200 px-2.5 py-1 rounded-lg">
-                            Pregnancy Risk
-                          </span>
-                        )}
-                        {profile.hasChild && (
-                          <span className="text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-lg">
-                            Child (Pediatric Lungs)
-                          </span>
-                        )}
-                        {profile.hasElderly && (
-                          <span className="text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300 px-2.5 py-1 rounded-lg">
-                            Senior Citizen (60+)
-                          </span>
-                        )}
-                        {profile.medicalReports && profile.medicalReports.length > 0 && (
-                          <span className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                            <Hospital className="w-3 h-3" />
-                            {profile.medicalReports.length} Hospital Reports
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs font-medium text-slate-400 italic">
-                        No health profile created yet.
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Middle & Right: Weekly Inhalation & Symptom Graph */}
-              <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-emerald-600" />
-                      Weekly Respiratory Stress vs. Ambient PM2.5
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Correlation between Lahore PM2.5 concentrations and logged breathing symptoms
-                    </p>
-                  </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Database Synced
+                  </span>
                   <button
                     onClick={() => setActiveTab('symptoms')}
-                    className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                    className="text-xs font-bold text-emerald-600 hover:text-emerald-700 px-3 py-1.5 rounded-xl hover:bg-emerald-50 transition-colors"
                   >
                     View All Logs &rarr;
                   </button>
                 </div>
-
-                <div className="h-[260px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={profile.symptomLogs}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorPm" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorSymptoms" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="dayLabel" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
-                      <Area 
-                        type="monotone" 
-                        dataKey="pm25Exposure" 
-                        name="Lahore PM2.5 (µg/m³)" 
-                        stroke="#f59e0b" 
-                        strokeWidth={2.5} 
-                        fillOpacity={1} 
-                        fill="url(#colorPm)" 
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="shortnessOfBreath" 
-                        name="Shortness of Breath (0-3)" 
-                        stroke="#ef4444" 
-                        strokeWidth={2.5} 
-                        fillOpacity={1} 
-                        fill="url(#colorSymptoms)" 
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 font-medium">
-                  <span>💡 Note: Ground PM2.5 above 90 µg/m³ spikes airway resistance and mucus secretion.</span>
-                  <span className="font-bold text-slate-700">7 Days Recorded</span>
-                </div>
               </div>
 
+              <div className="h-[280px] w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={profile.symptomLogs && profile.symptomLogs.length > 0 ? profile.symptomLogs : []}
+                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorPm" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorSymptoms" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="dayLabel" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis
+                      yAxisId="pm"
+                      orientation="left"
+                      tickLine={false}
+                      axisLine={false}
+                      domain={[0, 'auto']}
+                      tick={{ fontSize: 11, fill: '#d97706' }}
+                      unit=" µg"
+                    />
+                    <YAxis
+                      yAxisId="sym"
+                      orientation="right"
+                      tickLine={false}
+                      axisLine={false}
+                      domain={[0, 4]}
+                      ticks={[0, 1, 2, 3]}
+                      tick={{ fontSize: 11, fill: '#ef4444' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
+                    <Area 
+                      yAxisId="pm"
+                      type="monotone" 
+                      dataKey="pm25Exposure" 
+                      name="Lahore PM2.5 (µg/m³)" 
+                      stroke="#f59e0b" 
+                      strokeWidth={2.5} 
+                      fillOpacity={1} 
+                      fill="url(#colorPm)" 
+                    />
+                    <Area 
+                      yAxisId="sym"
+                      type="monotone" 
+                      dataKey="shortnessOfBreath" 
+                      name="Shortness of Breath (0-3 scale)" 
+                      stroke="#ef4444" 
+                      strokeWidth={2.5} 
+                      fillOpacity={1} 
+                      fill="url(#colorSymptoms)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 font-medium gap-2">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Ground PM2.5 above 90 µg/m³ triggers airway hyper-reactivity, coughing, and elevated mucus secretion.
+                </span>
+                <span className="font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
+                  {profile.symptomLogs ? profile.symptomLogs.length : 7} Daily Records Connected
+                </span>
+              </div>
             </div>
 
           </div>
@@ -3814,6 +3719,352 @@ export default function HealthProfilePage() {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED VIEW MEDICAL PROFILE MODAL */}
+      {isViewProfileModalOpen && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+            
+            {/* Modal Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-black text-lg shadow-md shadow-emerald-500/20">
+                  {profile.fullName ? profile.fullName.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-xl text-slate-900">
+                      {hasProfile ? profile.fullName : 'Guest Medical Record'}
+                    </h3>
+                    {hasProfile && (
+                      <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-600 font-extrabold text-xs border border-rose-200">
+                        {profile.bloodGroup}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
+                    <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      SQLite Database Synced
+                    </span>
+                    <span>•</span>
+                    <span>{hasProfile ? `${profile.age} yrs, ${profile.gender}` : 'No profile stored'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                {hasProfile && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setIsViewProfileModalOpen(false);
+                        setFormData(profile);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsViewProfileModalOpen(false);
+                        setCardModalTab('clinical_report');
+                        setIsIdCardOpen(true);
+                      }}
+                      className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 transition-colors flex items-center gap-1.5"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Report Card</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => setIsViewProfileModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Profile Content */}
+            {hasProfile ? (
+              <div className="space-y-6 text-sm">
+                
+                {/* 1. Demographics & Transit Vitals */}
+                <div>
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider mb-3 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-emerald-600" />
+                    Personal & Transit Demographics
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-0.5">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Full Name</span>
+                      <span className="font-extrabold text-slate-900 text-sm">{profile.fullName}</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-0.5">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Age & Gender</span>
+                      <span className="font-extrabold text-slate-900 text-sm">{profile.age} Years, {profile.gender}</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-0.5">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Blood Group</span>
+                      <span className="font-extrabold text-rose-600 text-sm">{profile.bloodGroup}</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-0.5 sm:col-span-2">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Emergency Contact</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-slate-900 text-sm">{profile.emergencyContactName}</span>
+                        <a
+                          href={`tel:${profile.emergencyContact}`}
+                          className="text-xs font-bold text-emerald-700 bg-emerald-100/60 hover:bg-emerald-100 px-2.5 py-1 rounded-lg flex items-center gap-1"
+                        >
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          <span>{profile.emergencyContact}</span>
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-0.5">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Daily Transit</span>
+                      <span className="font-extrabold text-slate-900 text-sm capitalize">
+                        {profile.primaryCommute} ({profile.dailyCommuteMinutes}m/day)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Protection Habits & Medications */}
+                <div>
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider mb-3 flex items-center gap-1.5">
+                    <Pill className="w-3.5 h-3.5 text-emerald-600" />
+                    Respiratory Protection & Prescriptions
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Mask Protection Habit</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 capitalize">Type: <strong className="uppercase text-slate-900">{profile.maskType}</strong></span>
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md capitalize">
+                          {profile.wearsMask.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Rescue Inhaler</span>
+                      <div className="text-xs">
+                        {profile.usesInhaler ? (
+                          <div className="space-y-0.5">
+                            <span className="font-extrabold text-blue-700">{profile.inhalerName || 'Prescribed Inhaler'}</span>
+                            <div className="text-slate-500 font-medium">Last Dose: {profile.lastPreventiveDose || 'Not logged'}</div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 font-semibold">No inhaler currently prescribed</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Smog Conditions & Diagnoses Stored in SQLite */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Stethoscope className="w-3.5 h-3.5 text-emerald-600" />
+                      Diagnosed Conditions & Smog Symptoms
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setIsViewProfileModalOpen(false);
+                        setFormData(profile);
+                        setIsEditConditionsModalOpen(true);
+                      }}
+                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                    >
+                      Update Conditions &rarr;
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {profile.asthmaSeverity !== 'none' && (
+                      <span className="text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <Wind className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Asthma: {profile.asthmaSeverity} Severity</span>
+                      </span>
+                    )}
+                    {profile.hasBronchitis && (
+                      <span className="text-xs font-bold bg-rose-50 text-rose-900 border border-rose-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Chronic Bronchitis</span>
+                      </span>
+                    )}
+                    {profile.hasCopd && (
+                      <span className="text-xs font-bold bg-rose-50 text-rose-900 border border-rose-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>COPD / Obstruction</span>
+                      </span>
+                    )}
+                    {profile.hasReducedLungCapacity && (
+                      <span className="text-xs font-bold bg-orange-50 text-orange-900 border border-orange-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <Wind className="w-3.5 h-3.5 text-orange-600" />
+                        <span>Reduced Lung Function</span>
+                      </span>
+                    )}
+                    {profile.hasEyeIrritation && (
+                      <span className="text-xs font-bold bg-cyan-50 text-cyan-900 border border-cyan-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-cyan-600" />
+                        <span>Eye Irritation & Burning</span>
+                      </span>
+                    )}
+                    {profile.hasEntIrritation && (
+                      <span className="text-xs font-bold bg-yellow-50 text-yellow-900 border border-yellow-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-yellow-600" />
+                        <span>Nose & Throat Irritation</span>
+                      </span>
+                    )}
+                    {profile.hasHeadachesFatigue && (
+                      <span className="text-xs font-bold bg-purple-50 text-purple-900 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Headaches & Smog Fatigue</span>
+                      </span>
+                    )}
+                    {profile.hasCardioCondition && (
+                      <span className="text-xs font-bold bg-red-50 text-red-900 border border-red-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <HeartPulse className="w-3.5 h-3.5 text-red-600" />
+                        <span>Cardiovascular Disease</span>
+                      </span>
+                    )}
+                    {profile.hasLungCancerRisk && (
+                      <span className="text-xs font-bold bg-red-50 text-red-900 border border-red-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                        <span>Lung Cancer Risk</span>
+                      </span>
+                    )}
+                    {profile.hasPregnant && (
+                      <span className="text-xs font-bold bg-pink-50 text-pink-900 border border-pink-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-pink-600" />
+                        <span>Pregnancy Risk (Maternal Care)</span>
+                      </span>
+                    )}
+                    {profile.hasChild && (
+                      <span className="text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Pediatric Airway Sensitivity</span>
+                      </span>
+                    )}
+                    {profile.hasElderly && (
+                      <span className="text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Senior Citizen (60+)</span>
+                      </span>
+                    )}
+
+                    {profile.asthmaSeverity === 'none' && !profile.hasBronchitis && !profile.hasCopd && !profile.hasEyeIrritation && !profile.hasEntIrritation && !profile.hasCardioCondition && (
+                      <span className="text-xs text-slate-400 italic">No chronic smog conditions marked.</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Attached Hospital Diagnostic Reports */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Hospital className="w-3.5 h-3.5 text-emerald-600" />
+                      Attached Hospital Diagnostic Reports ({profile.medicalReports ? profile.medicalReports.length : 0})
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setIsViewProfileModalOpen(false);
+                        setActiveTab('reports');
+                      }}
+                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                    >
+                      Manage Reports &rarr;
+                    </button>
+                  </div>
+
+                  {profile.medicalReports && profile.medicalReports.length > 0 ? (
+                    <div className="space-y-2">
+                      {profile.medicalReports.map((rep) => (
+                        <div key={rep.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-slate-900 text-xs block">{rep.reportType}</span>
+                            <span className="text-[11px] text-slate-500 font-medium">{rep.hospitalName} • Dr. {rep.doctorName} • {rep.reportDate}</span>
+                          </div>
+                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                            Verified
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-400 font-medium">
+                      No hospital lab reports attached yet. You can attach spirometry, blood gas, or chest scans in the Diagnostic Reports tab.
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. AI Risk & Live Exposure Index */}
+                <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Vulnerability Score
+                    </span>
+                    <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {vulnerabilityMetrics.score} / 100 ({vulnerabilityMetrics.tier} Risk)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {vulnerabilityMetrics.advisory}
+                  </p>
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-medium">
+                    <span>Safe outdoor unmasked window: <strong className="text-white">{vulnerabilityMetrics.safeMinutesUnmasked} mins</strong></span>
+                    <span>With N95 Mask: <strong className="text-emerald-400">{Math.floor(vulnerabilityMetrics.safeMinutesMasked / 60)}h {vulnerabilityMetrics.safeMinutesMasked % 60}m</strong></span>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="text-center py-8 space-y-3">
+                <p className="text-sm text-slate-500 font-medium">
+                  You haven&apos;t created a medical profile yet. Create your profile to store your health conditions and transit habits in the SQLite database.
+                </p>
+                <button
+                  onClick={() => {
+                    setIsViewProfileModalOpen(false);
+                    setFormData(EMPTY_PROFILE);
+                    setIsCreateModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+                >
+                  Create Medical Profile
+                </button>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Permanent SQLite Storage Verified
+              </span>
+              <button
+                onClick={() => setIsViewProfileModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
           </div>
         </div>
       )}

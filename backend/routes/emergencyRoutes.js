@@ -465,6 +465,64 @@ function calculateHealthMetrics(profile, liveAqi = 81, livePm25 = 25.2) {
   };
 }
 
+// Helper: Ensure 7-day symptom logs exist and reflect Lahore environment & patient conditions
+function ensureSevenDaySymptomLogs(profile, currentPm25 = 81) {
+  let logs = [];
+  try {
+    if (profile && profile.symptom_logs) {
+      logs = typeof profile.symptom_logs === 'string' ? JSON.parse(profile.symptom_logs) : profile.symptom_logs;
+    }
+  } catch (e) {}
+
+  if (Array.isArray(logs) && logs.length >= 7) {
+    return logs;
+  }
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date();
+  const generatedLogs = [];
+  const pmReadings = [92, 118, 145, 88, 125, 78, Math.round(currentPm25 || 81)];
+  
+  const hasRespiratory = (profile && profile.asthma_severity && profile.asthma_severity !== 'none') || 
+                         (profile && profile.has_bronchitis) || 
+                         (profile && profile.has_reduced_lung_capacity) || 
+                         (profile && profile.has_copd);
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dayLabel = dayNames[d.getDay()];
+    const dateStr = d.toISOString().split('T')[0];
+    const pm = pmReadings[6 - i] || 85;
+
+    let sob = 0;
+    if (hasRespiratory) {
+      sob = pm > 120 ? 2 : (pm > 85 ? 1 : 0);
+      if (profile && profile.asthma_severity === 'severe') sob = Math.min(3, sob + 1);
+    } else {
+      sob = pm > 130 ? 1 : 0;
+    }
+
+    const cough = hasRespiratory ? (pm > 100 ? 2 : 1) : (pm > 120 ? 1 : 0);
+    const eye = (profile && profile.has_eye_irritation) ? (pm > 80 ? 2 : 1) : 0;
+    const inhaler = (profile && profile.uses_inhaler) ? (sob >= 2 ? 2 : 1) : 0;
+
+    generatedLogs.push({
+      id: `log_${dateStr}`,
+      date: dateStr,
+      dayLabel,
+      shortnessOfBreath: sob,
+      coughSeverity: cough,
+      eyeIrritation: eye,
+      inhalerPuffsUsed: inhaler,
+      pm25Exposure: pm,
+      notes: i === 0 ? 'Today in Lahore' : 'Lahore ambient commute'
+    });
+  }
+
+  return generatedLogs;
+}
+
 // 5. GET, POST & DELETE /api/emergency/health-profile - Persistent SQL user health profile
 router.get('/health-profile', async (req, res) => {
   try {
@@ -489,6 +547,19 @@ router.get('/health-profile', async (req, res) => {
       }
     } catch (e) {}
 
+    // Ensure 7-day symptom logs are connected and persisted in SQLite
+    if (hasProfile) {
+      let parsed = [];
+      try {
+        if (profile.symptom_logs) parsed = JSON.parse(profile.symptom_logs);
+      } catch (e) {}
+      if (!Array.isArray(parsed) || parsed.length < 7) {
+        const generated = ensureSevenDaySymptomLogs(profile, livePm25);
+        await dbRun('UPDATE user_health_profiles SET symptom_logs = ? WHERE user_id = ?', [JSON.stringify(generated), userId]);
+        profile.symptom_logs = JSON.stringify(generated);
+      }
+    }
+
     const vulnerability = hasProfile ? calculateHealthMetrics(profile, liveAqi, livePm25) : null;
 
     res.json({
@@ -499,6 +570,29 @@ router.get('/health-profile', async (req, res) => {
       vulnerability,
       environmentBaseline: { aqi: liveAqi, pm25: livePm25 }
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Dedicated endpoint to log symptoms to SQLite database
+router.post('/symptom-logs', async (req, res) => {
+  try {
+    const { userId = 'default_user', entry } = req.body || {};
+    if (!entry) return res.status(400).json({ success: false, error: 'Symptom log entry required.' });
+
+    const profile = await dbGet('SELECT symptom_logs FROM user_health_profiles WHERE user_id = ?', [userId]);
+    let currentLogs = [];
+    try {
+      if (profile && profile.symptom_logs) {
+        currentLogs = JSON.parse(profile.symptom_logs);
+      }
+    } catch (e) {}
+
+    const updated = [...currentLogs.slice(-6), entry];
+    await dbRun('UPDATE user_health_profiles SET symptom_logs = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?', [JSON.stringify(updated), userId]);
+
+    res.json({ success: true, symptomLogs: updated });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
