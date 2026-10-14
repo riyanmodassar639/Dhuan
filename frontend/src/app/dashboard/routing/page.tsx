@@ -1378,60 +1378,7 @@ export default function SmartRoutingPage() {
           })}
         </div>
 
-        {/* AI Smog Advisor & Optimization Card */}
-        {aiStats && aiStats.total > 0 && (
-          <div className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-[90px] group-hover:scale-110 transition-transform duration-700 pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="space-y-2 max-w-2xl">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 font-extrabold text-xs uppercase tracking-wider">
-                  <Wind className="w-3.5 h-3.5 text-emerald-400" />
-                  AI Smog & Departure Window Optimization ({selectedDay})
-                </div>
-                <h3 className="text-xl sm:text-2xl font-black tracking-tight">
-                  {aiStats.hasMorningSpike
-                    ? 'Morning Smog Surge Detected on Scheduled Route'
-                    : 'Balanced Air Quality Window Available'}
-                </h3>
-                <p className="text-slate-300 text-xs sm:text-sm font-medium leading-relaxed">
-                  {aiStats.hasMorningSpike
-                    ? `Several of your destinations fall during Lahore's severe morning smog thermal inversion (08:00 - 09:45 AM). Shifting departure times into clean air windows saves approximately ${aiStats.exposureReductionPct}% in respiratory PM2.5 inhalation.`
-                    : `Your itinerary successfully avoids the highest peak smog hours. Average exposure AQI is projected at ${aiStats.avgAqi}.`}
-                </p>
 
-                {/* Stat pills */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-bold text-slate-300">
-                    <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                    {aiStats.total} Scheduled Stops
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-bold text-slate-300">
-                    <Wind className="w-3.5 h-3.5 text-yellow-400" />
-                    Avg AQI: {aiStats.avgAqi}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-bold text-slate-300">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    Smog Reduction: -{aiStats.exposureReductionPct}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Action Buttons inside AI banner */}
-              <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
-                {aiStats.hasMorningSpike && (
-                  <button
-                    onClick={handleApplyAiOptimization}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-xl font-black text-xs shadow-lg hover:shadow-emerald-500/20 transition-all active:scale-95"
-                  >
-                    <Sparkles className="w-4 h-4 text-slate-900" />
-                    <span>Apply AI Clean Air Schedule</span>
-                  </button>
-                )}
-                
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Filter and Search Toolbar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
