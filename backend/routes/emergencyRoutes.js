@@ -208,6 +208,105 @@ router.post('/sos/cancel', async (req, res) => {
   }
 });
 
+// Clinical / Environmental Risk Calculation (Modeled purely on DB profile & live sensor readings - No external AI)
+function calculateHealthMetrics(profile, liveAqi = 81, livePm25 = 25.2) {
+  if (!profile || !profile.full_name) {
+    return null;
+  }
+
+  let score = 15; // baseline
+
+  // Chronic respiratory conditions
+  if (profile.asthma_severity === 'mild') score += 18;
+  if (profile.asthma_severity === 'moderate') score += 32;
+  if (profile.asthma_severity === 'severe') score += 48;
+
+  if (profile.has_copd) score += 28;
+  if (profile.has_bronchitis) score += 22;
+  if (profile.has_reduced_lung_capacity) score += 25;
+  if (profile.has_lung_cancer_risk) score += 24;
+  if (profile.has_cardio_condition) score += 20;
+  if (profile.has_allergies) score += 10;
+  if (profile.has_eye_irritation) score += 6;
+  if (profile.has_ent_irritation) score += 6;
+  if (profile.has_headaches_fatigue) score += 8;
+
+  // Cohorts & age
+  if (profile.has_pregnant) score += 20;
+  if (profile.has_elderly || profile.age > 60) score += 18;
+  if (profile.has_child || profile.age < 12) score += 18;
+  if (profile.is_vulnerable_cohort) score += 12;
+
+  // Smoker status
+  if (profile.smoker_status === 'active') score += 20;
+  if (profile.smoker_status === 'former') score += 6;
+
+  // Commute exposure
+  if (profile.primary_commute === 'bike') score += 16;
+  if (profile.primary_commute === 'walk') score += 14;
+  if (profile.primary_commute === 'transit') score += 8;
+  if (profile.primary_commute === 'car') score += 2;
+
+  const commuteMins = profile.daily_commute_minutes || 30;
+  if (commuteMins > 60) score += 10;
+  else if (commuteMins > 30) score += 5;
+
+  // Protective habits
+  if (profile.wears_mask === 'always') score -= 16;
+  else if (profile.wears_mask === 'high_aqi_only') score -= 10;
+
+  if (profile.mask_type === 'n95') score -= 8;
+  if (profile.has_hepa_purifier) score -= 10;
+
+  score = Math.max(5, Math.min(99, score));
+
+  let tier = 'Low';
+  let tierColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+  let progressBg = 'bg-emerald-500';
+  let advisory = 'Normal precautions. Outdoor activities permitted with standard awareness.';
+
+  if (score >= 75) {
+    tier = 'Severe';
+    tierColor = 'text-rose-700 bg-rose-50 border-rose-200';
+    progressBg = 'bg-rose-600';
+    advisory = 'High danger of acute airway constriction or respiratory inflammation. Pre-medicate with inhaler and strictly wear N95 outdoors.';
+  } else if (score >= 55) {
+    tier = 'High';
+    tierColor = 'text-orange-700 bg-orange-50 border-orange-200';
+    progressBg = 'bg-orange-500';
+    advisory = 'Elevated respiratory & cardiovascular risk. Limit outdoor exposure during peak morning smog inversions (07:30 - 10:00 AM).';
+  } else if (score >= 35) {
+    tier = 'Moderate';
+    tierColor = 'text-yellow-700 bg-yellow-50 border-yellow-200';
+    progressBg = 'bg-yellow-500';
+    advisory = 'Sensitive airways will experience coughing, eye burning, or throat irritation. Keep rescue inhaler or eye drops readily accessible.';
+  }
+
+  const safeMinutesUnmasked = Math.max(12, Math.round(180 * (1 - score / 100) * (100 / liveAqi)));
+  const safeMinutesMasked = Math.min(480, safeMinutesUnmasked * 4.5);
+
+  const breathingRate = 0.8; // m3/hour
+  const commuteHours = commuteMins / 60;
+  const filtrationEfficiency = profile.mask_type === 'n95' ? 0.92 : profile.mask_type === 'surgical' ? 0.45 : 0.15;
+  const maskProtection = profile.wears_mask === 'always' || profile.wears_mask === 'high_aqi_only' ? filtrationEfficiency : 0;
+
+  const commuteInhaledUg = livePm25 * breathingRate * commuteHours * (1 - maskProtection);
+  const indoorInhaledUg = (profile.has_hepa_purifier ? 25 : 55) * breathingRate * (24 - commuteHours);
+  const totalDailyPm25Ug = Math.round(commuteInhaledUg + indoorInhaledUg);
+
+  return {
+    score,
+    tier,
+    tierColor,
+    progressBg,
+    advisory,
+    safeMinutesUnmasked,
+    safeMinutesMasked,
+    totalDailyPm25Ug,
+    calculatedAt: new Date().toISOString()
+  };
+}
+
 // 5. GET, POST & DELETE /api/emergency/health-profile - Persistent SQL user health profile
 router.get('/health-profile', async (req, res) => {
   try {
@@ -221,7 +320,27 @@ router.get('/health-profile', async (req, res) => {
       reports = await dbAll('SELECT * FROM user_medical_reports WHERE user_id = ? ORDER BY report_date DESC, id DESC', [userId]);
     } catch (e) {}
 
-    res.json({ success: true, hasProfile, profile: profile || null, medicalReports: reports });
+    // Live atmospheric baseline from SQLite Overview data
+    let liveAqi = 81;
+    let livePm25 = 25.2;
+    try {
+      const overview = await getDashboardOverviewData();
+      if (overview && overview.metrics) {
+        if (typeof overview.metrics.current_aqi === 'number') liveAqi = overview.metrics.current_aqi;
+        if (typeof overview.metrics.pm25_level === 'number') livePm25 = overview.metrics.pm25_level;
+      }
+    } catch (e) {}
+
+    const vulnerability = hasProfile ? calculateHealthMetrics(profile, liveAqi, livePm25) : null;
+
+    res.json({
+      success: true,
+      hasProfile,
+      profile: hasProfile ? profile : null,
+      medicalReports: reports,
+      vulnerability,
+      environmentBaseline: { aqi: liveAqi, pm25: livePm25 }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -350,7 +469,28 @@ router.post('/health-profile', async (req, res) => {
 
     const updated = await dbGet('SELECT * FROM user_health_profiles WHERE user_id = ?', [userId]);
     const reports = await dbAll('SELECT * FROM user_medical_reports WHERE user_id = ? ORDER BY report_date DESC, id DESC', [userId]);
-    res.json({ success: true, hasProfile: true, profile: updated, medicalReports: reports });
+    
+    // Live atmospheric baseline from SQLite Overview data
+    let liveAqi = 81;
+    let livePm25 = 25.2;
+    try {
+      const overview = await getDashboardOverviewData();
+      if (overview && overview.metrics) {
+        if (typeof overview.metrics.current_aqi === 'number') liveAqi = overview.metrics.current_aqi;
+        if (typeof overview.metrics.pm25_level === 'number') livePm25 = overview.metrics.pm25_level;
+      }
+    } catch (e) {}
+
+    const vulnerability = calculateHealthMetrics(updated, liveAqi, livePm25);
+
+    res.json({
+      success: true,
+      hasProfile: true,
+      profile: updated,
+      medicalReports: reports,
+      vulnerability,
+      environmentBaseline: { aqi: liveAqi, pm25: livePm25 }
+    });
   } catch (err) {
     console.error('Error saving health profile:', err);
     res.status(500).json({ success: false, error: err.message });

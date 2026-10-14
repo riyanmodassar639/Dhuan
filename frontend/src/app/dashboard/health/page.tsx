@@ -224,6 +224,7 @@ export default function HealthProfilePage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isIdCardOpen, setIsIdCardOpen] = useState(false);
   const [cardModalTab, setCardModalTab] = useState<'clinical_report' | 'pocket_pass'>('clinical_report');
+  const [serverVulnerability, setServerVulnerability] = useState<any>(null);
 
   // Medical report adding form state
   const [newReport, setNewReport] = useState({
@@ -332,6 +333,9 @@ export default function HealthProfilePage() {
           setProfile(loaded);
           setFormData(loaded);
           setHasProfile(true);
+          if (data.vulnerability) {
+            setServerVulnerability(data.vulnerability);
+          }
           try {
             localStorage.setItem('dhuan_user_health_profile', JSON.stringify(loaded));
           } catch (e) {}
@@ -348,6 +352,7 @@ export default function HealthProfilePage() {
     setHasProfile(false);
     setProfile(EMPTY_PROFILE);
     setFormData(EMPTY_PROFILE);
+    setServerVulnerability(null);
     try {
       localStorage.removeItem('dhuan_user_health_profile');
     } catch (e) {}
@@ -433,6 +438,9 @@ export default function HealthProfilePage() {
           setProfile(dataToSave);
           setFormData(dataToSave);
           setHasProfile(true);
+          if (data.vulnerability) {
+            setServerVulnerability(data.vulnerability);
+          }
           setIsCreateModalOpen(false);
           setIsEditModalOpen(false);
           setIsEditing(false);
@@ -525,6 +533,7 @@ export default function HealthProfilePage() {
           setHasProfile(false);
           setProfile(EMPTY_PROFILE);
           setFormData(EMPTY_PROFILE);
+          setServerVulnerability(null);
           setIsEditModalOpen(false);
           setIsCreateModalOpen(false);
           setIsEditing(false);
@@ -571,7 +580,7 @@ export default function HealthProfilePage() {
     showToast("Today's respiratory symptoms logged!");
   };
 
-  // Calculate dynamic AI Smog Vulnerability Score (0 - 100) taking into account user's full clinical smog spectrum
+  // Calculate dynamic Smog Vulnerability Score (0 - 100) taking into account user's full clinical smog spectrum (backend/DB synced)
   const vulnerabilityMetrics = useMemo(() => {
     if (!hasProfile) {
       return {
@@ -579,11 +588,15 @@ export default function HealthProfilePage() {
         tier: 'Uncalibrated' as const,
         tierColor: 'text-slate-600 bg-slate-100 border-slate-200',
         progressBg: 'bg-slate-300',
-        advisory: `Lahore air quality is monitored live at AQI ${currentLahoreAqi}. Create your medical profile to calculate your personalized AI smog vulnerability index and real-time safe outdoor exposure thresholds.`,
+        advisory: `Lahore air quality is monitored live at AQI ${currentLahoreAqi}. Create your medical profile to calculate your personalized smog vulnerability index and real-time safe outdoor exposure thresholds.`,
         safeMinutesUnmasked: 0,
         safeMinutesMasked: 0,
         totalDailyPm25Ug: 0
       };
+    }
+
+    if (serverVulnerability && typeof serverVulnerability.score === 'number') {
+      return serverVulnerability;
     }
 
     let score = 15; // base level
@@ -724,7 +737,12 @@ export default function HealthProfilePage() {
 
           {/* Header Action Buttons */}
           <div className="relative z-10 flex flex-wrap items-center gap-3">
-            {!hasProfile ? (
+            {isLoadingProfile ? (
+              <div className="flex items-center gap-2 px-5 py-3 bg-slate-100 rounded-2xl text-xs font-bold text-slate-500 border border-slate-200">
+                <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                <span>Checking Database...</span>
+              </div>
+            ) : !hasProfile ? (
               <button
                 onClick={() => {
                   setFormData(EMPTY_PROFILE);
