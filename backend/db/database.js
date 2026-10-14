@@ -235,16 +235,22 @@ async function initDatabase() {
       emergency_contact_name TEXT,
       emergency_contact_phone TEXT,
       primary_commute TEXT DEFAULT 'car',
+      daily_commute_minutes INTEGER DEFAULT 45,
       asthma_severity TEXT DEFAULT 'none',
       has_copd INTEGER DEFAULT 0,
       has_allergies INTEGER DEFAULT 0,
       has_cardio_condition INTEGER DEFAULT 0,
       smoker_status TEXT DEFAULT 'never',
+      is_vulnerable_cohort INTEGER DEFAULT 0,
       trigger_aqi_threshold INTEGER DEFAULT 150,
       uses_inhaler INTEGER DEFAULT 0,
       inhaler_name TEXT,
+      last_preventive_dose TEXT,
       wears_mask TEXT DEFAULT 'high_aqi_only',
       mask_type TEXT DEFAULT 'n95',
+      has_hepa_purifier INTEGER DEFAULT 1,
+      symptom_logs TEXT,
+      is_profile_created INTEGER DEFAULT 0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -299,6 +305,14 @@ async function initDatabase() {
   try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_lat REAL'); } catch (e) {}
   try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_lng REAL'); } catch (e) {}
   try { await dbRun('ALTER TABLE planned_destinations ADD COLUMN start_type TEXT DEFAULT "current"'); } catch (e) {}
+
+  // Auto-migrate user_health_profiles columns if missing
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN daily_commute_minutes INTEGER DEFAULT 45'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN is_vulnerable_cohort INTEGER DEFAULT 0'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN last_preventive_dose TEXT'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN has_hepa_purifier INTEGER DEFAULT 1'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN symptom_logs TEXT'); } catch (e) {}
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN is_profile_created INTEGER DEFAULT 0'); } catch (e) {}
 
   // 15. Routing Smog Spike Alert Logs Table
   await dbRun(`

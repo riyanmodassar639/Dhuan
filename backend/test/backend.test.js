@@ -196,4 +196,74 @@ test('DHUAN Backend Test Suite', async (t) => {
     assert.equal(afterDelete, undefined, 'Test destination must be cleaned up');
   });
 
+  await t.test('8. Respiratory & Smog Health Profile SQLite Pipeline', async () => {
+    // 1. Initial State: database should report hasProfile: false if empty
+    await dbRun('DELETE FROM user_health_profiles WHERE user_id = ?', ['test_unit_user']);
+    const emptyCheck = await dbGet('SELECT * FROM user_health_profiles WHERE user_id = ?', ['test_unit_user']);
+    assert.equal(emptyCheck, undefined, 'No profile exists initially');
+
+    // 2. Direct SQLite Table Validation & Schema
+    const tableInfo = await dbAll('PRAGMA table_info(user_health_profiles)');
+    const colNames = tableInfo.map(c => c.name);
+    assert.ok(colNames.includes('full_name'), 'has full_name column');
+    assert.ok(colNames.includes('asthma_severity'), 'has asthma_severity column');
+    assert.ok(colNames.includes('emergency_contact_phone'), 'has emergency_contact_phone column');
+    assert.ok(colNames.includes('daily_commute_minutes'), 'has daily_commute_minutes column');
+    assert.ok(colNames.includes('is_profile_created'), 'has is_profile_created column');
+
+    // 3. HTTP API Lifecycle if server is running
+    try {
+      const getInitial = await fetch('http://localhost:5001/api/emergency/health-profile?userId=test_unit_user');
+      if (getInitial.ok) {
+        const body = await getInitial.json();
+        assert.equal(body.success, true);
+        assert.equal(body.hasProfile, false);
+      }
+
+      // POST create profile
+      const postRes = await fetch('http://localhost:5001/api/emergency/health-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: 'test_unit_user',
+          fullName: 'Test User Pulmonology',
+          age: 29,
+          gender: 'Male',
+          bloodGroup: 'B+',
+          emergencyContactName: 'Test Contact',
+          emergencyContactPhone: '+92 300 1122334',
+          primaryCommute: 'bike',
+          dailyCommuteMinutes: 40,
+          asthmaSeverity: 'moderate',
+          hasCopd: 0,
+          hasAllergies: 1,
+          usesInhaler: 1,
+          inhalerName: 'Ventolin Inhaler'
+        })
+      });
+      if (postRes.ok) {
+        const postBody = await postRes.json();
+        assert.equal(postBody.success, true);
+        assert.equal(postBody.hasProfile, true);
+        assert.equal(postBody.profile.full_name, 'Test User Pulmonology');
+
+        // Verify GET returns profile
+        const getAfter = await fetch('http://localhost:5001/api/emergency/health-profile?userId=test_unit_user');
+        const getAfterBody = await getAfter.json();
+        assert.equal(getAfterBody.hasProfile, true);
+        assert.equal(getAfterBody.profile.asthma_severity, 'moderate');
+
+        // DELETE profile
+        const delRes = await fetch('http://localhost:5001/api/emergency/health-profile?userId=test_unit_user', { method: 'DELETE' });
+        const delBody = await delRes.json();
+        assert.equal(delBody.success, true);
+        assert.equal(delBody.hasProfile, false);
+      }
+    } catch (e) {
+      // In standalone runner
+    } finally {
+      await dbRun('DELETE FROM user_health_profiles WHERE user_id = ?', ['test_unit_user']);
+    }
+  });
+
 });

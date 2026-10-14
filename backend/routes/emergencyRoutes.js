@@ -208,12 +208,13 @@ router.post('/sos/cancel', async (req, res) => {
   }
 });
 
-// 5. GET & POST /api/emergency/health-profile - Persistent SQL user health profile
+// 5. GET, POST & DELETE /api/emergency/health-profile - Persistent SQL user health profile
 router.get('/health-profile', async (req, res) => {
   try {
     const userId = req.query.userId || 'default_user';
     const profile = await dbGet('SELECT * FROM user_health_profiles WHERE user_id = ?', [userId]);
-    res.json({ success: true, profile: profile || null });
+    const hasProfile = Boolean(profile && profile.full_name && profile.full_name.trim().length > 0 && profile.is_profile_created !== 0);
+    res.json({ success: true, hasProfile, profile: profile || null });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -223,31 +224,43 @@ router.post('/health-profile', async (req, res) => {
   try {
     const {
       userId = 'default_user',
-      fullName = 'Lahore Commuter',
-      age = 32,
-      gender = 'Other',
-      bloodGroup = 'B+',
-      emergencyContactName = 'Family Contact',
-      emergencyContactPhone = '+92 300 1234567',
+      fullName = '',
+      age = 30,
+      gender = 'Male',
+      bloodGroup = 'O+',
+      emergencyContactName = '',
+      emergencyContactPhone = '',
       primaryCommute = 'car',
+      dailyCommuteMinutes = 45,
       asthmaSeverity = 'none',
       hasCopd = 0,
       hasAllergies = 0,
       hasCardioCondition = 0,
       smokerStatus = 'never',
-      triggerAqiThreshold = 150,
+      isVulnerableCohort = 0,
+      triggerAqiThreshold = 140,
       usesInhaler = 0,
       inhalerName = '',
+      lastPreventiveDose = '',
       wearsMask = 'high_aqi_only',
-      maskType = 'n95'
+      maskType = 'n95',
+      hasHepaPurifier = 1,
+      symptomLogs = []
     } = req.body || {};
+
+    if (!fullName || fullName.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Full name is required to create a medical profile.' });
+    }
+
+    const symptomLogsStr = typeof symptomLogs === 'string' ? symptomLogs : JSON.stringify(symptomLogs || []);
 
     await dbRun(`
       INSERT INTO user_health_profiles (
         user_id, full_name, age, gender, blood_group, emergency_contact_name, emergency_contact_phone,
-        primary_commute, asthma_severity, has_copd, has_allergies, has_cardio_condition,
-        smoker_status, trigger_aqi_threshold, uses_inhaler, inhaler_name, wears_mask, mask_type, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        primary_commute, daily_commute_minutes, asthma_severity, has_copd, has_allergies, has_cardio_condition,
+        smoker_status, is_vulnerable_cohort, trigger_aqi_threshold, uses_inhaler, inhaler_name, last_preventive_dose,
+        wears_mask, mask_type, has_hepa_purifier, symptom_logs, is_profile_created, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET
         full_name = excluded.full_name,
         age = excluded.age,
@@ -256,27 +269,46 @@ router.post('/health-profile', async (req, res) => {
         emergency_contact_name = excluded.emergency_contact_name,
         emergency_contact_phone = excluded.emergency_contact_phone,
         primary_commute = excluded.primary_commute,
+        daily_commute_minutes = excluded.daily_commute_minutes,
         asthma_severity = excluded.asthma_severity,
         has_copd = excluded.has_copd,
         has_allergies = excluded.has_allergies,
         has_cardio_condition = excluded.has_cardio_condition,
         smoker_status = excluded.smoker_status,
+        is_vulnerable_cohort = excluded.is_vulnerable_cohort,
         trigger_aqi_threshold = excluded.trigger_aqi_threshold,
         uses_inhaler = excluded.uses_inhaler,
         inhaler_name = excluded.inhaler_name,
+        last_preventive_dose = excluded.last_preventive_dose,
         wears_mask = excluded.wears_mask,
         mask_type = excluded.mask_type,
+        has_hepa_purifier = excluded.has_hepa_purifier,
+        symptom_logs = excluded.symptom_logs,
+        is_profile_created = 1,
         updated_at = CURRENT_TIMESTAMP
     `, [
-      userId, fullName, age, gender, bloodGroup, emergencyContactName, emergencyContactPhone,
-      primaryCommute, asthmaSeverity, hasCopd ? 1 : 0, hasAllergies ? 1 : 0, hasCardioCondition ? 1 : 0,
-      smokerStatus, triggerAqiThreshold, usesInhaler ? 1 : 0, inhalerName, wearsMask, maskType
+      userId, fullName.trim(), parseInt(age) || 30, gender, bloodGroup, emergencyContactName, emergencyContactPhone,
+      primaryCommute, parseInt(dailyCommuteMinutes) || 45, asthmaSeverity,
+      hasCopd ? 1 : 0, hasAllergies ? 1 : 0, hasCardioCondition ? 1 : 0,
+      smokerStatus, isVulnerableCohort ? 1 : 0, parseInt(triggerAqiThreshold) || 140,
+      usesInhaler ? 1 : 0, inhalerName || '', lastPreventiveDose || '',
+      wearsMask, maskType, hasHepaPurifier ? 1 : 0, symptomLogsStr
     ]);
 
     const updated = await dbGet('SELECT * FROM user_health_profiles WHERE user_id = ?', [userId]);
-    res.json({ success: true, profile: updated });
+    res.json({ success: true, hasProfile: true, profile: updated });
   } catch (err) {
     console.error('Error saving health profile:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/health-profile', async (req, res) => {
+  try {
+    const userId = req.query.userId || 'default_user';
+    await dbRun('DELETE FROM user_health_profiles WHERE user_id = ?', [userId]);
+    res.json({ success: true, hasProfile: false, message: 'Medical profile successfully deleted from SQLite database.' });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });

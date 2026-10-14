@@ -37,7 +37,8 @@ import {
   Footprints,
   Bus,
   ArrowRight,
-  Printer
+  Printer,
+  Trash2
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -101,43 +102,35 @@ interface HealthProfileData {
   symptomLogs: SymptomLog[];
 }
 
-const DEFAULT_PROFILE: HealthProfileData = {
-  fullName: 'Ali Ahmed',
-  age: 34,
+const EMPTY_PROFILE: HealthProfileData = {
+  fullName: '',
+  age: 28,
   gender: 'Male',
   bloodGroup: 'O+',
-  emergencyContact: '+92 300 4567890',
-  emergencyContactName: 'Fatima Ahmed (Spouse)',
+  emergencyContact: '',
+  emergencyContactName: '',
   primaryCommute: 'bike',
-  dailyCommuteMinutes: 45,
+  dailyCommuteMinutes: 30,
 
-  asthmaSeverity: 'moderate',
+  asthmaSeverity: 'none',
   hasCopd: false,
-  hasAllergies: true,
+  hasAllergies: false,
   hasCardioCondition: false,
   smokerStatus: 'never',
   isVulnerableCohort: false,
 
   triggerAqiThreshold: 140,
 
-  usesInhaler: true,
-  inhalerName: 'Ventolin (Salbutamol 100mcg)',
-  lastPreventiveDose: 'Today, 08:30 AM',
-  dailyMedications: ['Ventolin Inhaler', 'Montelukast 10mg (Nightly)'],
+  usesInhaler: false,
+  inhalerName: '',
+  lastPreventiveDose: '',
+  dailyMedications: [],
 
   wearsMask: 'high_aqi_only',
   maskType: 'n95',
   hasHepaPurifier: true,
 
-  symptomLogs: [
-    { id: '1', date: '2026-10-06', dayLabel: 'Mon', shortnessOfBreath: 1, coughSeverity: 2, eyeIrritation: 1, inhalerPuffsUsed: 2, pm25Exposure: 65, notes: 'Felt slight chest tightness on Canal Road' },
-    { id: '2', date: '2026-10-07', dayLabel: 'Tue', shortnessOfBreath: 2, coughSeverity: 2, eyeIrritation: 3, inhalerPuffsUsed: 3, pm25Exposure: 95, notes: 'Heavy smog near Gulberg; eye stinging' },
-    { id: '3', date: '2026-10-08', dayLabel: 'Wed', shortnessOfBreath: 3, coughSeverity: 3, eyeIrritation: 2, inhalerPuffsUsed: 4, pm25Exposure: 135, notes: 'Peak morning inversion, needed rescue puff' },
-    { id: '4', date: '2026-10-09', dayLabel: 'Thu', shortnessOfBreath: 2, coughSeverity: 1, eyeIrritation: 1, inhalerPuffsUsed: 2, pm25Exposure: 88, notes: 'Wore N95 mask; significantly better' },
-    { id: '5', date: '2026-10-10', dayLabel: 'Fri', shortnessOfBreath: 1, coughSeverity: 1, eyeIrritation: 0, inhalerPuffsUsed: 1, pm25Exposure: 60, notes: 'Worked mostly indoors with HEPA purifier' },
-    { id: '6', date: '2026-10-11', dayLabel: 'Sat', shortnessOfBreath: 0, coughSeverity: 0, eyeIrritation: 0, inhalerPuffsUsed: 0, pm25Exposure: 45, notes: 'Rain cleared the air slightly' },
-    { id: '7', date: '2026-10-12', dayLabel: 'Sun', shortnessOfBreath: 1, coughSeverity: 2, eyeIrritation: 2, inhalerPuffsUsed: 2, pm25Exposure: 82, notes: 'Commute on Mall Road, slight cough' },
-  ]
+  symptomLogs: []
 };
 
 // Emergency pulmonology centers in Lahore
@@ -178,10 +171,14 @@ const LAHORE_EMERGENCY_CENTERS = [
 
 export default function HealthProfilePage() {
   const [mounted, setMounted] = useState(false);
-  const [profile, setProfile] = useState<HealthProfileData>(DEFAULT_PROFILE);
+  const [hasProfile, setHasProfile] = useState<boolean>(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
+  const [profile, setProfile] = useState<HealthProfileData>(EMPTY_PROFILE);
   const [activeTab, setActiveTab] = useState<'overview' | 'assessment' | 'symptoms' | 'emergency'>('overview');
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<HealthProfileData>(DEFAULT_PROFILE);
+  const [formData, setFormData] = useState<HealthProfileData>(EMPTY_PROFILE);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isIdCardOpen, setIsIdCardOpen] = useState(false);
 
@@ -198,7 +195,72 @@ export default function HealthProfilePage() {
   const [currentLahoreAqi, setCurrentLahoreAqi] = useState<number>(81);
   const [currentLahorePm25, setCurrentLahorePm25] = useState<number>(25.2);
 
-  // Load from backend SQLite on mount (with localStorage fallback) and sync atmospheric readings
+  // Fetch verified persistent Health Profile from SQLite database
+  const fetchHealthProfile = async () => {
+    setIsLoadingProfile(true);
+    try {
+      const res = await fetch(getApiEndpoint('/emergency/health-profile'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.hasProfile && data.profile) {
+          const p = data.profile;
+          let parsedSymptoms: SymptomLog[] = [];
+          try {
+            if (p.symptom_logs) {
+              parsedSymptoms = JSON.parse(p.symptom_logs);
+            }
+          } catch (e) {}
+
+          const loaded: HealthProfileData = {
+            fullName: p.full_name || '',
+            age: p.age || 28,
+            gender: p.gender || 'Male',
+            bloodGroup: p.blood_group || 'O+',
+            emergencyContact: p.emergency_contact_phone || '',
+            emergencyContactName: p.emergency_contact_name || '',
+            primaryCommute: p.primary_commute || 'bike',
+            dailyCommuteMinutes: p.daily_commute_minutes ?? 30,
+            asthmaSeverity: p.asthma_severity || 'none',
+            hasCopd: Boolean(p.has_copd),
+            hasAllergies: Boolean(p.has_allergies),
+            hasCardioCondition: Boolean(p.has_cardio_condition),
+            smokerStatus: p.smoker_status || 'never',
+            isVulnerableCohort: Boolean(p.is_vulnerable_cohort),
+            triggerAqiThreshold: p.trigger_aqi_threshold || 140,
+            usesInhaler: Boolean(p.uses_inhaler),
+            inhalerName: p.inhaler_name || '',
+            lastPreventiveDose: p.last_preventive_dose || '',
+            dailyMedications: p.inhaler_name ? [p.inhaler_name] : [],
+            wearsMask: p.wears_mask || 'high_aqi_only',
+            maskType: p.mask_type || 'n95',
+            hasHepaPurifier: Boolean(p.has_hepa_purifier ?? 1),
+            symptomLogs: Array.isArray(parsedSymptoms) ? parsedSymptoms : []
+          };
+          setProfile(loaded);
+          setFormData(loaded);
+          setHasProfile(true);
+          try {
+            localStorage.setItem('dhuan_user_health_profile', JSON.stringify(loaded));
+          } catch (e) {}
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching health profile from SQLite:', err);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+
+    // Default when no profile exists in SQLite database
+    setHasProfile(false);
+    setProfile(EMPTY_PROFILE);
+    setFormData(EMPTY_PROFILE);
+    try {
+      localStorage.removeItem('dhuan_user_health_profile');
+    } catch (e) {}
+  };
+
+  // Load from backend SQLite on mount and sync atmospheric readings
   useEffect(() => {
     setMounted(true);
     // Fetch live environmental metrics from backend
@@ -213,57 +275,7 @@ export default function HealthProfilePage() {
       .catch(() => {});
 
     // Fetch verified persistent Health Profile from SQLite database
-    fetch(getApiEndpoint('/emergency/health-profile'))
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && data.profile) {
-          const p = data.profile;
-          const merged = {
-            ...profile,
-            fullName: p.full_name || profile.fullName,
-            age: p.age || profile.age,
-            gender: p.gender || profile.gender,
-            bloodGroup: p.blood_group || profile.bloodGroup,
-            emergencyContact: p.emergency_contact_phone || profile.emergencyContact,
-            emergencyContactName: p.emergency_contact_name || profile.emergencyContactName,
-            primaryCommute: p.primary_commute || profile.primaryCommute,
-            asthmaSeverity: p.asthma_severity || profile.asthmaSeverity,
-            hasCopd: Boolean(p.has_copd),
-            hasAllergies: Boolean(p.has_allergies),
-            hasCardioCondition: Boolean(p.has_cardio_condition),
-            smokerStatus: p.smoker_status || profile.smokerStatus,
-            triggerAqiThreshold: p.trigger_aqi_threshold || profile.triggerAqiThreshold,
-            usesInhaler: Boolean(p.uses_inhaler),
-            inhalerName: p.inhaler_name || profile.inhalerName,
-            wearsMask: p.wears_mask || profile.wearsMask,
-            maskType: p.mask_type || profile.maskType
-          };
-          setProfile(merged);
-          setFormData(merged);
-          try {
-            localStorage.setItem('dhuan_user_health_profile', JSON.stringify(merged));
-          } catch (e) {}
-        } else {
-          // Fallback to localStorage if no profile in SQL
-          const saved = localStorage.getItem('dhuan_user_health_profile');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            setProfile(parsed);
-            setFormData(parsed);
-          }
-        }
-      })
-      .catch(() => {
-        // Fallback to localStorage on network glitch
-        try {
-          const saved = localStorage.getItem('dhuan_user_health_profile');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            setProfile(parsed);
-            setFormData(parsed);
-          }
-        } catch (e) {}
-      });
+    fetchHealthProfile();
   }, []);
 
   const showToast = (msg: string) => {
@@ -273,59 +285,98 @@ export default function HealthProfilePage() {
 
   // Save changes to both SQLite Database and LocalStorage
   const handleSaveProfile = async (dataToSave = formData) => {
-    setProfile(dataToSave);
-    setFormData(dataToSave);
-    setIsEditing(false);
+    if (!dataToSave.fullName || dataToSave.fullName.trim().length === 0) {
+      showToast('Please enter your Full Name.');
+      return false;
+    }
+
     try {
-      localStorage.setItem('dhuan_user_health_profile', JSON.stringify(dataToSave));
-      
-      // Persist to SQLite Database via Backend API
-      await fetch(getApiEndpoint('/emergency/health-profile'), {
+      const res = await fetch(getApiEndpoint('/emergency/health-profile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fullName: dataToSave.fullName,
+          fullName: dataToSave.fullName.trim(),
           age: dataToSave.age,
           gender: dataToSave.gender,
           bloodGroup: dataToSave.bloodGroup,
           emergencyContactName: dataToSave.emergencyContactName,
           emergencyContactPhone: dataToSave.emergencyContact,
           primaryCommute: dataToSave.primaryCommute,
+          dailyCommuteMinutes: dataToSave.dailyCommuteMinutes,
           asthmaSeverity: dataToSave.asthmaSeverity,
           hasCopd: dataToSave.hasCopd ? 1 : 0,
           hasAllergies: dataToSave.hasAllergies ? 1 : 0,
           hasCardioCondition: dataToSave.hasCardioCondition ? 1 : 0,
           smokerStatus: dataToSave.smokerStatus,
+          isVulnerableCohort: dataToSave.isVulnerableCohort ? 1 : 0,
           triggerAqiThreshold: dataToSave.triggerAqiThreshold,
           usesInhaler: dataToSave.usesInhaler ? 1 : 0,
           inhalerName: dataToSave.inhalerName,
+          lastPreventiveDose: dataToSave.lastPreventiveDose,
           wearsMask: dataToSave.wearsMask,
-          maskType: dataToSave.maskType
+          maskType: dataToSave.maskType,
+          hasHepaPurifier: dataToSave.hasHepaPurifier ? 1 : 0,
+          symptomLogs: dataToSave.symptomLogs || []
         })
       });
 
-      // Record consent for health profile storage
-      await fetch(getApiEndpoint('/emergency/consents'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          consentType: 'health_profile_storage',
-          granted: true
-        })
-      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setProfile(dataToSave);
+          setFormData(dataToSave);
+          setHasProfile(true);
+          setIsCreateModalOpen(false);
+          setIsEditModalOpen(false);
+          setIsEditing(false);
+          try {
+            localStorage.setItem('dhuan_user_health_profile', JSON.stringify(dataToSave));
+          } catch (e) {}
 
-      showToast('Health Profile saved to secure SQLite database & synced with SOS Emergency briefing!');
+          // Record consent for health profile storage
+          try {
+            await fetch(getApiEndpoint('/emergency/consents'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                consentType: 'health_profile_storage',
+                granted: true
+              })
+            });
+          } catch (e) {}
+
+          showToast('Medical Health Profile saved to SQLite database & synced!');
+          return true;
+        }
+      }
     } catch (e) {
-      console.error(e);
-      showToast('Health Profile saved locally.');
+      console.error('Error saving health profile:', e);
+      showToast('Error saving health profile to database.');
     }
+    return false;
   };
 
-  // Reset to default
-  const handleResetDefaults = () => {
-    if (confirm('Reset your health profile to default sample data?')) {
-      handleSaveProfile(DEFAULT_PROFILE);
-      showToast('Reset to default profile.');
+  // Delete Medical Profile from SQLite
+  const handleDeleteProfile = async () => {
+    if (confirm('Are you sure you want to delete your Medical Profile from SQLite database?')) {
+      try {
+        const res = await fetch(getApiEndpoint('/emergency/health-profile'), { method: 'DELETE' });
+        if (res.ok) {
+          setHasProfile(false);
+          setProfile(EMPTY_PROFILE);
+          setFormData(EMPTY_PROFILE);
+          setIsEditModalOpen(false);
+          setIsCreateModalOpen(false);
+          setIsEditing(false);
+          try {
+            localStorage.removeItem('dhuan_user_health_profile');
+          } catch (e) {}
+          showToast('Medical profile deleted from SQLite database. Back to initial new user state.');
+        }
+      } catch (e) {
+        console.error('Error deleting profile:', e);
+        showToast('Error deleting profile.');
+      }
     }
   };
 
@@ -362,6 +413,19 @@ export default function HealthProfilePage() {
 
   // Calculate dynamic AI Smog Vulnerability Score (0 - 100)
   const vulnerabilityMetrics = useMemo(() => {
+    if (!hasProfile) {
+      return {
+        score: 0,
+        tier: 'Uncalibrated' as const,
+        tierColor: 'text-slate-600 bg-slate-100 border-slate-200',
+        progressBg: 'bg-slate-300',
+        advisory: `Lahore air quality is monitored live at AQI ${currentLahoreAqi}. Create your medical profile to calculate your personalized AI smog vulnerability index and real-time safe outdoor exposure thresholds.`,
+        safeMinutesUnmasked: 0,
+        safeMinutesMasked: 0,
+        totalDailyPm25Ug: 0
+      };
+    }
+
     let score = 15; // base level
 
     // Condition impacts
@@ -492,41 +556,39 @@ export default function HealthProfilePage() {
 
           {/* Header Action Buttons */}
           <div className="relative z-10 flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => setIsIdCardOpen(true)}
-              className="flex items-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl font-bold text-xs sm:text-sm transition-all active:scale-95 border border-slate-200"
-            >
-              <FileText className="w-4 h-4 text-slate-600" />
-              <span>Medical Smog Card</span>
-            </button>
+            {!hasProfile ? (
+              <button
+                onClick={() => {
+                  setFormData(EMPTY_PROFILE);
+                  setIsCreateModalOpen(true);
+                }}
+                className="flex items-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Medical Profile</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setIsIdCardOpen(true)}
+                  className="flex items-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl font-bold text-xs sm:text-sm transition-all active:scale-95 border border-slate-200"
+                >
+                  <FileText className="w-4 h-4 text-slate-600" />
+                  <span>Medical Smog Card</span>
+                </button>
 
-            <button
-              onClick={() => {
-                if (isEditing) {
-                  handleSaveProfile();
-                } else {
-                  setIsEditing(true);
-                  setActiveTab('assessment');
-                }
-              }}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs sm:text-sm shadow-md transition-all active:scale-95 ${
-                isEditing 
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20' 
-                  : 'bg-slate-900 hover:bg-slate-800 text-white'
-              }`}
-            >
-              {isEditing ? (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Save All Changes</span>
-                </>
-              ) : (
-                <>
+                <button
+                  onClick={() => {
+                    setFormData(profile);
+                    setIsEditModalOpen(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-xs sm:text-sm shadow-md transition-all active:scale-95"
+                >
                   <Sliders className="w-4 h-4 text-emerald-400" />
                   <span>Edit Medical Profile</span>
-                </>
-              )}
-            </button>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -586,6 +648,37 @@ export default function HealthProfilePage() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             
+            {/* New User Onboarding Banner if no profile exists */}
+            {!hasProfile && (
+              <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 border border-emerald-500/20 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-3xl pointer-events-none"></div>
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      New User Setup Required
+                    </div>
+                    <h3 className="text-xl sm:text-2xl font-black tracking-tight">
+                      Create Your Respiratory Health Profile
+                    </h3>
+                    <p className="text-slate-300 text-xs sm:text-sm font-medium leading-relaxed">
+                      Your medical profile has not been created yet in the database. Add your daily transit mode, lung health history, and emergency contacts to unlock real-time safe outdoor windows and your official Lahore Medical Smog Pass.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setFormData(EMPTY_PROFILE);
+                      setIsCreateModalOpen(true);
+                    }}
+                    className="px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg transition-transform active:scale-95 shrink-0 flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Medical Profile Now</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Top Scorecard Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               
@@ -594,12 +687,14 @@ export default function HealthProfilePage() {
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-black text-slate-400 uppercase tracking-wider">AI Vulnerability Index</span>
                   <div className={`px-2.5 py-1 rounded-full text-[11px] font-black border ${vulnerabilityMetrics.tierColor}`}>
-                    {vulnerabilityMetrics.tier} Risk
+                    {hasProfile ? `${vulnerabilityMetrics.tier} Risk` : 'Profile Required'}
                   </div>
                 </div>
 
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-4xl font-black text-slate-900 tracking-tight">{vulnerabilityMetrics.score}</span>
+                  <span className="text-4xl font-black text-slate-900 tracking-tight">
+                    {hasProfile ? vulnerabilityMetrics.score : '—'}
+                  </span>
                   <span className="text-sm font-bold text-slate-400">/ 100</span>
                 </div>
 
@@ -607,12 +702,14 @@ export default function HealthProfilePage() {
                 <div className="w-full bg-slate-100 rounded-full h-2 mb-3 overflow-hidden">
                   <div 
                     className={`h-full rounded-full transition-all duration-700 ${vulnerabilityMetrics.progressBg}`} 
-                    style={{ width: `${vulnerabilityMetrics.score}%` }}
+                    style={{ width: `${hasProfile ? vulnerabilityMetrics.score : 0}%` }}
                   />
                 </div>
 
                 <p className="text-xs font-medium text-slate-500 line-clamp-2">
-                  {profile.asthmaSeverity !== 'none' ? `Triggered by ${profile.asthmaSeverity} Asthma` : 'Moderate baseline sensitivity'} + daily {profile.dailyCommuteMinutes}m {profile.primaryCommute} commute.
+                  {hasProfile
+                    ? (profile.asthmaSeverity !== 'none' ? `Triggered by ${profile.asthmaSeverity} Asthma` : 'Moderate baseline sensitivity') + ` + daily ${profile.dailyCommuteMinutes}m ${profile.primaryCommute} commute.`
+                    : 'Create your medical profile to calculate your personalized AI vulnerability score.'}
                 </p>
               </div>
 
@@ -626,17 +723,25 @@ export default function HealthProfilePage() {
                 </div>
 
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-4xl font-black text-slate-900 tracking-tight">{vulnerabilityMetrics.safeMinutesUnmasked}</span>
+                  <span className="text-4xl font-black text-slate-900 tracking-tight">
+                    {hasProfile ? vulnerabilityMetrics.safeMinutesUnmasked : '—'}
+                  </span>
                   <span className="text-sm font-bold text-slate-500">Mins (Unmasked)</span>
                 </div>
 
                 <div className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 rounded-xl flex items-center justify-between">
                   <span>With N95 Mask:</span>
-                  <span className="font-extrabold">{Math.floor(vulnerabilityMetrics.safeMinutesMasked / 60)}h {vulnerabilityMetrics.safeMinutesMasked % 60}m</span>
+                  <span className="font-extrabold">
+                    {hasProfile 
+                      ? `${Math.floor(vulnerabilityMetrics.safeMinutesMasked / 60)}h ${vulnerabilityMetrics.safeMinutesMasked % 60}m` 
+                      : 'Profile Required'}
+                  </span>
                 </div>
 
                 <p className="text-[11px] font-medium text-slate-400 mt-2">
-                  Calculated against Lahore&apos;s current AQI 165.
+                  {hasProfile 
+                    ? `Calculated against Lahore's live AQI ${currentLahoreAqi}.` 
+                    : 'Requires commute & lung health profile to calculate.'}
                 </p>
               </div>
 
@@ -650,16 +755,20 @@ export default function HealthProfilePage() {
                 </div>
 
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-4xl font-black text-slate-900 tracking-tight">{vulnerabilityMetrics.totalDailyPm25Ug}</span>
+                  <span className="text-4xl font-black text-slate-900 tracking-tight">
+                    {hasProfile ? vulnerabilityMetrics.totalDailyPm25Ug : '—'}
+                  </span>
                   <span className="text-sm font-bold text-slate-400">µg / day</span>
                 </div>
 
                 <div className="text-xs font-bold text-orange-700 bg-orange-50 border border-orange-100 px-2.5 py-1.5 rounded-xl">
-                  {Math.round((vulnerabilityMetrics.totalDailyPm25Ug / 15) * 10) / 10}x WHO Annual Guideline
+                  {hasProfile 
+                    ? `${Math.round((vulnerabilityMetrics.totalDailyPm25Ug / 15) * 10) / 10}x WHO Annual Guideline` 
+                    : 'Uncalibrated'}
                 </div>
 
                 <p className="text-[11px] font-medium text-slate-400 mt-2">
-                  Includes commute & indoor HEPA filtration levels.
+                  {hasProfile ? 'Includes commute & indoor HEPA filtration levels.' : 'Requires transit mode & mask habits.'}
                 </p>
               </div>
 
@@ -674,17 +783,19 @@ export default function HealthProfilePage() {
 
                 <div>
                   <div className="text-lg font-black text-slate-900 truncate">
-                    {profile.usesInhaler ? profile.inhalerName.split('(')[0] : 'No Inhaler Prescribed'}
+                    {hasProfile 
+                      ? (profile.usesInhaler ? profile.inhalerName.split('(')[0] : 'No Inhaler Prescribed') 
+                      : 'Not Configured'}
                   </div>
                   <div className="text-xs font-semibold text-emerald-600 flex items-center gap-1.5 mt-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Dose Taken: {profile.lastPreventiveDose}</span>
+                    <span>{hasProfile ? `Dose: ${profile.lastPreventiveDose || 'None recorded'}` : 'Profile Required'}</span>
                   </div>
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-600">
                   <span>Mask In Use:</span>
-                  <span className="uppercase text-slate-900 font-extrabold">{profile.maskType}</span>
+                  <span className="uppercase text-slate-900 font-extrabold">{hasProfile ? profile.maskType : '—'}</span>
                 </div>
               </div>
 
@@ -706,38 +817,63 @@ export default function HealthProfilePage() {
                   </h3>
 
                   <p className="text-slate-300 text-sm font-medium leading-relaxed">
-                    Lahore&apos;s ambient PM2.5 is currently at <strong className="text-white">82 µg/m³ (AQI 165)</strong> with strong ground-level thermal inversion. Because your profile indicates <strong>{profile.asthmaSeverity} Asthma</strong> and a <strong>{profile.dailyCommuteMinutes}-minute {profile.primaryCommute} commute</strong>, fine particulates will reach deep bronchioles within 30 minutes of unmasked exposure.
+                    {hasProfile ? (
+                      <>
+                        Lahore&apos;s ambient PM2.5 is currently at <strong className="text-white">{currentLahorePm25} µg/m³ (AQI {currentLahoreAqi})</strong> with strong ground-level thermal inversion. Because your profile indicates <strong>{profile.asthmaSeverity !== 'none' ? `${profile.asthmaSeverity} Asthma` : 'no chronic asthma'}</strong> and a <strong>{profile.dailyCommuteMinutes}-minute {profile.primaryCommute} commute</strong>, fine particulates will reach deep bronchioles within {vulnerabilityMetrics.safeMinutesUnmasked} minutes of unmasked exposure.
+                      </>
+                    ) : (
+                      <>
+                        Lahore&apos;s live ambient PM2.5 is currently at <strong className="text-white">{currentLahorePm25} µg/m³ (AQI {currentLahoreAqi})</strong>. Once your medical profile is created, DHUAN calculates your personalized airway deposition and triggers proactive smog inhaler alerts.
+                      </>
+                    )}
                   </p>
 
-                  <div className="flex flex-wrap items-center gap-2 pt-2">
-                    <span className="text-xs font-bold bg-slate-800 text-emerald-300 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5" /> Wear N95 Mask
-                    </span>
-                    <span className="text-xs font-bold bg-slate-800 text-blue-300 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5">
-                      <Pill className="w-3.5 h-3.5" /> Keep Rescue Inhaler in Pocket
-                    </span>
-                    <span className="text-xs font-bold bg-slate-800 text-amber-300 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5">
-                      <Wind className="w-3.5 h-3.5" /> Avoid Morning Smog (07:30 - 09:30 AM)
-                    </span>
-                  </div>
+                  {hasProfile && (
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      <span className="text-xs font-bold bg-slate-800 text-emerald-300 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Wear N95 Mask
+                      </span>
+                      <span className="text-xs font-bold bg-slate-800 text-blue-300 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5">
+                        <Pill className="w-3.5 h-3.5" /> Keep Rescue Inhaler in Pocket
+                      </span>
+                      <span className="text-xs font-bold bg-slate-800 text-amber-300 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5">
+                        <Wind className="w-3.5 h-3.5" /> Avoid Morning Smog (07:30 - 09:30 AM)
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="relative z-10 flex flex-col gap-3 shrink-0">
-                  <Link
-                    href="/dashboard/routing"
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-2xl font-black text-sm shadow-lg transition-transform active:scale-95"
-                  >
-                    <span>Route Around Smog Peaks</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
+                  {!hasProfile ? (
+                    <button
+                      onClick={() => {
+                        setFormData(EMPTY_PROFILE);
+                        setIsCreateModalOpen(true);
+                      }}
+                      className="flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-2xl font-black text-sm shadow-lg transition-transform active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Create Medical Profile</span>
+                    </button>
+                  ) : (
+                    <>
+                      <Link
+                        href="/dashboard/routing"
+                        className="flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-2xl font-black text-sm shadow-lg transition-transform active:scale-95"
+                      >
+                        <span>Route Around Smog Peaks</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
 
-                  <button
-                    onClick={() => setActiveTab('emergency')}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm transition-colors border border-slate-700"
-                  >
-                    <ShieldAlert className="w-4 h-4 text-rose-400" />
-                    <span>Emergency Protocol</span>
-                  </button>
+                      <button
+                        onClick={() => setActiveTab('emergency')}
+                        className="flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm transition-colors border border-slate-700"
+                      >
+                        <ShieldAlert className="w-4 h-4 text-rose-400" />
+                        <span>Emergency Protocol</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -752,41 +888,59 @@ export default function HealthProfilePage() {
                     <User className="w-4 h-4 text-emerald-600" />
                     Personal & Medical Demographics
                   </h3>
-                  <button
-                    onClick={() => {
-                      setIsEditing(true);
-                      setActiveTab('assessment');
-                    }}
-                    className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
-                  >
-                    Edit
-                  </button>
+                  {hasProfile ? (
+                    <button
+                      onClick={() => {
+                        setFormData(profile);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setFormData(EMPTY_PROFILE);
+                        setIsCreateModalOpen(true);
+                      }}
+                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                    >
+                      + Create
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between py-1">
                     <span className="text-slate-500 font-medium">Patient Name</span>
-                    <span className="font-extrabold text-slate-900">{profile.fullName}</span>
+                    <span className="font-extrabold text-slate-900">{hasProfile ? profile.fullName : 'Not Created'}</span>
                   </div>
                   <div className="flex justify-between py-1">
                     <span className="text-slate-500 font-medium">Age & Gender</span>
-                    <span className="font-extrabold text-slate-900">{profile.age} yrs, {profile.gender}</span>
+                    <span className="font-extrabold text-slate-900">{hasProfile ? `${profile.age} yrs, ${profile.gender}` : '—'}</span>
                   </div>
                   <div className="flex justify-between py-1">
                     <span className="text-slate-500 font-medium">Blood Group</span>
-                    <span className="font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">{profile.bloodGroup}</span>
+                    <span className="font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">{hasProfile ? profile.bloodGroup : '—'}</span>
                   </div>
                   <div className="flex justify-between py-1">
                     <span className="text-slate-500 font-medium">Emergency Contact</span>
                     <span className="font-extrabold text-slate-900 text-right">
-                      {profile.emergencyContactName}<br />
-                      <span className="text-xs text-slate-500 font-normal">{profile.emergencyContact}</span>
+                      {hasProfile ? (
+                        <>
+                          {profile.emergencyContactName}<br />
+                          <span className="text-xs text-slate-500 font-normal">{profile.emergencyContact}</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400">Not Configured</span>
+                      )}
                     </span>
                   </div>
                   <div className="flex justify-between py-1">
                     <span className="text-slate-500 font-medium">Daily Commute</span>
                     <span className="font-extrabold text-slate-900 capitalize">
-                      {profile.primaryCommute} ({profile.dailyCommuteMinutes} mins/day)
+                      {hasProfile ? `${profile.primaryCommute} (${profile.dailyCommuteMinutes} mins/day)` : 'Not Configured'}
                     </span>
                   </div>
                 </div>
@@ -794,29 +948,37 @@ export default function HealthProfilePage() {
                 <div className="pt-3 border-t border-slate-100">
                   <span className="text-xs font-black text-slate-400 uppercase tracking-wider block mb-2">Pre-Existing Conditions</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {profile.asthmaSeverity !== 'none' && (
-                      <span className="text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg">
-                        {profile.asthmaSeverity} Asthma
-                      </span>
-                    )}
-                    {profile.hasAllergies && (
-                      <span className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                        Allergic Rhinitis
-                      </span>
-                    )}
-                    {profile.hasCopd && (
-                      <span className="text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg">
-                        COPD
-                      </span>
-                    )}
-                    {profile.hasCardioCondition && (
-                      <span className="text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg">
-                        Cardiovascular Risk
-                      </span>
-                    )}
-                    {profile.asthmaSeverity === 'none' && !profile.hasAllergies && !profile.hasCopd && (
-                      <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
-                        No chronic respiratory diagnosis
+                    {hasProfile ? (
+                      <>
+                        {profile.asthmaSeverity !== 'none' && (
+                          <span className="text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg">
+                            {profile.asthmaSeverity} Asthma
+                          </span>
+                        )}
+                        {profile.hasAllergies && (
+                          <span className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                            Allergic Rhinitis
+                          </span>
+                        )}
+                        {profile.hasCopd && (
+                          <span className="text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg">
+                            COPD
+                          </span>
+                        )}
+                        {profile.hasCardioCondition && (
+                          <span className="text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg">
+                            Cardiovascular Risk
+                          </span>
+                        )}
+                        {profile.asthmaSeverity === 'none' && !profile.hasAllergies && !profile.hasCopd && (
+                          <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
+                            No chronic respiratory diagnosis
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs font-medium text-slate-400 italic">
+                        No health profile created yet.
                       </span>
                     )}
                   </div>
@@ -914,13 +1076,15 @@ export default function HealthProfilePage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  onClick={handleResetDefaults}
-                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Reset Defaults
-                </button>
+                {hasProfile && (
+                  <button
+                    onClick={handleDeleteProfile}
+                    className="px-4 py-2.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Clear Profile
+                  </button>
+                )}
                 <button
                   onClick={() => handleSaveProfile()}
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs sm:text-sm shadow-sm transition-all flex items-center gap-2 active:scale-95"
@@ -1610,6 +1774,365 @@ export default function HealthProfilePage() {
         )}
 
       </div>
+
+      {/* CREATE / EDIT MEDICAL PROFILE MODAL */}
+      {(isCreateModalOpen || isEditModalOpen) && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-8 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                  {isCreateModalOpen ? <Plus className="w-5 h-5" /> : <Sliders className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 leading-tight">
+                    {isCreateModalOpen ? 'Create Medical Health Profile' : 'Edit Medical Health Profile'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {isCreateModalOpen 
+                      ? 'Stored securely in SQLite database for AI risk modeling & emergency response.' 
+                      : 'Update your medical demographics, transit habits, and emergency contacts.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsCreateModalOpen(false);
+                  setIsEditModalOpen(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form Content */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveProfile(formData);
+              }}
+              className="space-y-6"
+            >
+              {/* Section 1: Demographics */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 text-emerald-600" />
+                  1. Personal Demographics
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Full Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.fullName}
+                      onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                      placeholder="e.g. Muhammad Usman"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Age</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={formData.age}
+                        onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || 25 })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Gender</label>
+                      <select
+                        value={formData.gender}
+                        onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Blood Group</label>
+                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                    {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
+                      <button
+                        key={bg}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, bloodGroup: bg })}
+                        className={`py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                          formData.bloodGroup === bg
+                            ? 'bg-rose-50 border-rose-500 text-rose-700 shadow-xs'
+                            : 'border-slate-200 text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        {bg}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Emergency Contact */}
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  2. Emergency Contact (For SOS & Rescue 1122)
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Emergency Contact Name</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContactName}
+                      onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value })}
+                      placeholder="e.g. Ahmed Raza (Brother)"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Emergency Phone Number</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContact}
+                      onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+                      placeholder="e.g. +92 300 1234567"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Transit in Lahore */}
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                  <Bike className="w-3.5 h-3.5 text-emerald-600" />
+                  3. Lahore Daily Commute & Transit
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'bike', label: 'Motorbike', icon: Bike },
+                    { id: 'car', label: 'Car (AC)', icon: Car },
+                    { id: 'transit', label: 'Metro / Speedo', icon: Bus },
+                    { id: 'walk', label: 'Walking', icon: Footprints },
+                  ].map((mode) => {
+                    const Icon = mode.icon;
+                    const isSel = formData.primaryCommute === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, primaryCommute: mode.id as any })}
+                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
+                          isSel
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-extrabold shadow-xs'
+                            : 'border-slate-200 text-slate-600 hover:border-slate-300 font-medium'
+                        }`}
+                      >
+                        <Icon className={`w-5 h-5 mb-1 ${isSel ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        <span className="text-xs">{mode.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-700 mb-1">
+                    <span>Daily Commute Duration</span>
+                    <span className="text-emerald-700 font-black">{formData.dailyCommuteMinutes} Minutes</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="180"
+                    step="5"
+                    value={formData.dailyCommuteMinutes}
+                    onChange={(e) => setFormData({ ...formData, dailyCommuteMinutes: parseInt(e.target.value) || 30 })}
+                    className="w-full accent-emerald-600"
+                  />
+                </div>
+              </div>
+
+              {/* Section 4: Respiratory Health */}
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                  <HeartPulse className="w-3.5 h-3.5 text-emerald-600" />
+                  4. Chronic Respiratory Conditions
+                </h4>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Asthma Severity</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(['none', 'mild', 'moderate', 'severe'] as const).map((lvl) => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, asthmaSeverity: lvl })}
+                        className={`p-2.5 rounded-xl border text-center transition-all font-bold text-xs capitalize ${
+                          formData.asthmaSeverity === lvl
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs'
+                            : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        {lvl === 'none' ? 'None' : `${lvl} Asthma`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.hasAllergies}
+                      onChange={(e) => setFormData({ ...formData, hasAllergies: e.target.checked })}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-bold text-slate-800">Dust / Smog Allergy</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.hasCopd}
+                      onChange={(e) => setFormData({ ...formData, hasCopd: e.target.checked })}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-bold text-slate-800">COPD / Bronchitis</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.hasCardioCondition}
+                      onChange={(e) => setFormData({ ...formData, hasCardioCondition: e.target.checked })}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-bold text-slate-800">Cardio / High BP</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Section 5: Protective Equipment & Medication */}
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                  <Pill className="w-3.5 h-3.5 text-emerald-600" />
+                  5. Protective Habits & Medications
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Mask Type Used</label>
+                    <select
+                      value={formData.maskType}
+                      onChange={(e) => setFormData({ ...formData, maskType: e.target.value as any })}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="n95">N95 / KN95 / FFP2 (Recommended)</option>
+                      <option value="surgical">3-Ply Surgical Mask</option>
+                      <option value="cloth">Cloth Mask / Scarf</option>
+                      <option value="none">No Mask</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Mask Wearing Habit</label>
+                    <select
+                      value={formData.wearsMask}
+                      onChange={(e) => setFormData({ ...formData, wearsMask: e.target.value as any })}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="high_aqi_only">Only When Smog is High (AQI &gt; 150)</option>
+                      <option value="always">Always Outdoors</option>
+                      <option value="rarely">Rarely</option>
+                      <option value="never">Never</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.usesInhaler}
+                      onChange={(e) => setFormData({ ...formData, usesInhaler: e.target.checked })}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-bold text-slate-900">I use a Rescue or Maintenance Inhaler</span>
+                  </label>
+
+                  {formData.usesInhaler && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 animate-in fade-in duration-200">
+                      <input
+                        type="text"
+                        value={formData.inhalerName}
+                        onChange={(e) => setFormData({ ...formData, inhalerName: e.target.value })}
+                        placeholder="e.g. Ventolin (Salbutamol 100mcg)"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <input
+                        type="text"
+                        value={formData.lastPreventiveDose}
+                        onChange={(e) => setFormData({ ...formData, lastPreventiveDose: e.target.value })}
+                        placeholder="Last dose e.g. Today, 08:30 AM"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                {isEditModalOpen && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteProfile}
+                    className="flex items-center gap-1.5 px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Profile</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreateModalOpen(false);
+                      setIsEditModalOpen(false);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs shadow-md transition-all active:scale-95"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{isCreateModalOpen ? 'Create & Save Profile' : 'Save Changes'}</span>
+                  </button>
+                </div>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MEDICAL SMOG ID CARD MODAL */}
       {isIdCardOpen && (
