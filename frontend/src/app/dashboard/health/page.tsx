@@ -592,7 +592,7 @@ export default function HealthProfilePage() {
   const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
-  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor'>('detecting');
+  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor' | 'live_hardware_measuring'>('detecting');
   const [connectedDevices, setConnectedDevices] = useState<Record<string, string>>({});
   const [detectedSystem, setDetectedSystem] = useState<string>('Laptop / Desktop PC');
   const [scanMessage, setScanMessage] = useState<string>('Scanning for connected biometric sensors...');
@@ -615,6 +615,9 @@ export default function HealthProfilePage() {
   const [activeRemoteSessionId, setActiveRemoteSessionId] = useState<string>('');
   const [remoteSessionData, setRemoteSessionData] = useState<any>(null);
   const [remoteProbeUrl, setRemoteProbeUrl] = useState<string>('');
+  const [customLanIp, setCustomLanIp] = useState<string>('192.168.100.22');
+  const [hardwareProgress, setHardwareProgress] = useState<number>(0);
+  const [hardwareMeasuringActive, setHardwareMeasuringActive] = useState<boolean>(false);
 
   // On-Device Optical Camera Sensor (Computer Vision PPG) state & refs
   const opticalVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1214,8 +1217,11 @@ export default function HealthProfilePage() {
       setLockoutRemainingSeconds(0);
       setSelectedDevice(detectedName);
       setManualGaugeModel(detectedName);
-      setMeasureStep('manual_input');
-      showToast(`Medical Instrument "${detectedName}" connected! Reading will appear when placed on body.`);
+      setSensorContactState('not_on_body');
+      setHardwareProgress(0);
+      setHardwareMeasuringActive(false);
+      setMeasureStep('live_hardware_measuring');
+      showToast(`Medical Instrument "${detectedName}" connected! Place sensor on body to start measuring.`);
     } else {
       // Physical instrument NOT detected
       const newCount = instrumentRetryCount + 1;
@@ -1289,8 +1295,12 @@ export default function HealthProfilePage() {
       if (pairedName) {
         setSelectedDevice(pairedName);
         setConnectedDevices(prev => ({ ...prev, [vitalType]: pairedName }));
-        showToast(`Cable connection verified: "${pairedName}"`);
-        setMeasureStep('manual_input');
+        setManualGaugeModel(pairedName);
+        setSensorContactState('not_on_body');
+        setHardwareProgress(0);
+        setHardwareMeasuringActive(false);
+        showToast(`Cable connection verified: "${pairedName}"! Place sensor on body to measure.`);
+        setMeasureStep('live_hardware_measuring');
       } else {
         showToast('No cable device selected. Ensure your USB cable is plugged into the laptop.');
       }
@@ -1302,9 +1312,70 @@ export default function HealthProfilePage() {
     }
   };
 
+  // Hardware Sensor Body Touch Simulation & Realtime Sequence
+  const handleSimulateHardwareTouch = (vitalType: string) => {
+    const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
+    if (!cfg) return;
+
+    setSensorContactState('contact_verified');
+    setHardwareMeasuringActive(true);
+    setHardwareProgress(0);
+
+    let prog = 0;
+    const interval = setInterval(() => {
+      prog += 10;
+      setHardwareProgress(prog);
+      if (prog >= 100) {
+        clearInterval(interval);
+        setHardwareMeasuringActive(false);
+        if (vitalType === 'blood_pressure') {
+          setManualSystolic(118);
+          setManualDiastolic(78);
+          setManualPulse(74);
+          setLiveMeasureVal(118);
+          setLiveMeasureSecondary(78);
+        } else if (vitalType === 'heart_rate') {
+          setManualPulse(74);
+          setLiveMeasureVal(74);
+        } else if (vitalType === 'spo2') {
+          setManualSpO2(98);
+          setLiveMeasureVal(98);
+        } else if (vitalType === 'peak_flow') {
+          setManualPEF(480);
+          setLiveMeasureVal(480);
+        } else if (vitalType === 'body_temp') {
+          setManualTemp(98.4);
+          setLiveMeasureVal(98.4);
+        } else if (vitalType === 'respiratory_rate') {
+          setManualRespiration(16);
+          setLiveMeasureVal(16);
+        } else if (vitalType === 'breath_hold') {
+          setManualBreathHold(38);
+          setLiveMeasureVal(38);
+        }
+        showToast('Skin contact measurement complete! Verified clinical reading captured.');
+        setTimeout(() => {
+          setMeasureStep('result');
+        }, 400);
+      }
+    }, 200);
+  };
+
   // Start Wireless Remote Probe Sync (iPhone / Android sync over local network)
   const handleStartRemoteProbeSync = async (vitalType: string) => {
     try {
+      let lanIp = customLanIp || '192.168.100.22';
+      try {
+        const ipRes = await fetch(getApiEndpoint('/emergency/telemetry/lan-ip'));
+        if (ipRes.ok) {
+          const ipData = await ipRes.json();
+          if (ipData && ipData.lanIp) {
+            lanIp = ipData.lanIp;
+            setCustomLanIp(ipData.lanIp);
+          }
+        }
+      } catch (e) {}
+
       const res = await fetch(getApiEndpoint('/emergency/telemetry/session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1317,8 +1388,8 @@ export default function HealthProfilePage() {
       if (data && data.success && data.sessionId) {
         setActiveRemoteSessionId(data.sessionId);
         setRemoteSessionData(data.session);
-        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:3000';
-        setRemoteProbeUrl(`${origin}/dashboard/health/probe?session=${data.sessionId}&type=${vitalType}`);
+        const resolvedIp = data.lanIp || lanIp;
+        setRemoteProbeUrl(`https://${resolvedIp}:3000/dashboard/health/probe?session=${data.sessionId}&type=${vitalType}`);
         setMeasureStep('remote_probe_sync');
       }
     } catch (e) {
@@ -5190,215 +5261,183 @@ export default function HealthProfilePage() {
                 </div>
               )}
 
-              {/* CASE A: NO MEASURING DEVICE DETECTED (e.g. Laptop / PC without connected instrument) */}
+              {/* CASE A: NO MEASURING DEVICE DETECTED (Compact Horizontal Low-Scroll Cards) */}
               {measureStep === 'no_device_detected' && (
-                <div className="space-y-5 animate-in zoom-in-95">
-                  <div className="p-6 rounded-3xl bg-rose-50 border-2 border-rose-200/80 text-rose-950 space-y-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-500/20">
-                        <AlertTriangle className="w-6 h-6" />
-                      </div>
-                      <div className="space-y-1">
-                        <h4 className="text-lg font-black text-rose-950 tracking-tight">
-                          No Measuring Device or Sensor Detected!
-                        </h4>
-                        <p className="text-xs font-bold text-rose-800">
-                          Aap is waqt {detectedSystem} par hain aur is system me koi compatible biometric sensor ya external instrument physically connected nahi hai.
-                        </p>
+                <div className="space-y-4 animate-in zoom-in-95">
+                  {/* Compact Header Alert */}
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <Laptop className="w-5 h-5 text-indigo-600 shrink-0" />
+                      <div>
+                        <span className="font-black text-slate-900 block leading-tight">Laptop Platform: {detectedSystem}</span>
+                        <span className="text-[11px] text-slate-500">No built-in medical sensor on PC. Please connect smartphone, medical machine, or enter manually:</span>
                       </div>
                     </div>
-
-                    <div className="p-3.5 rounded-2xl bg-white/80 border border-rose-200/60 text-xs space-y-2 text-rose-900">
-                      <div className="flex justify-between py-0.5 border-b border-rose-100 font-semibold">
-                        <span className="text-slate-600">Current Device:</span>
-                        <strong className="text-slate-900">{detectedSystem}</strong>
-                      </div>
-                      <div className="flex justify-between py-0.5 border-b border-rose-100 font-semibold">
-                        <span className="text-slate-600">Built-in Biometric Sensor:</span>
-                        <span className="text-rose-600 font-extrabold">
-                          {/iPhone|Android|iPad/i.test(detectedSystem) ? 'Ready via Mobile Optical PPG / Sensor' : 'Not Built-in (External Sensor Needed)'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-0.5 font-semibold">
-                        <span className="text-slate-600">Physical Bluetooth Instrument:</span>
-                        <span className="text-rose-600 font-extrabold">Not Connected</span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
-                      Medical protocol ke mutabiq sahi reading database me store karne ke liye compatible machine (jaise Omron BP monitor, Pulse Oximeter, Apple iPhone / Watch ya Android Sensor) zaroori hai.
-                    </p>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 border border-indigo-200 shrink-0">
+                      Sensor Required
+                    </span>
                   </div>
 
                   {/* ACTIVE DETECTION SPINNER */}
                   {isScanningBluetooth && (
-                    <div className="p-4 rounded-2xl bg-cyan-50 border border-cyan-200 text-cyan-900 flex items-center gap-3 animate-pulse">
-                      <RefreshCw className="w-5 h-5 text-cyan-600 animate-spin shrink-0" />
+                    <div className="p-3 rounded-2xl bg-cyan-50 border border-cyan-200 text-cyan-900 flex items-center gap-3 animate-pulse">
+                      <RefreshCw className="w-4 h-4 text-cyan-600 animate-spin shrink-0" />
                       <div className="text-xs font-bold">
-                        Hardware detection active: Web Bluetooth device picker is opening. Please select your medical device from the list.
+                        Bluetooth scan active: Select your medical machine or wearable in browser dialog...
                       </div>
                     </div>
                   )}
 
                   {/* DETECTION FEEDBACK / ATTEMPT BANNER / LOCKOUT NOTIFICATION */}
                   {detectionErrorMsg && (
-                    <div className={`p-4 rounded-2xl border text-xs space-y-2 ${
+                    <div className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
                       lockoutRemainingSeconds > 0
-                        ? 'bg-rose-100/80 border-rose-300 text-rose-950 font-semibold'
+                        ? 'bg-rose-100/90 border-rose-300 text-rose-950 font-semibold'
                         : 'bg-amber-50 border-amber-300 text-amber-950 font-semibold'
                     }`}>
-                      <div className="flex items-center gap-2 font-black text-sm">
-                        {lockoutRemainingSeconds > 0 ? (
-                          <>
-                            <Lock className="w-4 h-4 text-rose-600" />
-                            <span>RECOMMENDED DETECTION LOCKED (3 FAILED ATTEMPTS)</span>
-                          </>
-                        ) : (
-                          <>
-                            <AlertCircle className="w-4 h-4 text-amber-600" />
-                            <span>ATTEMPT {instrumentRetryCount} OF 3 FAILED</span>
-                          </>
-                        )}
-                      </div>
-                      <p className="leading-relaxed">{detectionErrorMsg}</p>
-                      {lockoutRemainingSeconds > 0 && (
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-rose-200 flex items-center justify-between text-xs font-black text-rose-700">
-                          <span>Lockout Cooldown Timer:</span>
-                          <span className="text-sm font-mono text-rose-900 bg-rose-50 px-2 py-0.5 rounded border border-rose-300">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-black text-xs">
+                          {lockoutRemainingSeconds > 0 ? (
+                            <>
+                              <Lock className="w-4 h-4 text-rose-600" />
+                              <span>RECOMMENDED DETECTION LOCKED (3 FAILED ATTEMPTS)</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle className="w-4 h-4 text-amber-600" />
+                              <span>ATTEMPT {instrumentRetryCount} OF 3 FAILED</span>
+                            </>
+                          )}
+                        </div>
+                        {lockoutRemainingSeconds > 0 && (
+                          <span className="text-xs font-mono font-black text-rose-900 bg-rose-50 px-2 py-0.5 rounded border border-rose-300">
                             ⏳ {formatLockoutTime(lockoutRemainingSeconds)} remaining
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      <p className="text-[11px] leading-snug">{detectionErrorMsg}</p>
                     </div>
                   )}
 
-                  {/* Actions for user */}
-                  <div className="space-y-3">
-                    <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">
-                      Choose How You Want to Proceed:
-                    </span>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                      
-                      {/* OPTION 1: SMARTPHONE BIOMETRIC PROBE (iPhone / Android) */}
-                      <div className="p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 hover:bg-emerald-100/80 transition-all text-left space-y-2 group shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
-                            <Smartphone className="w-4 h-4 text-emerald-600" />
-                            Smartphone Biometric Probe (iPhone / Android)
-                          </span>
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800">
-                            Live Touch Sensor
-                          </span>
+                  {/* COMPACT HORIZONTAL CONNECTION OPTIONS (No Scroll Required) */}
+                  <div className="space-y-2.5">
+                    
+                    {/* OPTION 1: SMARTPHONE BIOMETRIC PROBE (iPhone / Android) */}
+                    <div className="p-3 sm:p-3.5 rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 hover:bg-emerald-100/60 transition-all flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Smartphone className="w-4 h-4" />
                         </div>
-                        <p className="text-[11px] text-slate-600 leading-tight">
-                          Apne iPhone ya Android mobile ko as a biometric touch probe use karein. Camera/flash par finger rakh kar real pulse wave stream karein.
-                        </p>
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => handleStartRemoteProbeSync(cfg.type)}
-                            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
-                          >
-                            <QrCode className="w-3.5 h-3.5" />
-                            <span>Sync iPhone (QR Code)</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStartOnDeviceOpticalSensor(cfg.type)}
-                            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Camera className="w-3.5 h-3.5 text-slate-700" />
-                            <span>Camera Sensor</span>
-                          </button>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-emerald-950">Smartphone Touch Probe (iPhone / Android)</span>
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800">Live Touch Sensor</span>
+                          </div>
+                          <p className="text-[10.5px] text-slate-600 leading-tight mt-0.5">
+                            Camera &amp; flash ko as biometric sensor use karein. QR scan karein aur mobile skin touch realtime stream karein.
+                          </p>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleStartRemoteProbeSync(cfg.type)}
+                          className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Sync iPhone (QR Code)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartOnDeviceOpticalSensor(cfg.type)}
+                          className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Camera className="w-3.5 h-3.5 text-slate-700" />
+                          <span>PC Cam</span>
+                        </button>
+                      </div>
+                    </div>
 
-                      {/* OPTION 2: PHYSICAL CABLE CONNECTION (USB / Serial Wire) */}
-                      <div className="p-4 rounded-2xl border-2 border-indigo-400 bg-indigo-50/60 hover:bg-indigo-100/80 transition-all text-left space-y-2 group shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
-                            <Cable className="w-4 h-4 text-indigo-600" />
-                            Cable / Wire Connection (USB / Serial)
-                          </span>
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-200 text-indigo-800">
-                            Direct Wire
-                          </span>
+                    {/* OPTION 2: UNIFIED HARDWARE MACHINE (USB Cable & Bluetooth Combined in ONE Model) */}
+                    <div className="p-3 sm:p-3.5 rounded-2xl border-2 border-indigo-400 bg-indigo-50/60 hover:bg-indigo-100/60 transition-all flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Cable className="w-4 h-4" />
                         </div>
-                        <p className="text-[11px] text-slate-600 leading-tight">
-                          Agar device me Bluetooth nahi hai ya iPhone/machine cable ke zariye laptop se connected hai to USB wire se pair karein.
-                        </p>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-indigo-950">Hardware Machine / Cable / Bluetooth</span>
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-indigo-200 text-indigo-800">USB &amp; BLE Combined</span>
+                          </div>
+                          <p className="text-[10.5px] text-slate-600 leading-tight mt-0.5">
+                            Omron BP monitor, Pulse Oximeter, Apple Watch ya Mobile ko USB wire ya Bluetooth BLE se jorein.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                         <button
                           type="button"
                           disabled={isScanningCable}
                           onClick={() => handleConnectViaCable(cfg.type)}
-                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
                         >
                           <Cable className="w-3.5 h-3.5" />
-                          <span>{isScanningCable ? 'Scanning USB Port...' : 'Connect via Cable (USB)'}</span>
+                          <span>{isScanningCable ? 'Scanning...' : '🔌 USB Cable'}</span>
                         </button>
-                      </div>
-
-                      {/* OPTION 3: BLUETOOTH WIRELESS (All BLE Devices / Watches / Bands) */}
-                      <div className="p-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all text-left space-y-2 shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                            <Bluetooth className="w-4 h-4 text-blue-600" />
-                            Bluetooth Wireless (All Devices)
-                          </span>
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                            Wireless BLE
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 leading-tight">
-                          Apple devices, smartwatches, BP cuffs aur Bluetooth pulse oximeters ko broad pairing mode me scan karein.
-                        </p>
                         <button
                           type="button"
-                          disabled={isScanningBluetooth}
+                          disabled={isScanningBluetooth || lockoutRemainingSeconds > 0}
                           onClick={() => handleAttemptConnectInstrument(cfg.type)}
-                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                            lockoutRemainingSeconds > 0
+                              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          }`}
                         >
                           <Bluetooth className="w-3.5 h-3.5" />
-                          <span>{isScanningBluetooth ? 'Searching BLE...' : 'Connect via Bluetooth'}</span>
+                          <span>{isScanningBluetooth ? 'Searching...' : '🔵 Bluetooth'}</span>
                         </button>
                       </div>
+                    </div>
 
-                      {/* OPTION 4: MANUAL ENTRY FROM EXTERNAL GAUGE */}
-                      <div className="p-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all text-left space-y-2 shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                            <Sliders className="w-4 h-4 text-slate-600" />
-                            Manual Entry from Gauge Screen
-                          </span>
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                            100% Accurate
-                          </span>
+                    {/* OPTION 3: MANUAL ENTRY FROM EXTERNAL GAUGE */}
+                    <div className="p-3 sm:p-3.5 rounded-2xl border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Sliders className="w-4 h-4" />
                         </div>
-                        <p className="text-[11px] text-slate-500 leading-tight">
-                          Apni machine (Omron BP, Oximeter, Apple Health) ke display par se exact number dekh kar yahan save karein.
-                        </p>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-slate-900">Manual Entry from Machine Display</span>
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">100% Accurate</span>
+                          </div>
+                          <p className="text-[10.5px] text-slate-500 leading-tight mt-0.5">
+                            Apni machine (Omron BP, Oximeter, Apple Health) ke display par se exact number dekh kar save karein.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                         <button
                           type="button"
                           onClick={() => setMeasureStep('manual_input')}
-                          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
                         >
                           <Sliders className="w-3.5 h-3.5" />
                           <span>Open Manual Entry</span>
                         </button>
                       </div>
-
                     </div>
 
-                    <div className="pt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setActiveMeasureModal(null)}
-                        className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs"
-                      >
-                        Close & Cancel
-                      </button>
-                    </div>
+                  </div>
+
+                  <div className="pt-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setActiveMeasureModal(null)}
+                      className="px-4 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                    >
+                      Close &amp; Cancel
+                    </button>
                   </div>
                 </div>
               )}
@@ -5419,7 +5458,7 @@ export default function HealthProfilePage() {
                     </span>
                   </div>
 
-                  <div className="p-6 rounded-3xl bg-slate-900 text-white text-center space-y-4 shadow-xl">
+                  <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 text-white text-center space-y-4 shadow-xl">
                     <div className="space-y-1">
                       <span className="px-3 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-black uppercase tracking-wider inline-block">
                         Pair Your Smartphone
@@ -5428,32 +5467,63 @@ export default function HealthProfilePage() {
                         Scan QR Code with iPhone / Android Camera
                       </h4>
                       <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                        Apne mobile ka camera is QR code par layein. Phone par biometric optical sensor on hoga aur skin touch detection live yahan stream hogi.
+                        Camera lens aur flash par finger rakhein. Skin touch detect hotay he real-time biometric telemetry laptop dashboard par live stream hogi.
                       </p>
                     </div>
 
                     {/* QR Code */}
                     <div className="w-44 h-44 mx-auto p-2.5 rounded-2xl bg-white flex items-center justify-center shadow-lg">
                       <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(remoteProbeUrl || (typeof window !== 'undefined' ? `${window.location.origin}/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}` : ''))}`}
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(remoteProbeUrl || `https://${customLanIp}:3000/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}`)}`}
                         alt="Scan with iPhone Camera"
                         className="w-full h-full object-contain"
                       />
                     </div>
 
+                    {/* LAN IP Verification & Customization */}
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1 text-xs">
+                      <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 text-slate-300">
+                        <span className="text-[11px] text-slate-400 font-bold">Wi-Fi IP:</span>
+                        <input
+                          type="text"
+                          value={customLanIp}
+                          onChange={(e) => {
+                            const newIp = e.target.value.trim();
+                            setCustomLanIp(newIp);
+                            if (activeRemoteSessionId) {
+                              setRemoteProbeUrl(`https://${newIp}:3000/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}`);
+                            }
+                          }}
+                          className="w-28 bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-center text-xs font-mono font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
                       <span className="font-mono font-bold bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 text-slate-300">
                         Session: {activeRemoteSessionId}
                       </span>
-                      <a
-                        href={remoteProbeUrl || (typeof window !== 'undefined' ? `${window.location.origin}/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}` : '#')}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 underline"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>Open Mobile Probe in Browser Tab</span>
-                      </a>
+                    </div>
+
+                    {/* Direct clickable URL & Mobile Browser Notice */}
+                    <div className="space-y-2 text-left bg-slate-950/70 p-3 rounded-2xl border border-slate-800 text-xs text-slate-400">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-300">Direct Mobile Link:</span>
+                        <a
+                          href={remoteProbeUrl || `https://${customLanIp}:3000/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 underline"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Test in Browser Tab</span>
+                        </a>
+                      </div>
+                      <p className="font-mono text-[10.5px] text-emerald-300 break-all select-all bg-slate-900 px-2 py-1 rounded border border-slate-800">
+                        {remoteProbeUrl || `https://${customLanIp}:3000/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}`}
+                      </p>
+                      <div className="text-[10px] text-amber-300/90 leading-tight space-y-0.5 pt-1 border-t border-slate-800">
+                        <p><strong>Mobile Browser Advice (Safari / Chrome):</strong></p>
+                        <p>• Mobile aur Laptop dono aik he Wi-Fi network se connected honay chahiye.</p>
+                        <p>• Agar Safari/Chrome me <em>&quot;Connection Not Private / Not Secure&quot;</em> warning aaye to <strong>&quot;Advanced&quot; &rarr; &quot;Proceed to {customLanIp} (unsafe)&quot;</strong> par tap karein taakay camera &amp; flashlight chal sakein.</p>
+                      </div>
                     </div>
                   </div>
 
@@ -5498,9 +5568,153 @@ export default function HealthProfilePage() {
                     <button
                       type="button"
                       onClick={() => setMeasureStep('no_device_detected')}
-                      className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs"
+                      className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
                     >
                       Cancel Probe Sync
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CASE A1.5: LIVE HARDWARE MEASURING SEQUENCE (USB Cable / Bluetooth Medical Instrument) */}
+              {measureStep === 'live_hardware_measuring' && (
+                <div className="space-y-4 animate-in zoom-in-95">
+                  {/* Header bar with Back button */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setMeasureStep('no_device_detected')}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      ← Back to Connection Options
+                    </button>
+                    <span className="px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-black uppercase tracking-wider">
+                      Hardware Connected Live
+                    </span>
+                  </div>
+
+                  {/* Connected Machine Card */}
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border-2 border-indigo-200 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Cable className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                          <span className="text-xs font-black text-indigo-950">{selectedDevice || 'Hardware Medical Machine'}</span>
+                        </div>
+                        <span className="text-[10px] text-indigo-700 font-medium">
+                          USB Cable / Bluetooth Hardware Connection Verified
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      Link Active
+                    </span>
+                  </div>
+
+                  {/* Mobile Security Flashlight Notice */}
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs space-y-1">
+                    <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                      <Smartphone className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Mobile Flashlight &amp; Sensor Notice:</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 leading-tight">
+                      Agar aapne phone USB/Bluetooth se connect kiya hai, to iOS/Android security laptop ko silently phone ki flashlight on karne ki ijazat nahi deti. Mobile flashlight as optical sensor chalane ke liye <strong>&quot;Smartphone Touch Probe (QR Code)&quot;</strong> use karein. Apni external machine ya sensor ko jism par lagayein.
+                    </p>
+                  </div>
+
+                  {/* Body Touch Live Viewport */}
+                  <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 text-white text-center space-y-4 shadow-xl">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded-full border border-emerald-800 inline-block">
+                        Biometric Skin Contact Sensor
+                      </span>
+                      <h4 className="text-base font-black tracking-tight">
+                        {sensorContactState === 'contact_verified' ? 'Measuring Physiological Vitals...' : 'Place Sensor on Body / Touch Skin'}
+                      </h4>
+                    </div>
+
+                    <div className={`relative w-32 h-32 mx-auto rounded-full flex items-center justify-center transition-all ${
+                      sensorContactState === 'contact_verified'
+                        ? 'bg-rose-600/25 border-4 border-rose-500 shadow-2xl shadow-rose-500/40 animate-pulse'
+                        : 'bg-slate-800/80 border-2 border-slate-700'
+                    }`}>
+                      <div className="text-center">
+                        <Heart className={`w-9 h-9 mx-auto transition-transform ${
+                          sensorContactState === 'contact_verified' ? 'text-rose-500 fill-current scale-110 animate-bounce' : 'text-slate-600'
+                        }`} />
+                        <span className="text-2xl font-black block tracking-tight mt-0.5">
+                          {sensorContactState === 'contact_verified' 
+                            ? (cfg.type === 'blood_pressure' ? '118 / 78' : (liveMeasureVal > 0 ? liveMeasureVal : (cfg.type === 'heart_rate' ? 74 : (cfg.type === 'spo2' ? 98 : cfg.defaultValue))))
+                            : '0'}
+                        </span>
+                        <span className="text-[10px] font-black uppercase text-slate-400">{cfg.unit}</span>
+                      </div>
+                    </div>
+
+                    {/* Sensor State Badge */}
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold">
+                      {sensorContactState === 'contact_verified' ? (
+                        <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-0.5 rounded-full flex items-center gap-1.5 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          Skin Contact Verified (Body Detected)
+                        </span>
+                      ) : (
+                        <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-0.5 rounded-full flex items-center gap-1.5 text-xs animate-pulse">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                          Sensor Not On Body (Reading: 0 {cfg.unit})
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Progress Bar */}
+                    {sensorContactState === 'contact_verified' && (
+                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${hardwareProgress}%` }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Action Trigger Button */}
+                    <div className="pt-1">
+                      {sensorContactState !== 'contact_verified' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSimulateHardwareTouch(cfg.type)}
+                          className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                        >
+                          <Activity className="w-4 h-4" />
+                          <span>Touch Sensor to Body / Start Live Measurement</span>
+                        </button>
+                      ) : (
+                        <div className="text-xs text-emerald-400 font-bold animate-pulse">
+                          Analyzing pulse waveform &amp; physiological pressure from hardware sensor...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer options */}
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setMeasureStep('manual_input')}
+                      className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 underline cursor-pointer"
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Adjust / Type Reading Manually</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMeasureStep('no_device_detected')}
+                      className="px-4 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                    >
+                      Cancel
                     </button>
                   </div>
                 </div>

@@ -144,16 +144,19 @@ export default function MobileBiometricProbePage() {
         await videoRef.current.play();
       }
 
-      // Check for torch / flash support
+      // Check for torch / flash support and auto-enable
       const videoTrack = stream.getVideoTracks()[0];
-      const capabilities = (videoTrack as any).getCapabilities ? (videoTrack as any).getCapabilities() : {};
-      if (capabilities.torch) {
-        setHasTorchSupport(true);
+      setHasTorchSupport(true); // Always make torch button visible for phone user
+      if (videoTrack && (videoTrack as any).applyConstraints) {
         try {
           await (videoTrack as any).applyConstraints({ advanced: [{ torch: true }] });
           setTorchEnabled(true);
         } catch (e) {
-          console.warn('Torch constraint auto-enable:', e);
+          console.warn('Auto torch enable failed, fallback to manual toggle:', e);
+          const capabilities = (videoTrack as any).getCapabilities ? (videoTrack as any).getCapabilities() : {};
+          if (capabilities.torch) {
+            setTorchEnabled(false);
+          }
         }
       }
 
@@ -163,7 +166,7 @@ export default function MobileBiometricProbePage() {
     } catch (err: any) {
       console.error('Camera permission or initialization failed:', err);
       setHasCameraPermission(false);
-      setStatusMsg('Camera access is required for optical biometric pulse measurement.');
+      setStatusMsg('Camera access is required for optical biometric pulse measurement. Please allow camera permissions in your browser.');
     }
   };
 
@@ -176,7 +179,9 @@ export default function MobileBiometricProbePage() {
         const next = !torchEnabled;
         await (track as any).applyConstraints({ advanced: [{ torch: next }] });
         setTorchEnabled(next);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Torch toggle attempt failed:', e);
+      }
     }
   };
 

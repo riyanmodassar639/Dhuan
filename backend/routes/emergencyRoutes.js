@@ -1082,7 +1082,39 @@ router.delete('/vitals/:id', async (req, res) => {
 });
 
 // 8. Mobile Probe Live Telemetry Endpoints (Real-Time Body-Touch Sync between iPhone/Android & Laptop)
+const os = require('os');
 const telemetrySessions = new Map();
+
+function getPrimaryLanIp() {
+  const nets = os.networkInterfaces();
+  const candidates = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        // Exclude virtual/host-only adapters like 192.168.56.x (VirtualBox)
+        if (!net.address.startsWith('192.168.56.')) {
+          candidates.push({ name, address: net.address });
+        }
+      }
+    }
+  }
+  // Prioritize active Wi-Fi / WLAN adapter
+  const wifi = candidates.find(c => /wi-fi|wifi|wlan|wireless/i.test(c.name));
+  if (wifi) return wifi.address;
+  // Fallback to first non-internal IPv4 or default
+  return candidates[0] ? candidates[0].address : '192.168.100.22';
+}
+
+router.get('/telemetry/lan-ip', (req, res) => {
+  const lanIp = getPrimaryLanIp();
+  res.json({
+    success: true,
+    lanIp,
+    port: 3000,
+    httpsBaseUrl: `https://${lanIp}:3000`,
+    httpBaseUrl: `http://${lanIp}:3000`
+  });
+});
 
 // Periodic cleanup of old telemetry sessions (> 15 minutes old)
 setInterval(() => {
@@ -1097,6 +1129,7 @@ setInterval(() => {
 router.post('/telemetry/session', (req, res) => {
   const { sessionId: requestedId, vitalType = 'heart_rate', deviceName = 'Apple iPhone' } = req.body || {};
   const sessionId = requestedId || `DHUAN-${Math.floor(100000 + Math.random() * 900000)}`;
+  const lanIp = getPrimaryLanIp();
   
   if (!telemetrySessions.has(sessionId)) {
     telemetrySessions.set(sessionId, {
@@ -1116,6 +1149,7 @@ router.post('/telemetry/session', (req, res) => {
   res.json({
     success: true,
     sessionId,
+    lanIp,
     session: telemetrySessions.get(sessionId)
   });
 });
