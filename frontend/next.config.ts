@@ -7,6 +7,15 @@ if (process.env.NODE_ENV !== "production") {
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
+  allowedDevOrigins: [
+    "localhost",
+    "localhost:3000",
+    "127.0.0.1",
+    "127.0.0.1:3000",
+    "192.168.100.22",
+    "192.168.100.22:3000"
+  ],
+  devIndicators: false,
   turbopack: {
     rules: {
       "*.css": {

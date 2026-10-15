@@ -43,8 +43,9 @@ function MobileProbeContent() {
   const [statusMsg, setStatusMsg] = useState<string>('Tap "Turn ON Flashlight & Start Sensor" below.');
   const [wavePoints, setWavePoints] = useState<number[]>([]);
 
-  // Telemetry throttling
+  // Telemetry throttling & tap guard
   const lastStreamPostRef = useRef<number>(0);
+  const lastTapRef = useRef<number>(0);
 
   // PPG Algorithm Refs
   const ppgHistoryRef = useRef<number[]>([]);
@@ -375,14 +376,42 @@ function MobileProbeContent() {
     };
   }, [stopCamera]);
 
+  // Touch and Click Handlers with Debounce to prevent double trigger and eliminate 300ms mobile delay
+  const handleStartSensor = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    const now = Date.now();
+    if (now - lastTapRef.current < 400) return;
+    lastTapRef.current = now;
+    startCameraAndFlashlight();
+  };
+
+  const handleToggleTorch = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    const now = Date.now();
+    if (now - lastTapRef.current < 400) return;
+    lastTapRef.current = now;
+    toggleTorch();
+  };
+
+  const handleStopSensor = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    stopCamera();
+  };
+
   return (
-    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 sm:p-6 select-none font-sans">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 sm:p-6 font-sans relative z-10">
       
       {/* Hidden processing canvas */}
       <canvas ref={canvasRef} className="hidden" />
 
       {/* TOP HEADER: Pure Single-Page (No Navbar, No Links to leave) */}
-      <header className="w-full max-w-md pt-2 pb-3 border-b border-slate-900 text-center space-y-1">
+      <header className="w-full max-w-md pt-2 pb-3 border-b border-slate-900 text-center space-y-1 relative z-20">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] font-black uppercase tracking-wider text-emerald-400">
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>DHUAN Biometric Skin Sensor Probe</span>
@@ -401,7 +430,7 @@ function MobileProbeContent() {
 
       {/* ERROR ALERT IF PERMISSIONS OR CONTEXT BLOCKED */}
       {errorMessage && (
-        <div className="w-full max-w-md my-2 p-4 rounded-2xl bg-rose-950/90 border-2 border-rose-500 text-rose-200 text-xs text-left space-y-2 animate-in zoom-in-95">
+        <div className="w-full max-w-md my-2 p-4 rounded-2xl bg-rose-950/90 border-2 border-rose-500 text-rose-200 text-xs text-left space-y-2 animate-in zoom-in-95 relative z-20">
           <div className="flex items-center gap-2 font-black text-rose-300">
             <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
             <span>Camera &amp; Sensor Blocked</span>
@@ -416,7 +445,7 @@ function MobileProbeContent() {
       )}
 
       {/* MAIN SENSOR VIEWPORT & CONTROLS */}
-      <div className="w-full max-w-md my-auto py-2 flex flex-col items-center space-y-4">
+      <div className="w-full max-w-md my-auto py-2 flex flex-col items-center space-y-4 relative z-20">
 
         {/* 1. STATE: COMPLETE */}
         {isComplete ? (
@@ -449,8 +478,10 @@ function MobileProbeContent() {
 
             <button
               type="button"
-              onClick={startCameraAndFlashlight}
-              className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              onClick={handleStartSensor}
+              onTouchEnd={handleStartSensor}
+              style={{ touchAction: 'manipulation' }}
+              className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer relative z-50 pointer-events-auto"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Measure Again</span>
@@ -463,13 +494,13 @@ function MobileProbeContent() {
             {/* Viewport / Skin Sensor Area */}
             <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-3xl overflow-hidden bg-slate-900 border-2 border-slate-800 flex items-center justify-center shadow-2xl">
               
-              {/* Actual Video Preview (hidden behind filter or shown low-opacity for bio-feedback) */}
+              {/* Actual Video Preview */}
               <video 
                 ref={videoRef} 
                 playsInline 
                 webkit-playsinline="true"
                 muted 
-                className={`absolute inset-0 w-full h-full object-cover transition-opacity ${
+                className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ${
                   isScanning ? 'opacity-40 filter blur-xs' : 'opacity-0'
                 }`}
               />
@@ -482,7 +513,7 @@ function MobileProbeContent() {
               )}
 
               {/* Central Pulse Indicator */}
-              <div className="relative z-10 text-center space-y-2">
+              <div className="relative z-10 text-center space-y-2 pointer-events-none">
                 <div className={`w-28 h-28 mx-auto rounded-full flex items-center justify-center transition-all ${
                   isTouchingBody
                     ? 'bg-rose-600/30 border-4 border-rose-500 shadow-2xl shadow-rose-500/50 scale-105'
@@ -512,7 +543,7 @@ function MobileProbeContent() {
 
               {/* Progress Overlay */}
               {isScanning && (
-                <div className="absolute bottom-0 inset-x-0 bg-slate-900/90 p-2.5 border-t border-slate-800">
+                <div className="absolute bottom-0 inset-x-0 bg-slate-900/90 p-2.5 border-t border-slate-800 pointer-events-none">
                   <div className="flex justify-between text-[11px] font-black text-slate-400 mb-1">
                     <span>Sampling Pulse Waves</span>
                     <span className="text-emerald-400">{progress}%</span>
@@ -529,7 +560,7 @@ function MobileProbeContent() {
 
             {/* Live PPG Waveform Strip */}
             {isScanning && isTouchingBody && wavePoints.length > 0 && (
-              <div className="w-full p-2.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+              <div className="w-full p-2.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 pointer-events-none">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
                   <span>Photoplethysmography (PPG) Wave</span>
                   <span className="text-emerald-400 flex items-center gap-1">
@@ -562,37 +593,43 @@ function MobileProbeContent() {
             </div>
 
             {/* DEDICATED FLASHLIGHT & SENSOR TRIGGER BUTTON */}
-            <div className="w-full space-y-2 pt-1">
+            <div className="w-full space-y-2 pt-1 relative z-50 pointer-events-auto">
               {!isScanning ? (
                 <button
                   type="button"
-                  onClick={startCameraAndFlashlight}
-                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-black text-sm sm:text-base shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                  onClick={handleStartSensor}
+                  onTouchEnd={handleStartSensor}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 active:scale-95 text-white font-black text-sm sm:text-base shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 cursor-pointer relative z-50 pointer-events-auto"
                 >
-                  <Zap className="w-5 h-5 text-amber-300 fill-amber-300 animate-pulse" />
-                  <span>Turn ON Flashlight &amp; Start Sensor</span>
+                  <Zap className="w-5 h-5 text-amber-300 fill-amber-300 animate-pulse pointer-events-none" />
+                  <span className="pointer-events-none">Turn ON Flashlight &amp; Start Sensor</span>
                 </button>
               ) : (
                 <div className="grid grid-cols-2 gap-2 w-full">
                   <button
                     type="button"
-                    onClick={toggleTorch}
-                    className={`py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                    onClick={handleToggleTorch}
+                    onTouchEnd={handleToggleTorch}
+                    style={{ touchAction: 'manipulation' }}
+                    className={`py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer relative z-50 pointer-events-auto active:scale-95 ${
                       torchEnabled 
                         ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20' 
                         : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                     }`}
                   >
-                    <Zap className="w-4 h-4" />
-                    <span>{torchEnabled ? 'Flashlight ON' : 'Toggle Flashlight'}</span>
+                    <Zap className="w-4 h-4 pointer-events-none" />
+                    <span className="pointer-events-none">{torchEnabled ? 'Flashlight ON' : 'Toggle Flashlight'}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={stopCamera}
-                    className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 font-black text-xs flex items-center justify-center gap-2 cursor-pointer"
+                    onClick={handleStopSensor}
+                    onTouchEnd={handleStopSensor}
+                    style={{ touchAction: 'manipulation' }}
+                    className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-rose-300 border border-slate-700 font-black text-xs flex items-center justify-center gap-2 cursor-pointer relative z-50 pointer-events-auto active:scale-95"
                   >
-                    <span>Stop Sensor</span>
+                    <span className="pointer-events-none">Stop Sensor</span>
                   </button>
                 </div>
               )}
@@ -615,11 +652,11 @@ function MobileProbeContent() {
       </div>
 
       {/* FOOTER: Zero Links, strictly status indicator */}
-      <footer className="w-full max-w-md pt-3 border-t border-slate-900 text-center text-[10px] text-slate-600">
+      <footer className="w-full max-w-md pt-3 border-t border-slate-900 text-center text-[10px] text-slate-600 relative z-20">
         DHUAN Clinical Assessment System • Standalone Telemetry Client
       </footer>
 
-    </main>
+    </div>
   );
 }
 

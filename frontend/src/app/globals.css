@@ -30,3 +30,17 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Next.js dev overlay pointer-events fix for mobile testing */
+nextjs-portal {
+  pointer-events: none !important;
+}
+nextjs-portal * {
+  pointer-events: auto !important;
+}
+
+/* Ensure mobile buttons respond immediately without 300ms tap delay or selection lock */
+button, a, input, select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
