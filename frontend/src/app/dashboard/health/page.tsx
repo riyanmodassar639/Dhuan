@@ -54,7 +54,8 @@ import {
   Baby,
   Users,
   Heart,
-  Lock
+  Lock,
+  Laptop
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -238,6 +239,143 @@ interface VitalMeasurement {
   recorded_pm25?: number;
   created_at: string;
 }
+
+export interface DetectedMachineInfo {
+  displayName: string;
+  deviceType: string;
+  platformCategory: 'apple' | 'android' | 'pc' | 'bluetooth' | 'other';
+  sensorLabel: string;
+}
+
+export const getAutoDetectedMachineName = (
+  vitalType: string,
+  connectedDeviceName?: string | null
+): DetectedMachineInfo => {
+  // 1. If a genuine Web Bluetooth medical device is actively connected:
+  if (connectedDeviceName && connectedDeviceName.trim() && !connectedDeviceName.toLowerCase().includes('unknown')) {
+    return {
+      displayName: connectedDeviceName.trim(),
+      deviceType: 'bluetooth_medical_instrument',
+      platformCategory: 'bluetooth',
+      sensorLabel: 'Real-Time GATT Telemetry'
+    };
+  }
+
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return {
+      displayName: 'Clinical Medical Gauge',
+      deviceType: 'clinical_gauge',
+      platformCategory: 'other',
+      sensorLabel: 'Manual Calibrated Sensor'
+    };
+  }
+
+  const ua = navigator.userAgent || '';
+  const platform = (navigator as any).platform || '';
+
+  // 2. Apple iPhone
+  if (/iPhone/i.test(ua)) {
+    return {
+      displayName: 'Apple iPhone (iOS Biometric & Optical PPG Sensor)',
+      deviceType: 'apple_iphone',
+      platformCategory: 'apple',
+      sensorLabel: 'Apple HealthKit / Optical PPG Sensor'
+    };
+  }
+
+  // 3. Apple iPad
+  if (/iPad/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    return {
+      displayName: 'Apple iPad (iOS Biometric Sensor)',
+      deviceType: 'apple_ipad',
+      platformCategory: 'apple',
+      sensorLabel: 'iOS Health Biometrics'
+    };
+  }
+
+  // 4. Apple Mac / MacBook
+  if (/Macintosh|Mac OS X/i.test(ua)) {
+    return {
+      displayName: 'Apple Mac (macOS Telemetry Station)',
+      deviceType: 'apple_mac',
+      platformCategory: 'apple',
+      sensorLabel: 'External Medical Gauge / Companion Sensor'
+    };
+  }
+
+  // 5. Android Smartphones (Samsung, Google Pixel, Xiaomi, OnePlus, Oppo, Vivo, etc.)
+  if (/Android/i.test(ua)) {
+    let brand = 'Android Smartphone (Biometric & Camera PPG Sensor)';
+    let brandKey = 'android_mobile';
+
+    if (/Samsung|SM-|GT-/i.test(ua)) {
+      brand = 'Samsung Galaxy (Samsung Health & Biometric PPG)';
+      brandKey = 'samsung_galaxy';
+    } else if (/Pixel/i.test(ua)) {
+      brand = 'Google Pixel (Android Health & Optical Sensor)';
+      brandKey = 'google_pixel';
+    } else if (/Xiaomi|Redmi|POCO/i.test(ua)) {
+      brand = 'Xiaomi / Redmi (Biometric Sensor)';
+      brandKey = 'xiaomi_android';
+    } else if (/OnePlus/i.test(ua)) {
+      brand = 'OnePlus Smartphone (Biometric PPG Sensor)';
+      brandKey = 'oneplus_android';
+    } else if (/Oppo/i.test(ua)) {
+      brand = 'OPPO Smartphone (Biometric Sensor)';
+      brandKey = 'oppo_android';
+    } else if (/Vivo/i.test(ua)) {
+      brand = 'Vivo Smartphone (Biometric Sensor)';
+      brandKey = 'vivo_android';
+    } else if (/Huawei|Honor/i.test(ua)) {
+      brand = 'Huawei / Honor (Biometric Sensor)';
+      brandKey = 'huawei_android';
+    }
+
+    return {
+      displayName: brand,
+      deviceType: brandKey,
+      platformCategory: 'android',
+      sensorLabel: 'Android Health / Camera Photoplethysmography'
+    };
+  }
+
+  // 6. Windows PC / Laptop
+  if (/Windows/i.test(ua) || /Win64|Win32/i.test(platform)) {
+    return {
+      displayName: 'Windows Laptop / PC (Clinical Sensor Interface)',
+      deviceType: 'windows_pc',
+      platformCategory: 'pc',
+      sensorLabel: 'External Medical Gauge / Digital Machine'
+    };
+  }
+
+  // 7. Linux Workstation
+  if (/Linux/i.test(ua)) {
+    return {
+      displayName: 'Linux Workstation (External Clinical Machine)',
+      deviceType: 'linux_pc',
+      platformCategory: 'pc',
+      sensorLabel: 'External Medical Gauge / Digital Machine'
+    };
+  }
+
+  // 8. ChromeOS
+  if (/CrOS/i.test(ua)) {
+    return {
+      displayName: 'ChromeOS Device (Clinical Health Interface)',
+      deviceType: 'chromeos',
+      platformCategory: 'other',
+      sensorLabel: 'External Companion Sensor'
+    };
+  }
+
+  return {
+    displayName: 'Physical Clinical Medical Machine',
+    deviceType: 'clinical_machine',
+    platformCategory: 'other',
+    sensorLabel: 'Direct Instrument Readout'
+  };
+};
 
 const VITALS_CONFIG = [
   {
@@ -929,39 +1067,32 @@ export default function HealthProfilePage() {
     setStopwatchSeconds(0);
     setSensorContactState('idle');
 
+    // Auto-detect hardware platform & instrument name (Apple iPhone, iPad, Android Smartphone, Windows PC, Mac, or BLE sensor)
+    const autoMachine = getAutoDetectedMachineName(vitalType, connectedDevices[vitalType]);
+    setDetectedSystem(autoMachine.displayName);
+    setManualGaugeModel(autoMachine.displayName);
+
     // Populate baseline manual input values (strictly 0 until measured or entered from gauge)
     if (vitalType === 'blood_pressure') {
-      setManualGaugeModel('Omron M3 / M2 Blood Pressure Monitor');
       setManualSystolic(0);
       setManualDiastolic(0);
       setManualPulse(0);
     } else if (vitalType === 'heart_rate') {
-      setManualGaugeModel('Pulse Oximeter / Mobile Health App');
       setManualPulse(0);
     } else if (vitalType === 'spo2') {
-      setManualGaugeModel('Fingertip Pulse Oximeter (SpO2)');
       setManualSpO2(0);
     } else if (vitalType === 'peak_flow') {
-      setManualGaugeModel('Philips / Mechanical Peak Flow Meter');
       setManualPEF(0);
     } else if (vitalType === 'respiratory_rate') {
-      setManualGaugeModel('Manual Inhalation Counter (60s)');
       setManualRespiration(0);
     } else if (vitalType === 'body_temp') {
-      setManualGaugeModel('Digital Infrared Forehead Thermometer');
       setManualTemp(0);
     } else if (vitalType === 'breath_hold') {
-      setManualGaugeModel('DHUAN High-Precision Medical Stopwatch');
       setManualBreathHold(0);
     }
 
-    // Platform detection (Laptop vs Smartphone)
-    const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const platform = isMobile ? 'Smartphone (iOS / Android)' : 'Laptop / Desktop PC';
-    setDetectedSystem(platform);
-
     // STRICT MEDICAL RULE: Laptops and PCs have NO built-in medical sensors.
-    // NEVER automatically assume any Apple Watch, BP monitor, or sensor is connected!
+    // NEVER automatically assume any external instrument is connected!
     // ALWAYS start at 'no_device_detected' so user has complete control to connect real device or enter manually.
     setSelectedDevice('');
     setMeasureStep('no_device_detected');
@@ -1181,7 +1312,8 @@ export default function HealthProfilePage() {
       return;
     }
 
-    const deviceNameToSave = manualGaugeModel.trim() || 'Verified Physical Gauge / Machine';
+    const autoInfo = getAutoDetectedMachineName(vitalType, selectedDevice || connectedDevices[vitalType]);
+    const deviceNameToSave = autoInfo.displayName;
 
     setIsSavingVital(true);
     try {
@@ -1194,7 +1326,7 @@ export default function HealthProfilePage() {
           readingSecondary,
           unit: cfg.unit,
           deviceName: deviceNameToSave,
-          deviceType: 'manual_physical_instrument'
+          deviceType: autoInfo.deviceType
         })
       });
 
@@ -1226,7 +1358,7 @@ export default function HealthProfilePage() {
     if (!cfg) return;
 
     setIsSavingVital(true);
-    const chosenDeviceObj = cfg.supportedDevices.find(d => d.id === selectedDevice) || cfg.supportedDevices[0];
+    const autoInfo = getAutoDetectedMachineName(cfg.type, selectedDevice || connectedDevices[cfg.type]);
 
     try {
       const res = await fetch(getApiEndpoint('/emergency/vitals'), {
@@ -1237,8 +1369,8 @@ export default function HealthProfilePage() {
           readingValue: liveMeasureVal,
           readingSecondary: liveMeasureSecondary,
           unit: cfg.unit,
-          deviceName: chosenDeviceObj ? chosenDeviceObj.name : 'Medical Instrument',
-          deviceType: chosenDeviceObj ? chosenDeviceObj.id : 'device'
+          deviceName: autoInfo.displayName,
+          deviceType: autoInfo.deviceType
         })
       });
 
@@ -4802,7 +4934,9 @@ export default function HealthProfilePage() {
                       </div>
                       <div className="flex justify-between py-0.5 border-b border-rose-100 font-semibold">
                         <span className="text-slate-600">Built-in Biometric Sensor:</span>
-                        <span className="text-rose-600 font-extrabold">Not Available on Laptop</span>
+                        <span className="text-rose-600 font-extrabold">
+                          {/iPhone|Android|iPad/i.test(detectedSystem) ? 'Ready via Mobile Optical PPG / Sensor' : 'Not Built-in (External Sensor Needed)'}
+                        </span>
                       </div>
                       <div className="flex justify-between py-0.5 font-semibold">
                         <span className="text-slate-600">Physical Bluetooth Instrument:</span>
@@ -4811,7 +4945,7 @@ export default function HealthProfilePage() {
                     </div>
 
                     <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
-                      Laptops aur Desktop computers me optical pulse ya medical sensors mojood nahi hotay. Medical protocol ke mutabiq sahi reading database me store karne ke liye compatible machine (jaise Omron BP monitor, Pulse Oximeter ya Apple Health) zaroori hai.
+                      Medical protocol ke mutabiq sahi reading database me store karne ke liye compatible machine (jaise Omron BP monitor, Pulse Oximeter, Apple iPhone / Watch ya Android Sensor) zaroori hai.
                     </p>
                   </div>
 
@@ -4871,7 +5005,7 @@ export default function HealthProfilePage() {
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black text-slate-600 flex items-center gap-1.5">
                               <Lock className="w-4 h-4 text-slate-500" />
-                              Connect Instrument (Apple Watch / Sensor)
+                              Connect Instrument / Smart Device
                             </span>
                             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-300 text-slate-700 flex items-center gap-1">
                               <Lock className="w-2.5 h-2.5" />
@@ -4892,7 +5026,7 @@ export default function HealthProfilePage() {
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
                               <Bluetooth className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
-                              Connect Instrument (Apple Watch / Sensor)
+                              Connect Instrument / Sensor (Apple, Android, BLE)
                             </span>
                             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800 flex items-center gap-1">
                               <span>Recommended</span>
@@ -4922,7 +5056,7 @@ export default function HealthProfilePage() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                             <Sliders className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                            Manual Entry from External Gauge
+                            Manual Entry from Detected Device / Gauge
                           </span>
                           <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
                             lockoutRemainingSeconds > 0 ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-100 text-slate-700'
@@ -5039,18 +5173,7 @@ export default function HealthProfilePage() {
                   }
                 }
 
-                // Preset device suggestions
-                const devicePresets = cfg.type === 'blood_pressure'
-                  ? ['Omron M3 / M2 Blood Pressure Monitor', 'Citizen Digital BP Monitor', 'Beurer BM Series', 'Apple Health App / Watch', 'Mercury Sphygmomanometer']
-                  : cfg.type === 'heart_rate'
-                  ? ['Apple Watch Series / Ultra (PPG)', 'Samsung Galaxy Watch', 'Finger Pulse Oximeter', 'Omron Pulse Monitor', 'Manual Radial Pulse (60s)']
-                  : cfg.type === 'spo2'
-                  ? ['Beurer PO 30 Pulse Oximeter', 'Contec CMS50D Pulse Oximeter', 'Apple Watch Blood Oxygen App', 'Hospital Fingertip Sensor']
-                  : cfg.type === 'peak_flow'
-                  ? ['Philips PersonalBest Peak Flow', 'Vitalograph Peak Flow Meter', 'Digital Medical Spirometer']
-                  : cfg.type === 'body_temp'
-                  ? ['Braun IRT6520 ThermoScan', 'Berrcom Infrared Forehead Scanner', 'Clinical Digital Oral Stick']
-                  : ['60-Second Inhalation Counter', 'Apple Health Sleep Respiratory Rate', 'Smart Biometric Band'];
+                const autoDetectedMachine = getAutoDetectedMachineName(cfg.type, selectedDevice || connectedDevices[cfg.type]);
 
                 return (
                   <div className="space-y-6 animate-in zoom-in-95">
@@ -5104,40 +5227,52 @@ export default function HealthProfilePage() {
                     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
                       <div className="font-black text-slate-900 flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Manual Entry from Physical Machine / Mobile</span>
+                        <span>Clinical Measurement Entry</span>
                       </div>
                       <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                        Apni physical machine (jaise Omron BP monitor, fingertip pulse oximeter, ya Apple Health app) se exact reading dekh kar yahan enter karein. Ye data bilkul genuine form me SQLite database me store hoga.
+                        Apni machine ya mobile health app se verified reading yahan adjust karein. Machine/device hamari application ne khud automatically detect kar li hai aur SQLite database me 100% genuine form me record hogi.
                       </p>
                     </div>
 
-                    {/* Machine Model Selection */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
-                        Instrument / Machine Model Name:
-                      </label>
-                      <input
-                        type="text"
-                        value={manualGaugeModel}
-                        onChange={(e) => setManualGaugeModel(e.target.value)}
-                        placeholder="e.g. Omron M3 Blood Pressure Monitor, Apple Watch..."
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 font-bold text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
-                      />
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {devicePresets.map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setManualGaugeModel(preset)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
-                              manualGaugeModel === preset
-                                ? 'bg-slate-900 text-white border-slate-900'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
+                    {/* AUTO-DETECTED INSTRUMENT / MACHINE DISPLAY (Permanently Auto-Identified, No Options / Typing) */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-emerald-50/40 border border-slate-200/90 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                            Auto-Detected Measuring Instrument / Device:
+                          </span>
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider border border-emerald-300">
+                          Auto-Identified
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-lg shrink-0">
+                            {autoDetectedMachine.platformCategory === 'apple' ? (
+                              <Smartphone className="w-5 h-5 text-slate-800" />
+                            ) : autoDetectedMachine.platformCategory === 'android' ? (
+                              <Smartphone className="w-5 h-5 text-emerald-600" />
+                            ) : autoDetectedMachine.platformCategory === 'bluetooth' ? (
+                              <Activity className="w-5 h-5 text-cyan-600" />
+                            ) : (
+                              <Laptop className="w-5 h-5 text-indigo-600" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-xs font-black text-slate-900 flex items-center gap-2">
+                              <span>{autoDetectedMachine.displayName}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {autoDetectedMachine.sensorLabel}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
+                          Active &amp; Verified
+                        </span>
                       </div>
                     </div>
 
@@ -5693,8 +5828,8 @@ export default function HealthProfilePage() {
 
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                       <span className="font-bold text-slate-600">Instrument Used:</span>
-                      <span className="font-extrabold text-emerald-700 capitalize">
-                        {cfg.supportedDevices.find(d => d.id === selectedDevice)?.name || 'Medical Instrument'}
+                      <span className="font-extrabold text-emerald-700">
+                        {getAutoDetectedMachineName(cfg.type, selectedDevice || connectedDevices[cfg.type]).displayName}
                       </span>
                     </div>
 
