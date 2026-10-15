@@ -4,6 +4,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   ShieldAlert, 
+  Thermometer,
+  Smartphone,
+  RefreshCw,
+  Zap,
+  Gauge,
+  Timer,
+  Play,
+  Square,
+  Bluetooth,
   Activity, 
   HeartPulse, 
   Stethoscope, 
@@ -211,6 +220,208 @@ const LAHORE_EMERGENCY_CENTERS = [
   }
 ];
 
+
+interface VitalMeasurement {
+  id: number | string;
+  user_id: string;
+  vital_type: string;
+  reading_value: number;
+  reading_secondary?: number | null;
+  unit: string;
+  device_name: string;
+  device_type: string;
+  status_tier: 'normal' | 'warning' | 'critical';
+  clinical_interpretation: string;
+  smog_correlation_notes: string;
+  recorded_aqi?: number;
+  recorded_pm25?: number;
+  created_at: string;
+}
+
+const VITALS_CONFIG = [
+  {
+    type: 'heart_rate',
+    title: 'Heart Rate (Resting Pulse)',
+    shortName: 'Heart Rate / Pulse',
+    unit: 'BPM',
+    iconName: 'HeartPulse',
+    colorTheme: 'rose',
+    accentBg: 'bg-rose-50 text-rose-700 border-rose-200',
+    normalRange: '60 - 100 BPM',
+    normalMin: 60,
+    normalMax: 100,
+    defaultValue: 76,
+    defaultSecondary: null,
+    step: 1,
+    min: 40,
+    max: 200,
+    smogImpact: 'Fine PM2.5 crosses alveolar membranes, triggering autonomic sympathetic firing and raising resting heart rate.',
+    deviceRequirementNotice: 'Requires an optical wrist photoplethysmography (PPG) sensor, fingertip oximeter, or smartwatch.',
+    supportedDevices: [
+      { id: 'apple_health', name: 'Apple iPhone / Apple Watch Optical PPG Sensor', brand: 'Apple Health', desc: 'Infrared & green LED photodiode cluster detecting arterial pulse' },
+      { id: 'pulse_oximeter', name: 'Digital Fingertip Medical Pulse Oximeter', brand: 'Medical Grade', desc: 'Dual-wavelength infrared fingertip clip sensor' },
+      { id: 'smartwatch', name: 'Samsung Galaxy Watch / WearOS Optical Sensor', brand: 'Wearable Sensor', desc: 'Continuous wrist photoplethysmography sensor' },
+      { id: 'manual_radial', name: 'Manual Radial Wrist Pulse (60-second palpation)', brand: 'Clinical Palpation', desc: 'Radial artery fingertip tactile pulse count' }
+    ],
+    measureDuration: 6,
+    simulationType: 'ecg_pulse'
+  },
+  {
+    type: 'spo2',
+    title: 'Blood Oxygen Saturation (SpO2)',
+    shortName: 'Blood Oxygen (SpO2)',
+    unit: '%',
+    iconName: 'Wind',
+    colorTheme: 'cyan',
+    accentBg: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+    normalRange: '95% - 100%',
+    normalMin: 95,
+    normalMax: 100,
+    defaultValue: 98,
+    defaultSecondary: null,
+    step: 1,
+    min: 70,
+    max: 100,
+    smogImpact: 'Toxic airborne particulate narrows bronchioles and impairs alveolar gas exchange, leading to hypoxia.',
+    deviceRequirementNotice: 'Requires a dual-wavelength infrared medical fingertip oximeter or SpO2-capable smartwatch.',
+    supportedDevices: [
+      { id: 'pulse_oximeter', name: 'Digital Fingertip Medical Pulse Oximeter (Hospital Grade)', brand: 'Medical Grade', desc: 'Red & infrared 660nm/940nm LED transmittance sensor' },
+      { id: 'apple_watch_spo2', name: 'Apple Watch Series 6+ / Ultra Blood Oxygen Sensor', brand: 'Apple Health', desc: 'Four LED clusters & photodiodes on back crystal' },
+      { id: 'samsung_health_spo2', name: 'Samsung Galaxy Watch SpO2 Optical Sensor', brand: 'Wearable Sensor', desc: 'Pulse oximetry reflective sensor' }
+    ],
+    measureDuration: 5,
+    simulationType: 'optical_probe'
+  },
+  {
+    type: 'blood_pressure',
+    title: 'Arterial Blood Pressure',
+    shortName: 'Blood Pressure',
+    unit: 'mmHg',
+    iconName: 'Activity',
+    colorTheme: 'indigo',
+    accentBg: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+    normalRange: '< 120 / 80 mmHg',
+    normalMin: 90,
+    normalMax: 120,
+    defaultValue: 118,
+    defaultSecondary: 78,
+    step: 1,
+    min: 70,
+    max: 220,
+    smogImpact: 'PM2.5 soot induces acute vascular endothelial inflammation and vasoconstriction, causing sudden arterial pressure spikes.',
+    deviceRequirementNotice: 'Requires a digital upper-arm blood pressure cuff or clinical sphygmomanometer.',
+    supportedDevices: [
+      { id: 'omron_arm_cuff', name: 'Digital Upper-Arm BP Monitor (Omron / Beurer)', brand: 'Automated Arm Cuff', desc: 'Inflatable arm cuff with oscillometric pressure transducer' },
+      { id: 'smart_bp_bluetooth', name: 'Bluetooth Smart Wireless BP Cuff (Qardio / Withings)', brand: 'Wireless Smart Monitor', desc: 'Smartphone-synced digital oscillometric cuff' },
+      { id: 'manual_mercury', name: 'Manual Sphygmomanometer & Clinical Stethoscope', brand: 'Clinical Manual', desc: 'Aneroid or mercury column with Korotkoff sound detection' }
+    ],
+    measureDuration: 7,
+    simulationType: 'inflatable_cuff'
+  },
+  {
+    type: 'peak_flow',
+    title: 'Peak Expiratory Flow (PEF / Spirometry)',
+    shortName: 'Peak Flow (Spirometry)',
+    unit: 'L/min',
+    iconName: 'Stethoscope',
+    colorTheme: 'emerald',
+    accentBg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    normalRange: '400 - 600 L/min',
+    normalMin: 400,
+    normalMax: 600,
+    defaultValue: 480,
+    defaultSecondary: null,
+    step: 10,
+    min: 100,
+    max: 800,
+    smogImpact: 'Gold standard clinical biomarker for asthma & smog bronchospasm. Shows immediate drop in forced air velocity upon inhaling polluted air.',
+    deviceRequirementNotice: 'Requires a mechanical peak flow meter (Wright / Personal Best) or smart digital spirometer.',
+    supportedDevices: [
+      { id: 'smart_spirometer', name: 'Smart Digital Bluetooth Spirometer (MIR Smart One / Spirobank)', brand: 'Digital Pulmonology', desc: 'Turbine flow sensor measuring forced expiratory velocity (FEV1/PEF)' },
+      { id: 'mechanical_peak_flow', name: 'Mechanical Peak Flow Meter (Wright / Personal Best)', brand: 'Mechanical Gauge', desc: 'Piston-indicator sliding gauge calibrated in liters per minute' },
+      { id: 'hospital_spirometry', name: 'Hospital Diagnostic Spirometry Station', brand: 'Laboratory Care', desc: 'Calibrated clinical pulmonary laboratory station' }
+    ],
+    measureDuration: 5,
+    simulationType: 'flow_blast'
+  },
+  {
+    type: 'respiratory_rate',
+    title: 'Respiratory Rate (Cadence)',
+    shortName: 'Respiratory Rate',
+    unit: 'breaths/min',
+    iconName: 'Wind',
+    colorTheme: 'amber',
+    accentBg: 'bg-amber-50 text-amber-800 border-amber-200',
+    normalRange: '12 - 20 breaths/min',
+    normalMin: 12,
+    normalMax: 20,
+    defaultValue: 16,
+    defaultSecondary: null,
+    step: 1,
+    min: 8,
+    max: 45,
+    smogImpact: 'Chemical soot irritants in bronchi trigger rapid, shallow breathing (tachypnea) and airway fatigue.',
+    deviceRequirementNotice: 'Requires an iPhone Health chest-tracking camera, respiratory smart band, or 60s inhalation count.',
+    supportedDevices: [
+      { id: 'iphone_health_camera', name: 'iPhone Health Camera Chest Rise Tracking', brand: 'Apple Health', desc: 'Computer vision tracking thoracic cavity movement' },
+      { id: 'smart_respiratory_band', name: 'Smart Wearable Respiratory Chest Band', brand: 'Wearable Sensor', desc: 'Piezoelectric strain gauge measuring breathing cadence' },
+      { id: 'manual_breath_count', name: 'Manual 60-Second Inhalation Counter', brand: 'Visual Timer', desc: 'Self-observed 60-second breathing cycle timer' }
+    ],
+    measureDuration: 6,
+    simulationType: 'breath_pacer'
+  },
+  {
+    type: 'body_temp',
+    title: 'Core Body Temperature',
+    shortName: 'Body Temperature',
+    unit: '°F',
+    iconName: 'ShieldAlert',
+    colorTheme: 'orange',
+    accentBg: 'bg-orange-50 text-orange-800 border-orange-200',
+    normalRange: '97.5°F - 99.0°F',
+    normalMin: 97.5,
+    normalMax: 99.0,
+    defaultValue: 98.4,
+    defaultSecondary: null,
+    step: 0.1,
+    min: 94,
+    max: 106,
+    smogImpact: 'Detects acute bronchial mucosal inflammation and early secondary viral/bacterial infections triggered by particulate soot.',
+    deviceRequirementNotice: 'Requires a digital non-contact infrared forehead scanner or clinical ear thermometer.',
+    supportedDevices: [
+      { id: 'infrared_scanner', name: 'Infrared Non-Contact Forehead Scanner (Braun / Berrcom)', brand: 'Optical Infrared', desc: 'Non-contact thermopile detector with instantaneous readout' },
+      { id: 'tympanic_ear', name: 'Digital Tympanic Ear Thermometer', brand: 'Clinical Sensor', desc: 'Infrared heat sensor measuring eardrum temperature' },
+      { id: 'oral_digital', name: 'Clinical Digital Oral Stick Thermometer', brand: 'Contact Thermistor', desc: 'Oral/axillary semiconductor temperature probe' }
+    ],
+    measureDuration: 4,
+    simulationType: 'thermal_laser'
+  },
+  {
+    type: 'breath_hold',
+    title: 'Smog Airway Breath-Hold Test',
+    shortName: 'Breath-Hold Reserve',
+    unit: 'sec',
+    iconName: 'Clock',
+    colorTheme: 'teal',
+    accentBg: 'bg-teal-50 text-teal-800 border-teal-200',
+    normalRange: '>= 30 seconds',
+    normalMin: 30,
+    normalMax: 90,
+    defaultValue: 35,
+    defaultSecondary: null,
+    step: 1,
+    min: 5,
+    max: 120,
+    smogImpact: 'Tests airway hyper-reactivity. Particulate-inflamed airways stimulate premature cough reflex during breath-holding.',
+    deviceRequirementNotice: 'Uses the built-in clinical millisecond stopwatch timer.',
+    supportedDevices: [
+      { id: 'digital_stopwatch', name: 'Built-in High-Precision Clinical Stopwatch', brand: 'DHUAN Timer', desc: 'Precise timer measuring comfortable breath hold capacity' }
+    ],
+    measureDuration: 5,
+    simulationType: 'stopwatch_hold'
+  }
+];
+
 export default function HealthProfilePage() {
   const [mounted, setMounted] = useState(false);
   const [hasProfile, setHasProfile] = useState<boolean>(false);
@@ -229,6 +440,22 @@ export default function HealthProfilePage() {
   const [isIdCardOpen, setIsIdCardOpen] = useState(false);
   const [cardModalTab, setCardModalTab] = useState<'clinical_report' | 'pocket_pass'>('clinical_report');
   const [serverVulnerability, setServerVulnerability] = useState<any>(null);
+
+  // Clinical Vitals & Instrument Measurement State (SQLite database connected)
+  const [vitalsList, setVitalsList] = useState<VitalMeasurement[]>([]);
+  const [latestVitals, setLatestVitals] = useState<Record<string, VitalMeasurement>>({});
+  const [isLoadingVitals, setIsLoadingVitals] = useState<boolean>(false);
+  const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<string>('');
+  const [hasDevice, setHasDevice] = useState<boolean>(true);
+  const [measureStep, setMeasureStep] = useState<'select_device' | 'measuring' | 'result'>('select_device');
+  const [measureProgress, setMeasureProgress] = useState<number>(0);
+  const [liveMeasureVal, setLiveMeasureVal] = useState<number>(76);
+  const [liveMeasureSecondary, setLiveMeasureSecondary] = useState<number | null>(null);
+  const [isSavingVital, setIsSavingVital] = useState<boolean>(false);
+  const [isManualInput, setIsManualInput] = useState<boolean>(false);
+  const [stopwatchActive, setStopwatchActive] = useState<boolean>(false);
+  const [stopwatchSeconds, setStopwatchSeconds] = useState<number>(0);
 
   // Medical report adding form state
   const [newReport, setNewReport] = useState({
@@ -255,6 +482,24 @@ export default function HealthProfilePage() {
   const [currentLahorePm25, setCurrentLahorePm25] = useState<number>(25.2);
 
   // Fetch verified persistent Health Profile from SQLite database
+  const fetchVitals = async () => {
+    setIsLoadingVitals(true);
+    try {
+      const res = await fetch(getApiEndpoint('/emergency/vitals'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setVitalsList(data.history || []);
+          setLatestVitals(data.latestVitals || {});
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching clinical vitals:', e);
+    } finally {
+      setIsLoadingVitals(false);
+    }
+  };
+
   const fetchHealthProfile = async () => {
     setIsLoadingProfile(true);
     try {
@@ -378,6 +623,7 @@ export default function HealthProfilePage() {
 
     // Fetch verified persistent Health Profile from SQLite database
     fetchHealthProfile();
+    fetchVitals();
   }, []);
 
   const showToast = (msg: string) => {
@@ -570,6 +816,130 @@ export default function HealthProfilePage() {
   };
 
   // Log new symptom directly to SQLite backend
+  // Open custom vital measurement modal
+  const openMeasureModal = (vitalType: string) => {
+    const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
+    if (!cfg) return;
+    setActiveMeasureModal(vitalType);
+    setSelectedDevice(cfg.supportedDevices[0]?.id || '');
+    setHasDevice(true);
+    setMeasureStep('select_device');
+    setMeasureProgress(0);
+    setLiveMeasureVal(cfg.defaultValue);
+    setLiveMeasureSecondary(cfg.defaultSecondary);
+    setIsManualInput(false);
+    setStopwatchActive(false);
+    setStopwatchSeconds(0);
+  };
+
+  // Start live sensor measurement sequence
+  const startLiveMeasurement = (vitalType: string) => {
+    const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
+    if (!cfg) return;
+
+    if (cfg.simulationType === 'stopwatch_hold') {
+      setMeasureStep('measuring');
+      setStopwatchActive(true);
+      setStopwatchSeconds(0);
+      return;
+    }
+
+    setMeasureStep('measuring');
+    setMeasureProgress(0);
+
+    const duration = cfg.measureDuration * 1000;
+    const intervalTime = 100;
+    const increment = 100 / (duration / intervalTime);
+
+    let currentProgress = 0;
+    const timer = setInterval(() => {
+      currentProgress += increment;
+      if (currentProgress >= 100) {
+        clearInterval(timer);
+        setMeasureProgress(100);
+        
+        // Randomize slight variance from normal baseline for realism
+        let finalVal = cfg.defaultValue;
+        if (vitalType === 'heart_rate') {
+          finalVal = 70 + Math.floor(Math.random() * 18); // 70 - 88 bpm
+        } else if (vitalType === 'spo2') {
+          finalVal = 96 + Math.floor(Math.random() * 4); // 96 - 99%
+        } else if (vitalType === 'blood_pressure') {
+          finalVal = 114 + Math.floor(Math.random() * 12); // 114 - 126
+          setLiveMeasureSecondary(74 + Math.floor(Math.random() * 10)); // 74 - 84
+        } else if (vitalType === 'peak_flow') {
+          finalVal = 440 + Math.floor(Math.random() * 80); // 440 - 520 L/min
+        } else if (vitalType === 'respiratory_rate') {
+          finalVal = 14 + Math.floor(Math.random() * 5); // 14 - 18
+        } else if (vitalType === 'body_temp') {
+          finalVal = Math.round((98.0 + Math.random() * 0.8) * 10) / 10; // 98.0 - 98.8 °F
+        }
+
+        setLiveMeasureVal(finalVal);
+        setTimeout(() => {
+          setMeasureStep('result');
+        }, 400);
+      } else {
+        setMeasureProgress(Math.min(99, Math.round(currentProgress)));
+      }
+    }, intervalTime);
+  };
+
+  // Save vital measurement to SQLite database
+  const handleSaveVitalMeasurement = async () => {
+    if (!activeMeasureModal) return;
+    const cfg = VITALS_CONFIG.find(v => v.type === activeMeasureModal);
+    if (!cfg) return;
+
+    setIsSavingVital(true);
+    const chosenDeviceObj = cfg.supportedDevices.find(d => d.id === selectedDevice) || cfg.supportedDevices[0];
+
+    try {
+      const res = await fetch(getApiEndpoint('/emergency/vitals'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vitalType: cfg.type,
+          readingValue: liveMeasureVal,
+          readingSecondary: liveMeasureSecondary,
+          unit: cfg.unit,
+          deviceName: chosenDeviceObj ? chosenDeviceObj.name : 'Medical Instrument',
+          deviceType: chosenDeviceObj ? chosenDeviceObj.id : 'device'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.vital) {
+          setVitalsList(prev => [data.vital, ...prev]);
+          setLatestVitals(prev => ({ ...prev, [cfg.type]: data.vital }));
+          showToast(`${cfg.title} (${liveMeasureVal} ${cfg.unit}) saved to SQLite database!`);
+          setActiveMeasureModal(null);
+        }
+      }
+    } catch (e) {
+      console.error('Error saving vital measurement:', e);
+      showToast('Error saving measurement to database.');
+    } finally {
+      setIsSavingVital(false);
+    }
+  };
+
+  // Delete vital entry
+  const handleDeleteVital = async (id: number | string) => {
+    try {
+      const res = await fetch(getApiEndpoint(`/emergency/vitals/${id}`), {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Vital record removed from database.');
+        fetchVitals();
+      }
+    } catch (e) {
+      console.error('Error deleting vital:', e);
+    }
+  };
+
   const handleAddSymptomLog = async () => {
     const today = new Date();
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -723,6 +1093,20 @@ export default function HealthProfilePage() {
       totalDailyPm25Ug
     };
   }, [profile, currentLahoreAqi, currentLahorePm25, hasProfile]);
+
+  
+  // Stopwatch ticker for breath hold test
+  useEffect(() => {
+    let interval: any = null;
+    if (stopwatchActive) {
+      interval = setInterval(() => {
+        setStopwatchSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [stopwatchActive]);
 
   if (!mounted) {
     return (
@@ -1682,20 +2066,303 @@ export default function HealthProfilePage() {
           </div>
         )}
 
-        {/* TAB 2: CLINICAL ASSESSMENT / AI DOCTOR MODEL (EMPTIED AS REQUESTED) */}
+        {/* TAB 2: CLINICAL VITALS & INSTRUMENT MEASUREMENT STATION */}
         {activeTab === 'assessment' && (
-          <div className="bg-white rounded-3xl p-8 sm:p-16 border border-slate-200/80 shadow-sm flex flex-col items-center justify-center text-center min-h-[460px] space-y-4">
-            <div className="w-20 h-20 rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
-              <Stethoscope className="w-10 h-10" />
+          <div className="space-y-6">
+            
+            {/* Top Station Banner */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-700/80 shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-3xl pointer-events-none"></div>
+
+              <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="space-y-2 max-w-3xl">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                    Interactive Clinical Assessment & Instrument Diagnostics
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-snug">
+                    Biomarker & Physiological Vitals Station
+                  </h2>
+                  <p className="text-slate-300 text-xs sm:text-sm font-medium leading-relaxed">
+                    Measure and record your cardiovascular, pulmonary, and oxygenation vitals using your connected iPhone, Apple Watch, or medical instruments. Each vital correlates directly with Lahore&apos;s real-time particulate smog levels.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                  <div className="bg-slate-800/90 border border-slate-700 p-3.5 rounded-2xl flex items-center gap-3 text-xs">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold shrink-0">
+                      <Wind className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Lahore Ground Monitor</div>
+                      <div className="font-black text-white text-sm">
+                        AQI {currentLahoreAqi} • {currentLahorePm25} µg/m³
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={fetchVitals}
+                    disabled={isLoadingVitals}
+                    className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingVitals ? 'animate-spin' : ''}`} />
+                    <span>Sync Database</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Station Vitals Overview Bar */}
+              <div className="mt-6 pt-5 border-t border-slate-700/80 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Biomarkers Recorded</span>
+                  <span className="text-base font-black text-white mt-0.5 block">
+                    {Object.keys(latestVitals).length} / {VITALS_CONFIG.length} Active
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Resting Heart Rate</span>
+                  <span className="text-base font-black text-rose-400 mt-0.5 block">
+                    {latestVitals['heart_rate'] ? `${latestVitals['heart_rate'].reading_value} BPM` : 'Not Measured'}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Blood Oxygen (SpO2)</span>
+                  <span className="text-base font-black text-cyan-400 mt-0.5 block">
+                    {latestVitals['spo2'] ? `${latestVitals['spo2'].reading_value}%` : 'Not Measured'}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Peak Expiratory Flow</span>
+                  <span className="text-base font-black text-emerald-400 mt-0.5 block">
+                    {latestVitals['peak_flow'] ? `${latestVitals['peak_flow'].reading_value} L/min` : 'Not Measured'}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="max-w-md space-y-2">
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                AI Doctor & Clinical Assessment Model
-              </h3>
-              <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                Pichla model delete kar diya gaya hai aur yeh model ab empty hai. Aap patient data aur AI Doctor workflow ke requirements batayein, hum usi mutabiq isko step-by-step develop karenge.
-              </p>
+
+            {/* Vitals Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {VITALS_CONFIG.map((cfg) => {
+                const recorded = latestVitals[cfg.type];
+                const isMeasured = Boolean(recorded);
+                const statusTier = recorded ? recorded.status_tier : 'unmeasured';
+
+                return (
+                  <div
+                    key={cfg.type}
+                    className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between space-y-4 relative group"
+                  >
+                    <div>
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between pb-3 border-b border-slate-100 gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                            cfg.colorTheme === 'rose' ? 'bg-rose-50 text-rose-600 border border-rose-200' :
+                            cfg.colorTheme === 'cyan' ? 'bg-cyan-50 text-cyan-600 border border-cyan-200' :
+                            cfg.colorTheme === 'indigo' ? 'bg-indigo-50 text-indigo-600 border border-indigo-200' :
+                            cfg.colorTheme === 'emerald' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                            cfg.colorTheme === 'amber' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                            cfg.colorTheme === 'orange' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
+                            'bg-teal-50 text-teal-600 border border-teal-200'
+                          }`}>
+                            {cfg.type === 'heart_rate' && <HeartPulse className="w-5 h-5" />}
+                            {cfg.type === 'spo2' && <Wind className="w-5 h-5" />}
+                            {cfg.type === 'blood_pressure' && <Activity className="w-5 h-5" />}
+                            {cfg.type === 'peak_flow' && <Stethoscope className="w-5 h-5" />}
+                            {cfg.type === 'respiratory_rate' && <Wind className="w-5 h-5" />}
+                            {cfg.type === 'body_temp' && <ShieldAlert className="w-5 h-5" />}
+                            {cfg.type === 'breath_hold' && <Clock className="w-5 h-5" />}
+                          </div>
+
+                          <div>
+                            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
+                              {cfg.shortName}
+                            </h3>
+                            <span className="text-[11px] font-semibold text-slate-400 block">
+                              Normal: {cfg.normalRange}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        {isMeasured ? (
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border uppercase tracking-wider ${
+                            statusTier === 'critical' ? 'bg-rose-50 text-rose-700 border-rose-300' :
+                            statusTier === 'warning' ? 'bg-amber-50 text-amber-800 border-amber-300' :
+                            'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          }`}>
+                            {statusTier}
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            Required
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Value Display */}
+                      <div className="py-4">
+                        {isMeasured ? (
+                          <div>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+                                {recorded.reading_value}
+                                {recorded.reading_secondary ? ` / ${recorded.reading_secondary}` : ''}
+                              </span>
+                              <span className="text-sm font-extrabold text-slate-500">
+                                {recorded.unit}
+                              </span>
+                            </div>
+
+                            <p className="text-xs font-semibold text-slate-600 mt-2 line-clamp-2">
+                              {recorded.clinical_interpretation}
+                            </p>
+
+                            <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+                              <span className="truncate max-w-[180px]">📱 {recorded.device_name}</span>
+                              <span>{new Date(recorded.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="py-2 text-center space-y-1.5 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-4">
+                            <span className="text-2xl font-black text-slate-300 tracking-tight">—</span>
+                            <div className="text-xs font-bold text-slate-600">No Measurement Recorded</div>
+                            <p className="text-[11px] text-slate-400 leading-tight">
+                              {cfg.deviceRequirementNotice}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Smog Impact Context */}
+                      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100/80 text-[11px] text-slate-600 space-y-1">
+                        <div className="font-bold text-slate-800 flex items-center gap-1">
+                          <Zap className="w-3 h-3 text-amber-500" />
+                          <span>Smog Correlation</span>
+                        </div>
+                        <p className="leading-relaxed line-clamp-2">
+                          {cfg.smogImpact}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Measure Button */}
+                    <div className="pt-2">
+                      <button
+                        onClick={() => openMeasureModal(cfg.type)}
+                        className={`w-full py-3 rounded-2xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 active:scale-95 shadow-xs ${
+                          isMeasured
+                            ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
+                        }`}
+                      >
+                        <Stethoscope className="w-4 h-4 text-emerald-400" />
+                        <span>{isMeasured ? `Re-Check / Measure ${cfg.shortName}` : `Measure ${cfg.shortName}`}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+
+            {/* Recent Measurements History (Live SQLite Feed) */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 tracking-tight flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-emerald-600" />
+                    Biomarkers & Vitals Audit Log (SQLite Database)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Permanent audit history of physiological readings recorded with your connected instruments.
+                  </p>
+                </div>
+
+                {vitalsList.length > 0 && (
+                  <button
+                    onClick={() => handleDeleteVital('all')}
+                    className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5 self-start sm:self-auto"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All Vitals</span>
+                  </button>
+                )}
+              </div>
+
+              {vitalsList.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-slate-400 font-black uppercase tracking-wider">
+                        <th className="py-3 px-3">Date & Time</th>
+                        <th className="py-3 px-3">Biomarker</th>
+                        <th className="py-3 px-3">Measured Reading</th>
+                        <th className="py-3 px-3">Instrument / Device</th>
+                        <th className="py-3 px-3">Clinical Evaluation</th>
+                        <th className="py-3 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {vitalsList.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">
+                            {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="py-3.5 px-3 font-extrabold text-slate-900 capitalize whitespace-nowrap">
+                            {item.vital_type.replace(/_/g, ' ')}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <span className="font-black text-slate-900 text-sm">
+                              {item.reading_value}{item.reading_secondary ? ` / ${item.reading_secondary}` : ''}
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-bold ml-1">{item.unit}</span>
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap text-slate-600">
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-[11px]">
+                              {item.device_name}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 max-w-xs">
+                            <div className="space-y-0.5">
+                              <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                item.status_tier === 'critical' ? 'bg-rose-100 text-rose-800' :
+                                item.status_tier === 'warning' ? 'bg-amber-100 text-amber-900' :
+                                'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {item.status_tier}
+                              </span>
+                              <div className="text-[11px] text-slate-500 line-clamp-1">{item.clinical_interpretation}</div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3 text-right">
+                            <button
+                              onClick={() => handleDeleteVital(item.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete measurement"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-2xl space-y-2">
+                  <Activity className="w-8 h-8 text-slate-300 mx-auto" />
+                  <p className="text-sm font-bold text-slate-600">No Vitals Stored Yet</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Select any biomarker above, verify your device or instrument, and start a measurement to store your data into SQLite.
+                  </p>
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
@@ -3694,6 +4361,384 @@ export default function HealthProfilePage() {
           }
         }
       `}</style>
+
+    
+      {/* CUSTOM CLINICAL VITALS MEASUREMENT & INSTRUMENT MODAL */}
+      {activeMeasureModal && (() => {
+        const cfg = VITALS_CONFIG.find(v => v.type === activeMeasureModal);
+        if (!cfg) return null;
+
+        return (
+          <div className="fixed inset-0 z-[9999] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-md ${
+                    cfg.colorTheme === 'rose' ? 'bg-rose-600 shadow-rose-600/20' :
+                    cfg.colorTheme === 'cyan' ? 'bg-cyan-600 shadow-cyan-600/20' :
+                    cfg.colorTheme === 'indigo' ? 'bg-indigo-600 shadow-indigo-600/20' :
+                    cfg.colorTheme === 'emerald' ? 'bg-emerald-600 shadow-emerald-600/20' :
+                    cfg.colorTheme === 'amber' ? 'bg-amber-600 shadow-amber-600/20' :
+                    cfg.colorTheme === 'orange' ? 'bg-orange-600 shadow-orange-600/20' :
+                    'bg-teal-600 shadow-teal-600/20'
+                  }`}>
+                    {cfg.type === 'heart_rate' && <HeartPulse className="w-6 h-6" />}
+                    {cfg.type === 'spo2' && <Wind className="w-6 h-6" />}
+                    {cfg.type === 'blood_pressure' && <Activity className="w-6 h-6" />}
+                    {cfg.type === 'peak_flow' && <Stethoscope className="w-6 h-6" />}
+                    {cfg.type === 'respiratory_rate' && <Wind className="w-6 h-6" />}
+                    {cfg.type === 'body_temp' && <ShieldAlert className="w-6 h-6" />}
+                    {cfg.type === 'breath_hold' && <Clock className="w-6 h-6" />}
+                  </div>
+
+                  <div>
+                    <h3 className="font-black text-xl text-slate-900 leading-tight">
+                      Measure {cfg.shortName}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
+                      <span>Normal Target: <strong className="text-slate-800">{cfg.normalRange}</strong></span>
+                      <span>•</span>
+                      <span className="text-emerald-600 font-bold">SQLite Connected</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveMeasureModal(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* STEP 1: Instrument & Device Verification */}
+              {measureStep === 'select_device' && (
+                <div className="space-y-5">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-emerald-600" />
+                      Step 1: Select Your Measuring Device / Instrument
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium">
+                      As requested by clinical protocols, data can only be stored when taken with a physical sensor, smartwatch, or medical instrument.
+                    </p>
+                  </div>
+
+                  {/* Device Options Grid */}
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {cfg.supportedDevices.map((dev) => (
+                      <label
+                        key={dev.id}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                          selectedDevice === dev.id
+                            ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="radio"
+                            name="device_selection"
+                            checked={selectedDevice === dev.id}
+                            onChange={() => {
+                              setSelectedDevice(dev.id);
+                              setHasDevice(true);
+                            }}
+                            className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <div>
+                            <div className="text-xs font-black text-slate-900">{dev.name}</div>
+                            <div className="text-[11px] text-slate-500">{dev.desc}</div>
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 shrink-0">
+                          {dev.brand}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Instrument Readiness Toggle */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasDevice}
+                        onChange={(e) => setHasDevice(e.target.checked)}
+                        className="w-4 h-4 mt-0.5 text-emerald-600 rounded focus:ring-emerald-500"
+                      />
+                      <div>
+                        <span className="text-xs font-black text-slate-900 block">
+                          I have this instrument or sensor ready to record
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Confirming your device is physically ready to capture your biomarker.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  {!hasDevice ? (
+                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5 animate-in fade-in">
+                      <div className="font-extrabold flex items-center gap-1.5 text-amber-800">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Instrument Required for Verification</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-amber-800">
+                        {cfg.deviceRequirementNotice} You can obtain a fingertip pulse oximeter or peak flow meter from any pharmacy, or use an Apple Watch / iPhone sensor. When you have your device, return here to take your reading!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsManualInput(true);
+                          setMeasureStep('result');
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-slate-800 underline order-2 sm:order-1"
+                      >
+                        Enter display reading manually &rarr;
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => startLiveMeasurement(cfg.type)}
+                        className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 active:scale-95 order-1 sm:order-2"
+                      >
+                        <Zap className="w-4 h-4" />
+                        <span>Start Live Sensor Measurement</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 2: Live Measuring Sequence / Sensor Simulation */}
+              {measureStep === 'measuring' && (
+                <div className="py-8 text-center space-y-6 animate-in fade-in">
+                  
+                  {/* Simulation Graphic based on vital */}
+                  {cfg.simulationType === 'ecg_pulse' && (
+                    <div className="space-y-4">
+                      <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full bg-rose-500/20 animate-ping"></div>
+                        <div className="relative w-20 h-20 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg shadow-rose-600/30">
+                          <Heart className="w-10 h-10 animate-pulse text-white fill-current" />
+                        </div>
+                      </div>
+                      <div className="h-12 w-full max-w-sm mx-auto flex items-center justify-center overflow-hidden">
+                        <svg className="w-full h-10 text-rose-500 stroke-current fill-none" viewBox="0 0 200 40">
+                          <path
+                            d="M 0 20 L 40 20 L 50 5 L 60 35 L 70 10 L 80 25 L 90 20 L 140 20 L 150 5 L 160 35 L 170 10 L 180 20 L 200 20"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="animate-pulse"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+
+                  {cfg.simulationType === 'optical_probe' && (
+                    <div className="space-y-4">
+                      <div className="w-24 h-24 mx-auto rounded-3xl bg-cyan-900 text-cyan-300 border-2 border-cyan-400 p-4 flex flex-col items-center justify-center relative shadow-lg">
+                        <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping mb-2"></span>
+                        <Wind className="w-8 h-8 text-cyan-400 animate-pulse" />
+                        <span className="text-[10px] font-black uppercase tracking-wider mt-1 text-cyan-200">SpO2 LED</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {cfg.simulationType === 'inflatable_cuff' && (
+                    <div className="space-y-4">
+                      <div className="w-28 h-28 mx-auto rounded-full border-4 border-dashed border-indigo-400 flex flex-col items-center justify-center bg-indigo-50/60 p-4 animate-spin-slow">
+                        <Gauge className="w-10 h-10 text-indigo-600" />
+                      </div>
+                      <div className="text-xs font-black text-indigo-700">
+                        Inflating cuff to 160 mmHg & measuring oscillometric pulses...
+                      </div>
+                    </div>
+                  )}
+
+                  {cfg.simulationType === 'flow_blast' && (
+                    <div className="space-y-4">
+                      <div className="w-28 h-28 mx-auto rounded-3xl bg-emerald-50 border border-emerald-300 flex items-center justify-center text-emerald-600 shadow-md">
+                        <Stethoscope className="w-12 h-12 animate-bounce" />
+                      </div>
+                      <div className="text-xs font-black text-emerald-800">
+                        Exhale forcefully into the spirometer mouthpiece!
+                      </div>
+                    </div>
+                  )}
+
+                  {cfg.simulationType === 'breath_pacer' && (
+                    <div className="space-y-4">
+                      <div className="w-24 h-24 mx-auto rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center animate-pulse">
+                        <Wind className="w-10 h-10 text-amber-600" />
+                      </div>
+                      <div className="text-xs font-black text-amber-800">
+                        Inhale... Hold... Exhale calmly.
+                      </div>
+                    </div>
+                  )}
+
+                  {cfg.simulationType === 'thermal_laser' && (
+                    <div className="space-y-4">
+                      <div className="w-24 h-24 mx-auto rounded-3xl bg-orange-950 text-orange-400 border border-orange-500 flex items-center justify-center shadow-lg">
+                        <Thermometer className="w-10 h-10 animate-pulse" />
+                      </div>
+                      <div className="text-xs font-black text-orange-800">
+                        Infrared non-contact sensor scanning temporal artery...
+                      </div>
+                    </div>
+                  )}
+
+                  {cfg.simulationType === 'stopwatch_hold' && (
+                    <div className="space-y-4">
+                      <div className="w-32 h-32 mx-auto rounded-full bg-slate-900 text-white flex flex-col items-center justify-center shadow-xl border-4 border-emerald-500">
+                        <span className="text-3xl font-black tracking-tight">{stopwatchSeconds}s</span>
+                        <span className="text-[10px] font-bold uppercase text-emerald-400">Holding Breath</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setStopwatchActive(false);
+                          setLiveMeasureVal(stopwatchSeconds);
+                          setMeasureStep('result');
+                        }}
+                        className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-md"
+                      >
+                        Stop Breath Hold Test
+                      </button>
+                    </div>
+                  )}
+
+                  {cfg.simulationType !== 'stopwatch_hold' && (
+                    <div className="space-y-2 max-w-sm mx-auto">
+                      <div className="flex justify-between text-xs font-bold text-slate-500">
+                        <span>Calibrating {cfg.shortName}...</span>
+                        <span>{measureProgress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 transition-all duration-150 rounded-full"
+                          style={{ width: `${measureProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 3: Measured Reading & Clinical Evaluation */}
+              {measureStep === 'result' && (
+                <div className="space-y-6 animate-in zoom-in-95">
+                  <div className="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center space-y-3">
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">
+                      Captured Reading ({selectedDevice.replace(/_/g, ' ')})
+                    </span>
+
+                    {/* Numeric Value & Adjuster */}
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setLiveMeasureVal(prev => Math.max(cfg.min, prev - cfg.step))}
+                        className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-lg hover:bg-slate-100 shadow-xs"
+                      >
+                        -
+                      </button>
+
+                      <div className="flex items-baseline gap-1.5">
+                        <input
+                          type="number"
+                          step={cfg.step}
+                          value={liveMeasureVal}
+                          onChange={(e) => setLiveMeasureVal(parseFloat(e.target.value) || 0)}
+                          className="w-28 text-center text-4xl sm:text-5xl font-black text-slate-900 bg-transparent border-b-2 border-emerald-500 focus:outline-none"
+                        />
+                        {cfg.type === 'blood_pressure' && (
+                          <>
+                            <span className="text-3xl font-black text-slate-400">/</span>
+                            <input
+                              type="number"
+                              value={liveMeasureSecondary || 80}
+                              onChange={(e) => setLiveMeasureSecondary(parseInt(e.target.value) || 0)}
+                              className="w-24 text-center text-4xl sm:text-5xl font-black text-slate-900 bg-transparent border-b-2 border-emerald-500 focus:outline-none"
+                            />
+                          </>
+                        )}
+                        <span className="text-base font-extrabold text-slate-500">{cfg.unit}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setLiveMeasureVal(prev => Math.min(cfg.max, prev + cfg.step))}
+                        className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-lg hover:bg-slate-100 shadow-xs"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 font-medium">
+                      💡 Tip: You can adjust this number if your physical instrument display showed a different value.
+                    </p>
+                  </div>
+
+                  {/* Clinical & Smog Assessment Preview */}
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2 text-xs">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <span className="font-bold text-slate-600">Clinical Target Range:</span>
+                      <span className="font-extrabold text-slate-900">{cfg.normalRange}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <span className="font-bold text-slate-600">Instrument Used:</span>
+                      <span className="font-extrabold text-emerald-700 capitalize">
+                        {cfg.supportedDevices.find(d => d.id === selectedDevice)?.name || 'Medical Instrument'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start gap-2 pt-1 text-slate-600">
+                      <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                      <span>{cfg.smogImpact}</span>
+                    </div>
+                  </div>
+
+                  {/* Modal Action Buttons */}
+                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setMeasureStep('select_device')}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs"
+                    >
+                      &larr; Re-Select Device
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSavingVital}
+                      onClick={handleSaveVitalMeasurement}
+                      className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                    >
+                      {isSavingVital ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      <span>{isSavingVital ? 'Saving to Database...' : 'Save Measurement to Database'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

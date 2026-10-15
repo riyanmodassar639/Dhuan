@@ -357,6 +357,28 @@ async function initDatabase() {
     )
   `);
 
+  // 17. User Clinical Vitals & Instrument Measurements Table
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS user_clinical_vitals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      vital_type TEXT NOT NULL,
+      reading_value REAL NOT NULL,
+      reading_secondary REAL,
+      unit TEXT NOT NULL,
+      device_name TEXT NOT NULL,
+      device_type TEXT NOT NULL,
+      status_tier TEXT NOT NULL DEFAULT 'normal',
+      clinical_interpretation TEXT,
+      smog_correlation_notes TEXT,
+      recorded_aqi INTEGER,
+      recorded_pm25 REAL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  try { await dbRun('ALTER TABLE user_health_profiles ADD COLUMN latest_vitals_json TEXT'); } catch (e) {}
+
   // Seed default authentic Lahore data if empty
   const metricsCount = await dbGet('SELECT COUNT(*) as count FROM dashboard_metrics');
   if (metricsCount.count === 0) {

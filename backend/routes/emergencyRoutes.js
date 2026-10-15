@@ -838,4 +838,247 @@ router.post('/consents', async (req, res) => {
   }
 });
 
+// 7. Clinical Vitals & Instrument Measurements Endpoints
+router.get('/vitals', async (req, res) => {
+  try {
+    const userId = req.query.userId || 'default_user';
+
+    // Get live ambient context
+    let liveAqi = 81;
+    let livePm25 = 25.2;
+    try {
+      const overview = await getDashboardOverviewData();
+      if (overview && overview.metrics) {
+        if (typeof overview.metrics.current_aqi === 'number') liveAqi = overview.metrics.current_aqi;
+        if (typeof overview.metrics.pm25_level === 'number') livePm25 = overview.metrics.pm25_level;
+      }
+    } catch (e) {}
+
+    // Fetch vitals history
+    const history = await dbAll(
+      'SELECT * FROM user_clinical_vitals WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50',
+      [userId]
+    );
+
+    // Group latest reading for each vital type
+    const latestMap = {};
+    for (const item of history) {
+      if (!latestMap[item.vital_type]) {
+        latestMap[item.vital_type] = item;
+      }
+    }
+
+    res.json({
+      success: true,
+      latestVitals: latestMap,
+      history,
+      ambient: {
+        aqi: liveAqi,
+        pm25: livePm25
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching clinical vitals:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/vitals', async (req, res) => {
+  try {
+    const {
+      userId = 'default_user',
+      vitalType,
+      readingValue,
+      readingSecondary = null,
+      unit,
+      deviceName = 'Smart Instrument / iPhone',
+      deviceType = 'apple_health'
+    } = req.body || {};
+
+    if (!vitalType || typeof readingValue !== 'number') {
+      return res.status(400).json({ success: false, error: 'vitalType and numeric readingValue are required.' });
+    }
+
+    // Get live ambient smog
+    let liveAqi = 81;
+    let livePm25 = 25.2;
+    try {
+      const overview = await getDashboardOverviewData();
+      if (overview && overview.metrics) {
+        if (typeof overview.metrics.current_aqi === 'number') liveAqi = overview.metrics.current_aqi;
+        if (typeof overview.metrics.pm25_level === 'number') livePm25 = overview.metrics.pm25_level;
+      }
+    } catch (e) {}
+
+    // Evaluate clinical status & smog correlation
+    let statusTier = 'normal';
+    let clinicalInterpretation = '';
+    let smogCorrelationNotes = '';
+
+    if (vitalType === 'heart_rate') {
+      if (readingValue >= 120 || readingValue < 50) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Severe Tachycardia / Bradycardia (${readingValue} BPM).`;
+        smogCorrelationNotes = `High ambient PM2.5 (${livePm25} µg/m³) strains cardiac output. Rest in filtered indoor air.`;
+      } else if (readingValue > 100) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Elevated Pulse (${readingValue} BPM - Mild Tachycardia).`;
+        smogCorrelationNotes = `Lahore particulate matter stimulates autonomic sympathetic response, raising heart rate.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Normal Resting Pulse (${readingValue} BPM).`;
+        smogCorrelationNotes = `Cardiac rhythm is currently stable at live AQI ${liveAqi}.`;
+      }
+    } else if (vitalType === 'spo2') {
+      if (readingValue < 90) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Severe Hypoxia Alert (${readingValue}% SpO2).`;
+        smogCorrelationNotes = `Deep bronchial soot penetration is impairing oxygen transfer. Seek immediate medical assistance or supplemental oxygen.`;
+      } else if (readingValue < 95) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Mild Smog Hypoxia (${readingValue}% SpO2). Below normal 95% threshold.`;
+        smogCorrelationNotes = `Elevated particulate levels are constricting peripheral bronchioles. Strictly wear N95 outdoors.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Optimal Arterial Blood Oxygen (${readingValue}% SpO2).`;
+        smogCorrelationNotes = `Alveolar oxygen diffusion is performing well despite atmospheric haze.`;
+      }
+    } else if (vitalType === 'blood_pressure') {
+      const sys = readingValue;
+      const dia = readingSecondary || 80;
+      if (sys >= 140 || dia >= 90) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Stage 2 Hypertension (${sys}/${dia} mmHg).`;
+        smogCorrelationNotes = `Fine PM2.5 triggers systemic vascular endothelial inflammation, driving acute arterial pressure spikes.`;
+      } else if (sys >= 120 || dia >= 80) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Pre-Hypertension (${sys}/${dia} mmHg).`;
+        smogCorrelationNotes = `Moderate vascular vasoconstriction detected under Lahore ambient smog.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Normal Healthy Blood Pressure (${sys}/${dia} mmHg).`;
+        smogCorrelationNotes = `Cardiovascular arterial pressure is well-regulated.`;
+      }
+    } else if (vitalType === 'peak_flow') {
+      if (readingValue < 300) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Severe Airway Obstruction (${readingValue} L/min).`;
+        smogCorrelationNotes = `Extreme bronchial narrowing. Immediate rescue inhaler (bronchodilator) strongly recommended.`;
+      } else if (readingValue < 400) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Moderate Bronchospasm (${readingValue} L/min).`;
+        smogCorrelationNotes = `Inhaled particulate soot has reduced lung expiratory velocity by ~25%.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Optimal Expiratory Flow (${readingValue} L/min).`;
+        smogCorrelationNotes = `Large bronchial airways show clear ventilation and low airway resistance.`;
+      }
+    } else if (vitalType === 'respiratory_rate') {
+      if (readingValue > 28 || readingValue < 10) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Respiratory Distress (${readingValue} breaths/min).`;
+        smogCorrelationNotes = `Abnormal respiratory cadence under high pollution. Rest indoors with HEPA purification.`;
+      } else if (readingValue > 20) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Tachypnea / Rapid Breathing (${readingValue} breaths/min).`;
+        smogCorrelationNotes = `Airway micro-irritants are causing compensatory rapid shallow breathing.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Normal Resting Respiration (${readingValue} breaths/min).`;
+        smogCorrelationNotes = `Breathing frequency is within standard physiological parameters.`;
+      }
+    } else if (vitalType === 'body_temp') {
+      if (readingValue > 100.4) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Fever Detected (${readingValue} °F).`;
+        smogCorrelationNotes = `Possible secondary bacterial/viral respiratory tract infection exacerbated by particulate exposure.`;
+      } else if (readingValue > 99.0) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Low-Grade Temperature Elevation (${readingValue} °F).`;
+        smogCorrelationNotes = `Airway mucosal inflammation or early immune reaction to airborne irritants.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Normal Core Temperature (${readingValue} °F).`;
+        smogCorrelationNotes = `No systemic thermoregulatory disturbance detected.`;
+      }
+    } else if (vitalType === 'breath_hold') {
+      if (readingValue < 20) {
+        statusTier = 'critical';
+        clinicalInterpretation = `Severe Airway Hyper-reactivity (${readingValue}s hold time).`;
+        smogCorrelationNotes = `Significantly compromised lung reserve capacity due to particulate soot exposure.`;
+      } else if (readingValue < 30) {
+        statusTier = 'warning';
+        clinicalInterpretation = `Moderate Lung Sensitivity (${readingValue}s hold time).`;
+        smogCorrelationNotes = `Airway irritation triggers premature cough reflex during breath-holding.`;
+      } else {
+        statusTier = 'normal';
+        clinicalInterpretation = `Optimal Breath Hold Capacity (${readingValue}s hold time).`;
+        smogCorrelationNotes = `Lung diaphragm and alveolar volume are in healthy condition.`;
+      }
+    }
+
+    const result = await dbRun(`
+      INSERT INTO user_clinical_vitals (
+        user_id, vital_type, reading_value, reading_secondary, unit,
+        device_name, device_type, status_tier, clinical_interpretation,
+        smog_correlation_notes, recorded_aqi, recorded_pm25
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      userId,
+      vitalType,
+      readingValue,
+      readingSecondary,
+      unit,
+      deviceName,
+      deviceType,
+      statusTier,
+      clinicalInterpretation,
+      smogCorrelationNotes,
+      liveAqi,
+      livePm25
+    ]);
+
+    const newRecord = {
+      id: result.lastID,
+      user_id: userId,
+      vital_type: vitalType,
+      reading_value: readingValue,
+      reading_secondary: readingSecondary,
+      unit,
+      device_name: deviceName,
+      device_type: deviceType,
+      status_tier: statusTier,
+      clinical_interpretation: clinicalInterpretation,
+      smog_correlation_notes: smogCorrelationNotes,
+      recorded_aqi: liveAqi,
+      recorded_pm25: livePm25,
+      created_at: new Date().toISOString()
+    };
+
+    res.json({
+      success: true,
+      vital: newRecord,
+      message: 'Clinical measurement recorded into SQLite database.'
+    });
+  } catch (err) {
+    console.error('Error saving clinical vital:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/vitals/:id', async (req, res) => {
+  try {
+    const userId = req.query.userId || 'default_user';
+    const id = req.params.id;
+    if (id === 'all') {
+      await dbRun('DELETE FROM user_clinical_vitals WHERE user_id = ?', [userId]);
+      return res.json({ success: true, message: 'All vitals history cleared.' });
+    }
+    await dbRun('DELETE FROM user_clinical_vitals WHERE id = ? AND user_id = ?', [id, userId]);
+    res.json({ success: true, message: 'Vital entry deleted.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
