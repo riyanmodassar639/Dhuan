@@ -47,11 +47,15 @@ function MobileProbeContent() {
   const lastStreamPostRef = useRef<number>(0);
   const lastTapRef = useRef<number>(0);
 
-  // PPG Algorithm Refs
-  const ppgHistoryRef = useRef<number[]>([]);
+  // PPG Algorithm Refs & Clinical Filters
   const lastPeakTimeRef = useRef<number>(0);
   const peakTimesRef = useRef<number[]>([]);
   const totalBpmAccumRef = useRef<number[]>([]);
+  const smoothValRef = useRef<number>(0);
+  const baselineValRef = useRef<number>(0);
+  const prevWaveValRef = useRef<number>(0);
+  const waveCycleMaxRef = useRef<number>(0);
+  const isRisingRef = useRef<boolean>(false);
 
   const vitalConfig = {
     heart_rate: {
@@ -159,9 +163,14 @@ function MobileProbeContent() {
     setLiveBpm(0);
     setIsTouchingBody(false);
     setErrorMessage(null);
-    ppgHistoryRef.current = [];
+    lastPeakTimeRef.current = 0;
     peakTimesRef.current = [];
     totalBpmAccumRef.current = [];
+    smoothValRef.current = 0;
+    baselineValRef.current = 0;
+    prevWaveValRef.current = 0;
+    waveCycleMaxRef.current = 0;
+    isRisingRef.current = false;
 
     // 1. Verify mediaDevices availability
     if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -256,6 +265,14 @@ function MobileProbeContent() {
     canvas.height = sampleHeight;
 
     let currentProgress = 0;
+    smoothValRef.current = 0;
+    baselineValRef.current = 0;
+    prevWaveValRef.current = 0;
+    waveCycleMaxRef.current = 0;
+    isRisingRef.current = false;
+    lastPeakTimeRef.current = 0;
+    peakTimesRef.current = [];
+    totalBpmAccumRef.current = [];
 
     const loop = () => {
       if (!streamRef.current || !video.videoWidth) {
@@ -282,81 +299,108 @@ function MobileProbeContent() {
       const avgG = gSum / totalPixels;
       const avgB = bSum / totalPixels;
 
-      // 1. SKIN CONTACT DETECTION:
-      // Supports both torch-illuminated skin (Android) and ambient indoor lighting (iPhone WebKit without torch)
-      const redRatio = avgR / (avgG + avgB + 1);
-      const hasSkinContact = (avgR > 35 && redRatio > 1.2) || (avgR > 16 && avgR > avgG * 1.12 && avgR > avgB * 1.1);
+      // 1. ROBUST SKIN CONTACT DETECTION
+      // When finger covers camera lens & flash:
+      // Even if pressed tightly and bright/hot, red is the dominant channel or overall brightness with red >= blue
+      const hasSkinContact = (avgR > 25 && avgR >= avgB * 1.05) || (avgR > 60 && avgR >= avgG * 0.95);
 
       if (!hasSkinContact) {
         // Sensor is in ambient room air, NOT on body!
         setIsTouchingBody(false);
         setLiveBpm(0);
         setStatusMsg('⚠️ Waiting for skin touch! Place finger gently over rear camera lens & flash.');
-        postTelemetryUpdate(false, 0, currentProgress, wavePoints, false);
+        postTelemetryUpdate(false, 0, currentProgress, [], false);
+        animFrameRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      // Sensor is actively touching skin/body!
+      setIsTouchingBody(true);
+
+      // 2. CHROMINANCE PULSE SIGNAL EXTRACTION (PPG):
+      // Blood pulsations in capillaries modulate Green and Blue absorption relative to Red
+      const rawSignal = (avgR * 2) - avgG - avgB;
+
+      // Exponential Moving Average filter for clean baseline & noise rejection
+      if (smoothValRef.current === 0) {
+        smoothValRef.current = rawSignal;
+        baselineValRef.current = rawSignal;
       } else {
-        // Sensor is actively touching skin/body!
-        setIsTouchingBody(true);
-        setStatusMsg('🟢 Skin contact verified! Capturing physiological pulse beats...');
+        smoothValRef.current = smoothValRef.current * 0.65 + rawSignal * 0.35;
+        baselineValRef.current = baselineValRef.current * 0.95 + smoothValRef.current * 0.05;
+      }
 
-        // 2. OPTICAL PULSE SIGNAL EXTRACTION (PPG):
-        const rawPulseVal = 255 - avgG;
+      // AC Pulsatile wave
+      const acPulse = smoothValRef.current - baselineValRef.current;
 
-        ppgHistoryRef.current.push(rawPulseVal);
-        if (ppgHistoryRef.current.length > 50) {
-          ppgHistoryRef.current.shift();
+      // Live waveform visual point (normalized 10 - 100 for SVG/canvas wave)
+      const wavePoint = Math.max(10, Math.min(100, Math.round(acPulse * 5 + 50)));
+      setWavePoints(prev => [...prev.slice(-35), wavePoint]);
+
+      // 3. ROBUST SYSTOLIC PEAK DETECTION
+      const now = Date.now();
+      const prevWave = prevWaveValRef.current;
+
+      if (acPulse > prevWave) {
+        // Wave is ascending
+        isRisingRef.current = true;
+        if (acPulse > waveCycleMaxRef.current) {
+          waveCycleMaxRef.current = acPulse;
         }
+      } else if (isRisingRef.current && acPulse < prevWave) {
+        // Peak reached! Wave just turned downward
+        isRisingRef.current = false;
+        const peakVal = waveCycleMaxRef.current;
+        waveCycleMaxRef.current = 0;
 
-        // Add to wave visualization points
-        setWavePoints(prev => {
-          const next = [...prev, Math.round(rawPulseVal)];
-          return next.slice(-40);
-        });
-
-        // 3. SYSTOLIC PEAK DETECTION
-        const history = ppgHistoryRef.current;
-        if (history.length >= 7) {
-          const midIdx = history.length - 4;
-          const midVal = history[midIdx];
-          const isLocalMax = 
-            midVal > history[midIdx - 1] &&
-            midVal > history[midIdx - 2] &&
-            midVal > history[midIdx + 1] &&
-            midVal > history[midIdx + 2];
-
-          const now = Date.now();
-          const timeSinceLastPeak = now - lastPeakTimeRef.current;
-
-          // Realistic human heart rate range: 42 to 190 BPM (315ms to 1420ms interval)
-          if (isLocalMax && timeSinceLastPeak > 320 && timeSinceLastPeak < 1450) {
+        // Ensure peak is above minimum noise floor threshold
+        const minThreshold = Math.max(0.25, Math.abs(baselineValRef.current) * 0.002);
+        if (peakVal > minThreshold) {
+          if (lastPeakTimeRef.current === 0) {
+            // Anchor first beat time!
             lastPeakTimeRef.current = now;
-            peakTimesRef.current.push(timeSinceLastPeak);
-            if (peakTimesRef.current.length > 8) peakTimesRef.current.shift();
+          } else {
+            const timeSinceLastPeak = now - lastPeakTimeRef.current;
 
-            // Calculate instantaneous BPM
-            const avgInterval = peakTimesRef.current.reduce((a, b) => a + b, 0) / peakTimesRef.current.length;
-            const computedBpm = Math.round(60000 / avgInterval);
+            if (timeSinceLastPeak > 2200) {
+              // Long gap (finger lifted or moved), re-anchor beat time
+              lastPeakTimeRef.current = now;
+            } else if (timeSinceLastPeak >= 330 && timeSinceLastPeak <= 1500) {
+              // Valid physiological heart rate (40 - 180 BPM)
+              lastPeakTimeRef.current = now;
+              const instantBpm = Math.round(60000 / timeSinceLastPeak);
 
-            if (computedBpm >= 45 && computedBpm <= 180) {
-              setLiveBpm(computedBpm);
-              totalBpmAccumRef.current.push(computedBpm);
+              peakTimesRef.current.push(instantBpm);
+              if (peakTimesRef.current.length > 5) peakTimesRef.current.shift();
 
-              // Advance measurement progress with each verified pulse beat (approx 12-14 beats)
+              // Rolling median of recent beats for stable clinical accuracy
+              const sorted = [...peakTimesRef.current].sort((a, b) => a - b);
+              const stableBpm = sorted[Math.floor(sorted.length / 2)];
+
+              totalBpmAccumRef.current.push(stableBpm);
+              setLiveBpm(stableBpm);
+
+              // Advance progress: 8% per verified beat (~12-13 beats to complete, ~10-12 seconds)
               currentProgress = Math.min(100, currentProgress + 8);
               setProgress(currentProgress);
+              setStatusMsg(`🟢 Pulse beat detected: ${stableBpm} BPM (${currentProgress}%)`);
 
-              postTelemetryUpdate(true, computedBpm, currentProgress, history, currentProgress >= 100);
+              postTelemetryUpdate(true, stableBpm, currentProgress, [wavePoint], currentProgress >= 100);
 
               if (currentProgress >= 100) {
-                // Measurement Complete!
-                const validBeats = totalBpmAccumRef.current;
-                const finalBpm = validBeats.length > 0
-                  ? Math.round(validBeats.reduce((a, b) => a + b, 0) / validBeats.length)
-                  : computedBpm;
+                // Compute final trimmed mean for medical accuracy
+                const allBeats = totalBpmAccumRef.current;
+                const sortedAll = [...allBeats].sort((a, b) => a - b);
+                const trimCount = Math.floor(sortedAll.length * 0.15);
+                const trimmed = sortedAll.slice(trimCount, sortedAll.length - trimCount);
+                const finalBpm = trimmed.length > 0
+                  ? Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length)
+                  : stableBpm;
 
                 setFinalResult(finalBpm);
                 setIsComplete(true);
                 stopCamera();
-                postTelemetryUpdate(true, finalBpm, 100, history, true);
+                postTelemetryUpdate(true, finalBpm, 100, [wavePoint], true);
                 return;
               }
             }
@@ -364,6 +408,7 @@ function MobileProbeContent() {
         }
       }
 
+      prevWaveValRef.current = acPulse;
       animFrameRef.current = requestAnimationFrame(loop);
     };
 

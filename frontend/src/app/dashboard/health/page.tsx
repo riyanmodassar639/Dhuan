@@ -1483,12 +1483,17 @@ export default function HealthProfilePage() {
           const val = hist[mid];
           const isPeak = val > hist[mid - 1] && val > hist[mid - 2] && val > hist[mid + 1] && val > hist[mid + 2];
           const now = Date.now();
-          const dt = now - opticalLastPeakTimeRef.current;
-
-          if (isPeak && dt > 320 && dt < 1450) {
+          if (opticalLastPeakTimeRef.current === 0) {
             opticalLastPeakTimeRef.current = now;
-            opticalPeakTimesRef.current.push(dt);
-            if (opticalPeakTimesRef.current.length > 8) opticalPeakTimesRef.current.shift();
+          } else {
+            const dt = now - opticalLastPeakTimeRef.current;
+
+            if (dt > 2200) {
+              opticalLastPeakTimeRef.current = now;
+            } else if (isPeak && dt >= 320 && dt <= 1500) {
+              opticalLastPeakTimeRef.current = now;
+              opticalPeakTimesRef.current.push(dt);
+              if (opticalPeakTimesRef.current.length > 8) opticalPeakTimesRef.current.shift();
 
             const avgDt = opticalPeakTimesRef.current.reduce((a: number, b: number) => a + b, 0) / opticalPeakTimesRef.current.length;
             const bpm = Math.round(60000 / avgDt);
@@ -1513,6 +1518,7 @@ export default function HealthProfilePage() {
           }
         }
       }
+    }
 
       opticalAnimRef.current = requestAnimationFrame(loop);
     };
