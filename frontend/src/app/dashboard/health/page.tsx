@@ -1411,7 +1411,7 @@ export default function HealthProfilePage() {
               }
               setSelectedDevice('Smartphone Biometric Sensor');
               const readingStr = activeMeasureModal === 'blood_pressure'
-                ? `${data.session.liveValue} / ${data.session.liveSecondary || 78} mmHg`
+                ? `${data.session.liveValue} / ${data.session.liveSecondary || 0} mmHg`
                 : `${data.session.liveValue}`;
               showToast(`100% verified reading (${readingStr}) received from phone!`);
               setMeasureStep('result');
@@ -1425,7 +1425,7 @@ export default function HealthProfilePage() {
                   setLiveMeasureSecondary(data.session.liveSecondary);
                 }
                 const readingStr = activeMeasureModal === 'blood_pressure'
-                  ? `${data.session.liveValue} / ${data.session.liveSecondary || 78} mmHg`
+                  ? `${data.session.liveValue} / ${data.session.liveSecondary || 0} mmHg`
                   : `${data.session.liveValue}`;
                 showToast(`New updated measurement received from phone: ${readingStr}`);
               }
