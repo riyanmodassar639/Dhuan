@@ -468,15 +468,17 @@ export default function HealthProfilePage() {
   const [detectionErrorMsg, setDetectionErrorMsg] = useState<string | null>(null);
 
   // Dedicated Manual Input Form State (100% Genuine Physical Readouts from Mobile / BP Machine)
+  // Dedicated Manual Input Form State (Starts at 0 until measured by sensor or entered from gauge)
   const [manualGaugeModel, setManualGaugeModel] = useState<string>('Omron M3 / M2 Blood Pressure Monitor');
-  const [manualSystolic, setManualSystolic] = useState<number>(120);
-  const [manualDiastolic, setManualDiastolic] = useState<number>(80);
-  const [manualPulse, setManualPulse] = useState<number>(72);
-  const [manualSpO2, setManualSpO2] = useState<number>(98);
-  const [manualPEF, setManualPEF] = useState<number>(450);
-  const [manualRespiration, setManualRespiration] = useState<number>(16);
-  const [manualTemp, setManualTemp] = useState<number>(98.6);
-  const [manualBreathHold, setManualBreathHold] = useState<number>(35);
+  const [manualSystolic, setManualSystolic] = useState<number>(0);
+  const [manualDiastolic, setManualDiastolic] = useState<number>(0);
+  const [manualPulse, setManualPulse] = useState<number>(0);
+  const [manualSpO2, setManualSpO2] = useState<number>(0);
+  const [manualPEF, setManualPEF] = useState<number>(0);
+  const [manualRespiration, setManualRespiration] = useState<number>(0);
+  const [manualTemp, setManualTemp] = useState<number>(0);
+  const [manualBreathHold, setManualBreathHold] = useState<number>(0);
+  const [sensorContactState, setSensorContactState] = useState<'idle' | 'not_on_body' | 'contact_verified'>('idle');
 
   // Medical report adding form state
   const [newReport, setNewReport] = useState({
@@ -920,36 +922,37 @@ export default function HealthProfilePage() {
     setActiveMeasureModal(vitalType);
     setMeasureStep('detecting');
     setMeasureProgress(0);
-    setLiveMeasureVal(cfg.defaultValue);
-    setLiveMeasureSecondary(cfg.defaultSecondary);
+    setLiveMeasureVal(0);
+    setLiveMeasureSecondary(0);
     setIsManualInput(false);
     setStopwatchActive(false);
     setStopwatchSeconds(0);
+    setSensorContactState('idle');
 
-    // Populate baseline manual input values according to biomarker type
+    // Populate baseline manual input values (strictly 0 until measured or entered from gauge)
     if (vitalType === 'blood_pressure') {
       setManualGaugeModel('Omron M3 / M2 Blood Pressure Monitor');
-      setManualSystolic(120);
-      setManualDiastolic(80);
-      setManualPulse(72);
+      setManualSystolic(0);
+      setManualDiastolic(0);
+      setManualPulse(0);
     } else if (vitalType === 'heart_rate') {
-      setManualGaugeModel('Apple Watch / Optical Pulse Sensor');
-      setManualPulse(72);
+      setManualGaugeModel('Pulse Oximeter / Mobile Health App');
+      setManualPulse(0);
     } else if (vitalType === 'spo2') {
       setManualGaugeModel('Fingertip Pulse Oximeter (SpO2)');
-      setManualSpO2(98);
+      setManualSpO2(0);
     } else if (vitalType === 'peak_flow') {
       setManualGaugeModel('Philips / Mechanical Peak Flow Meter');
-      setManualPEF(450);
+      setManualPEF(0);
     } else if (vitalType === 'respiratory_rate') {
       setManualGaugeModel('Manual Inhalation Counter (60s)');
-      setManualRespiration(16);
+      setManualRespiration(0);
     } else if (vitalType === 'body_temp') {
       setManualGaugeModel('Digital Infrared Forehead Thermometer');
-      setManualTemp(98.6);
+      setManualTemp(0);
     } else if (vitalType === 'breath_hold') {
       setManualGaugeModel('DHUAN High-Precision Medical Stopwatch');
-      setManualBreathHold(35);
+      setManualBreathHold(0);
     }
 
     // Platform detection (Laptop vs Smartphone)
@@ -974,27 +977,73 @@ export default function HealthProfilePage() {
 
     setIsScanningBluetooth(true);
     setDetectionErrorMsg(null);
+    setSensorContactState('idle');
 
     let deviceDetected = false;
     let detectedName = '';
 
     try {
       if (typeof navigator !== 'undefined' && (navigator as any).bluetooth && typeof (navigator as any).bluetooth.requestDevice === 'function') {
-        // Attempt genuine Web Bluetooth device discovery (will prompt user with native browser picker)
+        // STRICT MEDICAL GATT FILTERS: ONLY scan for genuine medical health instruments.
+        // DO NOT accept random Bluetooth audio headphones, smart TVs, or mice!
+        let medicalFilters: any[] = [];
+        if (vitalType === 'heart_rate') {
+          medicalFilters = [{ services: ['heart_rate'] }];
+        } else if (vitalType === 'blood_pressure') {
+          medicalFilters = [{ services: ['blood_pressure'] }];
+        } else if (vitalType === 'spo2') {
+          medicalFilters = [{ services: ['pulse_oximeter'] }];
+        } else if (vitalType === 'body_temp') {
+          medicalFilters = [{ services: ['health_thermometer'] }];
+        } else {
+          medicalFilters = [
+            { services: ['heart_rate'] },
+            { services: ['blood_pressure'] },
+            { services: ['pulse_oximeter'] },
+            { services: ['health_thermometer'] }
+          ];
+        }
+
         const device = await (navigator as any).bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [
-            'heart_rate',
-            'health_thermometer',
-            'pulse_oximeter',
-            'blood_pressure',
-            'battery_service'
-          ]
+          filters: medicalFilters,
+          optionalServices: ['battery_service', 'device_information']
         });
 
         if (device && (device.name || device.id)) {
           deviceDetected = true;
-          detectedName = device.name || 'Bluetooth Medical Instrument';
+          detectedName = device.name || 'Bluetooth Medical Sensor';
+
+          // Attempt GATT connection to verify sensor contact with user's skin/body
+          try {
+            if (device.gatt) {
+              const server = await device.gatt.connect();
+              if (vitalType === 'heart_rate') {
+                const service = await server.getPrimaryService('heart_rate');
+                const char = await service.getCharacteristic('heart_rate_measurement');
+                await char.startNotifications();
+                char.addEventListener('characteristicvaluechanged', (e: any) => {
+                  const val = e.target.value;
+                  const flags = val.getUint8(0);
+                  const is16Bit = flags & 0x1;
+                  const contactSupported = (flags & 0x4) !== 0;
+                  const contactDetected = (flags & 0x6) === 0x6;
+                  const hr = is16Bit ? val.getUint16(1, true) : val.getUint8(1);
+
+                  if (contactSupported && !contactDetected) {
+                    // Sensor is NOT touching skin/body! Display 0.
+                    setManualPulse(0);
+                    setSensorContactState('not_on_body');
+                  } else {
+                    // Sensor in contact and reading valid pulse!
+                    setManualPulse(hr);
+                    setSensorContactState('contact_verified');
+                  }
+                });
+              }
+            }
+          } catch (gattErr) {
+            console.warn('GATT telemetry connection error:', gattErr);
+          }
         }
       } else {
         // Web Bluetooth not available or supported in this browser/laptop environment
@@ -1008,7 +1057,7 @@ export default function HealthProfilePage() {
     setIsScanningBluetooth(false);
 
     if (deviceDetected && detectedName) {
-      // Physical instrument successfully connected via native dialog!
+      // Genuine medical instrument connected via native dialog!
       setConnectedDevices(prev => ({ ...prev, [vitalType]: detectedName }));
       try {
         localStorage.removeItem('dhuan_instrument_failed_attempts');
@@ -1019,7 +1068,7 @@ export default function HealthProfilePage() {
       setSelectedDevice(detectedName);
       setManualGaugeModel(detectedName);
       setMeasureStep('manual_input');
-      showToast(`Instrument "${detectedName}" successfully connected! Please verify your readings.`);
+      showToast(`Medical Instrument "${detectedName}" connected! Reading will appear when placed on body.`);
     } else {
       // Physical instrument NOT detected
       const newCount = instrumentRetryCount + 1;
@@ -1036,11 +1085,11 @@ export default function HealthProfilePage() {
           localStorage.setItem('dhuan_instrument_failed_attempts', '3');
         } catch (e) {}
         setLockoutRemainingSeconds(3600);
-        setDetectionErrorMsg('❌ 3 Failed Attempts Reached! Machine ya external sensor detect nahi hui. "Recommended" option ab 1 ghante (1 hour) ke liye lock ho chuka hai. Accurate measurement enter karne ke liye baraye meharbani "Manual Entry from External Gauge" use karein.');
+        setDetectionErrorMsg('❌ 3 Failed Attempts Reached! No medical instrument found. "Recommended" option is now locked for 1 hour. Please use "Manual Entry from External Gauge" to enter your accurate readings.');
         showToast('3 failed attempts. Recommended detection locked for 1 hour.');
       } else {
         const remaining = 3 - newCount;
-        setDetectionErrorMsg(`❌ Attempt ${newCount} of 3 Failed: Physical instrument ya machine detect nahi hui. Baraye meharbani check karein ke device on hai aur Bluetooth pairing mode me hai. (${remaining} retry attempt${remaining === 1 ? '' : 's'} remaining before 1-hour lockout).`);
+        setDetectionErrorMsg(`❌ Attempt ${newCount} of 3 Failed: No medical instrument found in pairing mode. (Note: Non-medical Bluetooth devices like headphones or TVs are filtered out). (${remaining} retry attempt${remaining === 1 ? '' : 's'} remaining before 1-hour lockout).`);
         showToast(`Attempt ${newCount}/3 failed. ${remaining} retries remaining.`);
       }
     }
@@ -1111,20 +1160,25 @@ export default function HealthProfilePage() {
     let readingSecondary: number | null = null;
 
     if (vitalType === 'blood_pressure') {
-      readingValue = Number(manualSystolic) || 120;
-      readingSecondary = Number(manualDiastolic) || 80;
+      readingValue = Number(manualSystolic) || 0;
+      readingSecondary = Number(manualDiastolic) || 0;
     } else if (vitalType === 'heart_rate') {
-      readingValue = Number(manualPulse) || 72;
+      readingValue = Number(manualPulse) || 0;
     } else if (vitalType === 'spo2') {
-      readingValue = Number(manualSpO2) || 98;
+      readingValue = Number(manualSpO2) || 0;
     } else if (vitalType === 'peak_flow') {
-      readingValue = Number(manualPEF) || 450;
+      readingValue = Number(manualPEF) || 0;
     } else if (vitalType === 'respiratory_rate') {
-      readingValue = Number(manualRespiration) || 16;
+      readingValue = Number(manualRespiration) || 0;
     } else if (vitalType === 'body_temp') {
-      readingValue = Number(manualTemp) || 98.6;
+      readingValue = Number(manualTemp) || 0;
     } else if (vitalType === 'breath_hold') {
-      readingValue = Number(manualBreathHold) || 35;
+      readingValue = Number(manualBreathHold) || 0;
+    }
+
+    if (readingValue <= 0) {
+      showToast('Measurement is 0. Please attach sensor to your body or enter a valid reading from your machine.');
+      return;
     }
 
     const deviceNameToSave = manualGaugeModel.trim() || 'Verified Physical Gauge / Machine';
@@ -4898,10 +4952,33 @@ export default function HealthProfilePage() {
 
               {/* CASE A2: DEDICATED 100% ACCURATE MANUAL CLINICAL ENTRY SCREEN */}
               {measureStep === 'manual_input' && (() => {
+                let isUnmeasured = false;
+                if (cfg.type === 'blood_pressure') {
+                  isUnmeasured = manualSystolic <= 0 || manualDiastolic <= 0;
+                } else if (cfg.type === 'heart_rate') {
+                  isUnmeasured = manualPulse <= 0;
+                } else if (cfg.type === 'spo2') {
+                  isUnmeasured = manualSpO2 <= 0;
+                } else if (cfg.type === 'peak_flow') {
+                  isUnmeasured = manualPEF <= 0;
+                } else if (cfg.type === 'body_temp') {
+                  isUnmeasured = manualTemp <= 0;
+                } else if (cfg.type === 'respiratory_rate') {
+                  isUnmeasured = manualRespiration <= 0;
+                } else if (cfg.type === 'breath_hold') {
+                  isUnmeasured = manualBreathHold <= 0;
+                }
+
                 // Compute real-time AHA / WHO status and color for feedback
                 let clinicalBadge = { text: 'Normal', color: 'bg-emerald-100 text-emerald-800 border-emerald-300', note: 'Within recommended clinical range.' };
 
-                if (cfg.type === 'blood_pressure') {
+                if (isUnmeasured) {
+                  clinicalBadge = {
+                    text: '⚪ Sensor / Machine Reading: 0',
+                    color: 'bg-slate-100 text-slate-700 border-slate-300',
+                    note: 'Measurement filhal 0 hai. Sensor jism par na honay ya machine se reading enter na karnay tak reading 0 show hogi aur database me save nahi hogi.'
+                  };
+                } else if (cfg.type === 'blood_pressure') {
                   const s = manualSystolic;
                   const d = manualDiastolic;
                   if (s >= 180 || d >= 120) {
@@ -4991,6 +5068,37 @@ export default function HealthProfilePage() {
                         100% Genuine Machine Entry
                       </span>
                     </div>
+
+                    {/* SENSOR SKIN CONTACT STATUS BANNER */}
+                    {sensorContactState === 'not_on_body' && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 text-xs font-bold flex items-center gap-2.5 animate-pulse">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                        <div>
+                          ⚠️ Sensor jism/skin par attach nahi hai! Reading: 0 {cfg.unit}. Apne wrist ya finger par sensor lagayein takay genuine reading capture ho sakay.
+                        </div>
+                      </div>
+                    )}
+
+                    {sensorContactState === 'contact_verified' && (
+                      <div className="p-3.5 rounded-2xl bg-emerald-50 border-2 border-emerald-300 text-emerald-950 text-xs font-bold flex items-center gap-2.5">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <div>
+                          ✅ Sensor skin contact verified! Genuine biometric telemetry is live.
+                        </div>
+                      </div>
+                    )}
+
+                    {isUnmeasured && sensorContactState === 'idle' && (
+                      <div className="p-3.5 rounded-2xl bg-slate-100/90 border border-slate-200 text-slate-700 text-xs font-medium flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span>
+                          <span>Filhal reading <strong>0 {cfg.unit}</strong> hai. Machine screen dekh kar reading adjust ya type karein.</span>
+                        </span>
+                        <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          Awaiting Input
+                        </span>
+                      </div>
+                    )}
 
                     {/* Notice card */}
                     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
@@ -5359,16 +5467,24 @@ export default function HealthProfilePage() {
 
                       <button
                         type="button"
-                        disabled={isSavingVital}
+                        disabled={isSavingVital || isUnmeasured}
                         onClick={() => handleSaveManualMeasurement(cfg.type)}
-                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
+                        className={`px-6 py-3 rounded-xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 ${
+                          isUnmeasured 
+                            ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60' 
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                        }`}
                       >
                         {isSavingVital ? (
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         ) : (
                           <Check className="w-4 h-4" />
                         )}
-                        <span>{isSavingVital ? 'Saving to Database...' : 'Save Verified Measurement to SQLite'}</span>
+                        <span>
+                          {isUnmeasured 
+                            ? 'Measurement is 0 — Enter reading from machine to Save' 
+                            : (isSavingVital ? 'Saving to Database...' : 'Save Verified Measurement to SQLite')}
+                        </span>
                       </button>
                     </div>
 
