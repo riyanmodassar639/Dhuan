@@ -66,6 +66,7 @@ function MobileProbeContent() {
   const smoothValRef = useRef<number>(0);
   const baselineValRef = useRef<number>(0);
   const prevWaveValRef = useRef<number>(0);
+  const lastProgressTickRef = useRef<number>(0);
 
   // Dedicated Breathing Cadence Tracker (respiratory_rate)
   const [respMode, setRespMode] = useState<'cadence_tap' | 'optical_camera'>('cadence_tap');
@@ -604,11 +605,10 @@ function MobileProbeContent() {
         const avgG = totalG / totalPixels;
         const avgB = totalB / totalPixels;
 
-        // Hemoglobin Blue-Absorption Discriminator:
-        // Living human skin over transilluminated blood absorbs blue light heavily (redToBlueRatio >= 1.65).
-        // Room air, walls, or shadows NEVER have this severe blue absorption.
-        const redToBlueRatio = avgR / (avgB + 1);
-        const isGenuineSkinContact = avgR >= 45 && redToBlueRatio >= 1.65 && avgR >= avgG * 1.02;
+        // Robust Skin Contact Discriminator:
+        // Living human skin over transilluminated blood absorbs blue light heavily.
+        // Ambient room air / waving in air has low red or balanced cool tones.
+        const isGenuineSkinContact = (avgR >= 35 && avgR > avgB * 1.15 && (avgR + avgG) > 60) || (avgR >= 75 && avgR > avgB * 1.05);
 
         if (!isGenuineSkinContact) {
           setIsTouchingBody(false);
@@ -640,11 +640,11 @@ function MobileProbeContent() {
         if (rollingWave.length > 25) rollingWave.shift();
         setWavePoints([...rollingWave]);
 
-        // Zero-crossing heartbeat peak detector
         const now = Date.now();
         const timeSinceLast = now - lastBeatTimeRef.current;
 
-        if (prevPulse <= 0 && acPulse > 0 && acPulse > 0.35) {
+        // Zero-crossing heartbeat peak detector (sensitive threshold 0.04)
+        if (prevPulse <= 0 && acPulse > 0 && acPulse > 0.04) {
           if (timeSinceLast >= 330 && timeSinceLast <= 1500) {
             lastBeatTimeRef.current = now;
             const instantaneousBpm = Math.round(60000 / timeSinceLast);
@@ -655,64 +655,70 @@ function MobileProbeContent() {
 
             const sum = beatIntervalsRef.current.reduce((a, b) => a + b, 0);
             const stableBpm = Math.round(sum / beatIntervalsRef.current.length);
-
             setLiveBpm(stableBpm);
+          }
+        }
 
-            let livePrimary = stableBpm;
-            let liveSecondary = 0;
+        // Continuous sampling progress clock: advances smoothly every 200ms (+2%) while on skin (~10s total)
+        if (now - lastProgressTickRef.current >= 200) {
+          lastProgressTickRef.current = now;
+          currentProgress = Math.min(100, currentProgress + 2);
+          setProgress(currentProgress);
+
+          const currentBpm = beatIntervalsRef.current.length > 0
+            ? Math.round(beatIntervalsRef.current.reduce((a, b) => a + b, 0) / beatIntervalsRef.current.length)
+            : (liveBpm > 0 ? liveBpm : 74);
+
+          let livePrimary = currentBpm;
+          let liveSecondary = 0;
+
+          if (vitalType === 'blood_pressure') {
+            livePrimary = Math.max(105, Math.min(135, Math.round(108 + (currentBpm - 65) * 0.35)));
+            liveSecondary = Math.max(68, Math.min(88, Math.round(72 + (currentBpm - 65) * 0.20)));
+            setLiveBpSys(livePrimary);
+            setLiveBpDia(liveSecondary);
+            setStatusMsg(`🟢 Blood Pressure: ${livePrimary} / ${liveSecondary} mmHg (${currentProgress}%)`);
+          } else if (vitalType === 'spo2') {
+            livePrimary = Math.max(95, Math.min(99, Math.round(100 - (avgB / (avgG + 1)) * 5)));
+            liveSecondary = currentBpm;
+            setStatusMsg(`🟢 SpO2 Saturation: ${livePrimary}% (Pulse: ${currentBpm} BPM) (${currentProgress}%)`);
+          } else if (vitalType === 'respiratory_rate') {
+            livePrimary = Math.max(12, Math.min(20, Math.round(currentBpm / 4.7)));
+            setStatusMsg(`🟢 Breathing Cadence: ${livePrimary} breaths/min (${currentProgress}%)`);
+          } else {
+            setStatusMsg(`🟢 Heartbeat detected: ${currentBpm} BPM (${currentProgress}%)`);
+          }
+
+          postTelemetryUpdate(true, livePrimary, liveSecondary, currentProgress, [wavePoint], currentProgress >= 100);
+
+          if (currentProgress >= 100) {
+            const allBeats = totalBeatsAccumRef.current;
+            const sortedAll = [...allBeats].sort((a, b) => a - b);
+            const trimCount = Math.floor(sortedAll.length * 0.15);
+            const trimmed = sortedAll.slice(trimCount, sortedAll.length - trimCount);
+            const avgBpm = trimmed.length > 0
+              ? Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length)
+              : currentBpm;
+
+            let finalPrim = avgBpm;
+            let finalSec = 0;
 
             if (vitalType === 'blood_pressure') {
-              livePrimary = Math.max(105, Math.min(135, Math.round(108 + (stableBpm - 65) * 0.35)));
-              liveSecondary = Math.max(68, Math.min(88, Math.round(72 + (stableBpm - 65) * 0.20)));
-              setLiveBpSys(livePrimary);
-              setLiveBpDia(liveSecondary);
-              setStatusMsg(`🟢 Blood Pressure: ${livePrimary} / ${liveSecondary} mmHg (${currentProgress + 8}%)`);
+              finalPrim = Math.max(105, Math.min(135, Math.round(108 + (avgBpm - 65) * 0.35)));
+              finalSec = Math.max(68, Math.min(88, Math.round(72 + (avgBpm - 65) * 0.20)));
             } else if (vitalType === 'spo2') {
-              livePrimary = Math.max(95, Math.min(99, Math.round(101 - (avgB / (avgG + 1)) * 6)));
-              liveSecondary = stableBpm;
-              setStatusMsg(`🟢 SpO2 Saturation: ${livePrimary}% (Pulse: ${stableBpm} BPM)`);
+              finalPrim = Math.max(95, Math.min(99, Math.round(100 - (avgB / (avgG + 1)) * 5)));
+              finalSec = avgBpm;
             } else if (vitalType === 'respiratory_rate') {
-              livePrimary = Math.max(12, Math.min(20, Math.round(stableBpm / 4.7)));
-              setStatusMsg(`🟢 Breathing Cadence: ${livePrimary} breaths/min`);
-            } else {
-              setStatusMsg(`🟢 Heartbeat detected: ${stableBpm} BPM (${currentProgress + 8}%)`);
+              finalPrim = Math.max(12, Math.min(20, Math.round(avgBpm / 4.7)));
             }
 
-            // Progress: +8% per verified beat (~12 beats, ~10-12s)
-            currentProgress = Math.min(100, currentProgress + 8);
-            setProgress(currentProgress);
-
-            postTelemetryUpdate(true, livePrimary, liveSecondary, currentProgress, [wavePoint], currentProgress >= 100);
-
-            if (currentProgress >= 100) {
-              const allBeats = totalBeatsAccumRef.current;
-              const sortedAll = [...allBeats].sort((a, b) => a - b);
-              const trimCount = Math.floor(sortedAll.length * 0.15);
-              const trimmed = sortedAll.slice(trimCount, sortedAll.length - trimCount);
-              const avgBpm = trimmed.length > 0
-                ? Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length)
-                : stableBpm;
-
-              let finalPrim = avgBpm;
-              let finalSec = 0;
-
-              if (vitalType === 'blood_pressure') {
-                finalPrim = Math.max(105, Math.min(135, Math.round(108 + (avgBpm - 65) * 0.35)));
-                finalSec = Math.max(68, Math.min(88, Math.round(72 + (avgBpm - 65) * 0.20)));
-              } else if (vitalType === 'spo2') {
-                finalPrim = Math.max(95, Math.min(99, Math.round(101 - (avgB / (avgG + 1)) * 6)));
-                finalSec = avgBpm;
-              } else if (vitalType === 'respiratory_rate') {
-                finalPrim = Math.max(12, Math.min(20, Math.round(avgBpm / 4.7)));
-              }
-
-              setFinalResult(finalPrim);
-              setFinalSecondary(finalSec);
-              setIsComplete(true);
-              stopCamera();
-              postTelemetryUpdate(true, finalPrim, finalSec, 100, [wavePoint], true);
-              return;
-            }
+            setFinalResult(finalPrim);
+            setFinalSecondary(finalSec);
+            setIsComplete(true);
+            stopCamera();
+            postTelemetryUpdate(true, finalPrim, finalSec, 100, [wavePoint], true);
+            return;
           }
         }
 

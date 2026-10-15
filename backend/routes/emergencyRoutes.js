@@ -1155,16 +1155,17 @@ router.post('/telemetry/session', (req, res) => {
 });
 
 router.post('/telemetry/stream', (req, res) => {
-  const { sessionId, isTouchingBody, liveValue, liveSecondary, progress, waveData, status, deviceName } = req.body || {};
+  const { sessionId, vitalType, isTouchingBody, liveValue, liveSecondary, progress, waveData, status, deviceName } = req.body || {};
   if (!sessionId) {
     return res.status(400).json({ success: false, error: 'Session ID required' });
   }
 
   let session = telemetrySessions.get(sessionId);
   if (!session) {
-    session = { sessionId, vitalType: 'heart_rate', lastUpdated: Date.now() };
+    session = { sessionId, vitalType: vitalType || 'heart_rate', lastUpdated: Date.now() };
   }
 
+  if (vitalType) session.vitalType = vitalType;
   session.isTouchingBody = !!isTouchingBody;
   if (typeof liveValue === 'number') session.liveValue = liveValue;
   if (typeof liveSecondary === 'number') session.liveSecondary = liveSecondary;

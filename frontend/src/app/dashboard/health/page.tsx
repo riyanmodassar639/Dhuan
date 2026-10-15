@@ -1381,13 +1381,12 @@ export default function HealthProfilePage() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.success && data.session) {
-            // Strict match: must belong to the active session and active vital modal
+            // Strict match: must belong to the active session created for this modal
             if (data.session.sessionId !== activeRemoteSessionId) return;
-            if (data.session.vitalType && data.session.vitalType !== activeMeasureModal) return;
 
             setRemoteSessionData(data.session);
 
-            if (data.session.isTouchingBody) {
+            if (data.session.isTouchingBody || data.session.progress > 0) {
               setSensorContactState('contact_verified');
               if (data.session.liveValue > 0) {
                 setLiveMeasureVal(data.session.liveValue);
@@ -1399,14 +1398,19 @@ export default function HealthProfilePage() {
               setSensorContactState('not_on_body');
             }
 
+            // Sync live progress from phone to laptop screen
+            if (typeof data.session.progress === 'number') {
+              setMeasureProgress(data.session.progress);
+            }
+
             // WHEN MEASUREMENT IS RECEIVED ON BARCODE SCREEN: Auto-switch to result screen
             if (measureStep === 'remote_probe_sync' && (data.session.status === 'completed' || data.session.progress >= 100) && data.session.liveValue > 0) {
               setLiveMeasureVal(data.session.liveValue);
               if (data.session.liveSecondary > 0) {
                 setLiveMeasureSecondary(data.session.liveSecondary);
               }
-              setSelectedDevice('Smartphone Biometric Sensor (Flashlight & Optical Camera)');
-              const readingStr = data.session.vitalType === 'blood_pressure'
+              setSelectedDevice('Smartphone Biometric Sensor');
+              const readingStr = activeMeasureModal === 'blood_pressure'
                 ? `${data.session.liveValue} / ${data.session.liveSecondary || 78} mmHg`
                 : `${data.session.liveValue}`;
               showToast(`100% verified reading (${readingStr}) received from phone!`);
@@ -1420,7 +1424,7 @@ export default function HealthProfilePage() {
                 if (data.session.liveSecondary > 0) {
                   setLiveMeasureSecondary(data.session.liveSecondary);
                 }
-                const readingStr = data.session.vitalType === 'blood_pressure'
+                const readingStr = activeMeasureModal === 'blood_pressure'
                   ? `${data.session.liveValue} / ${data.session.liveSecondary || 78} mmHg`
                   : `${data.session.liveValue}`;
                 showToast(`New updated measurement received from phone: ${readingStr}`);
