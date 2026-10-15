@@ -631,6 +631,21 @@ export default function HealthProfilePage() {
   // Load from backend SQLite on mount and sync atmospheric readings
   useEffect(() => {
     setMounted(true);
+
+    // Purge any stale simulated device keys from previous sessions so NO fake device is ever assumed
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('dhuan_device_')) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch (e) {}
+    }
+
     // Fetch live environmental metrics from backend
     fetch(getApiEndpoint('/dashboard/overview'))
       .then(res => res.ok ? res.json() : null)
@@ -937,29 +952,16 @@ export default function HealthProfilePage() {
       setManualBreathHold(35);
     }
 
-    // Detect platform
+    // Platform detection (Laptop vs Smartphone)
     const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     const platform = isMobile ? 'Smartphone (iOS / Android)' : 'Laptop / Desktop PC';
     setDetectedSystem(platform);
 
-    const savedDevice = typeof window !== 'undefined' ? localStorage.getItem(`dhuan_device_${vitalType}`) : null;
-    const activeDevice = connectedDevices[vitalType] || savedDevice;
-
-    setScanMessage('Scanning for physical Bluetooth BLE medical instruments...');
-
-    // Genuine hardware check: If an actual paired device is present, recognize it; otherwise report no device detected
-    setTimeout(() => {
-      if (activeDevice) {
-        setSelectedDevice(activeDevice);
-        setMeasureStep('device_found');
-        setTimeout(() => {
-          startLiveMeasurement(vitalType, activeDevice);
-        }, 1000);
-      } else {
-        // Laptop or mobile without paired instrument -> report no device detected
-        setMeasureStep('no_device_detected');
-      }
-    }, 1200);
+    // STRICT MEDICAL RULE: Laptops and PCs have NO built-in medical sensors.
+    // NEVER automatically assume any Apple Watch, BP monitor, or sensor is connected!
+    // ALWAYS start at 'no_device_detected' so user has complete control to connect real device or enter manually.
+    setSelectedDevice('');
+    setMeasureStep('no_device_detected');
   };
 
   // Real Web Bluetooth / Hardware Detection Attempt (Max 3 Tries -> 1-Hour Lockout)
@@ -978,7 +980,7 @@ export default function HealthProfilePage() {
 
     try {
       if (typeof navigator !== 'undefined' && (navigator as any).bluetooth && typeof (navigator as any).bluetooth.requestDevice === 'function') {
-        // Attempt genuine Web Bluetooth device discovery
+        // Attempt genuine Web Bluetooth device discovery (will prompt user with native browser picker)
         const device = await (navigator as any).bluetooth.requestDevice({
           acceptAllDevices: true,
           optionalServices: [
@@ -1006,21 +1008,18 @@ export default function HealthProfilePage() {
     setIsScanningBluetooth(false);
 
     if (deviceDetected && detectedName) {
-      // Physical instrument successfully connected!
+      // Physical instrument successfully connected via native dialog!
       setConnectedDevices(prev => ({ ...prev, [vitalType]: detectedName }));
       try {
-        localStorage.setItem(`dhuan_device_${vitalType}`, detectedName);
         localStorage.removeItem('dhuan_instrument_failed_attempts');
         localStorage.removeItem('dhuan_instrument_lockout_expiry');
       } catch (e) {}
       setInstrumentRetryCount(0);
       setLockoutRemainingSeconds(0);
       setSelectedDevice(detectedName);
-      setMeasureStep('device_found');
-      showToast(`Instrument "${detectedName}" successfully connected!`);
-      setTimeout(() => {
-        setMeasureStep('manual_input');
-      }, 1000);
+      setManualGaugeModel(detectedName);
+      setMeasureStep('manual_input');
+      showToast(`Instrument "${detectedName}" successfully connected! Please verify your readings.`);
     } else {
       // Physical instrument NOT detected
       const newCount = instrumentRetryCount + 1;
