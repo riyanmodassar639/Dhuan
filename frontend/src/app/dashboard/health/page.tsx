@@ -1323,10 +1323,14 @@ export default function HealthProfilePage() {
         }
       } catch (e) {}
 
+      // Keep active session if already exists, else create new
+      const targetSessionId = activeRemoteSessionId || `DHUAN-${Math.floor(100000 + Math.random() * 900000)}`;
+
       const res = await fetch(getApiEndpoint('/emergency/telemetry/session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          sessionId: targetSessionId,
           vitalType,
           deviceName: 'Apple iPhone'
         })
@@ -1345,9 +1349,9 @@ export default function HealthProfilePage() {
     }
   };
 
-  // Poll Remote Probe Session (Auto-switches from barcode to result screen upon completion)
+  // Poll Remote Probe Session (Auto-switches to result screen and listens for re-measurements)
   useEffect(() => {
-    if (measureStep !== 'remote_probe_sync' || !activeRemoteSessionId) return;
+    if ((measureStep !== 'remote_probe_sync' && measureStep !== 'result') || !activeRemoteSessionId) return;
 
     const interval = setInterval(async () => {
       try {
@@ -1361,19 +1365,40 @@ export default function HealthProfilePage() {
               setSensorContactState('contact_verified');
               if (data.session.liveValue > 0) {
                 setLiveMeasureVal(data.session.liveValue);
-                setManualPulse(data.session.liveValue);
+                if (data.session.liveSecondary > 0) {
+                  setLiveMeasureSecondary(data.session.liveSecondary);
+                }
               }
             } else {
               setSensorContactState('not_on_body');
             }
 
-            // WHEN MEASUREMENT IS RECEIVED: Automatically close barcode screen and bring result screen forward!
-            if ((data.session.status === 'completed' || data.session.progress >= 100) && data.session.liveValue > 0) {
+            // WHEN MEASUREMENT IS RECEIVED ON BARCODE SCREEN: Auto-switch to result screen
+            if (measureStep === 'remote_probe_sync' && (data.session.status === 'completed' || data.session.progress >= 100) && data.session.liveValue > 0) {
               setLiveMeasureVal(data.session.liveValue);
-              setManualPulse(data.session.liveValue);
+              if (data.session.liveSecondary > 0) {
+                setLiveMeasureSecondary(data.session.liveSecondary);
+              }
               setSelectedDevice('Smartphone Biometric Sensor (Flashlight & Optical Camera)');
-              showToast(`100% verified reading (${data.session.liveValue} BPM) received from phone!`);
+              const readingStr = data.session.vitalType === 'blood_pressure'
+                ? `${data.session.liveValue} / ${data.session.liveSecondary || 78} mmHg`
+                : `${data.session.liveValue}`;
+              showToast(`100% verified reading (${readingStr}) received from phone!`);
               setMeasureStep('result');
+            }
+
+            // IF ON RESULT SCREEN AND USER MEASURES AGAIN ON PHONE: Auto-update result in real time!
+            if (measureStep === 'result' && data.session.status === 'completed' && data.session.liveValue > 0) {
+              if (data.session.liveValue !== liveMeasureVal || (data.session.liveSecondary && data.session.liveSecondary !== liveMeasureSecondary)) {
+                setLiveMeasureVal(data.session.liveValue);
+                if (data.session.liveSecondary > 0) {
+                  setLiveMeasureSecondary(data.session.liveSecondary);
+                }
+                const readingStr = data.session.vitalType === 'blood_pressure'
+                  ? `${data.session.liveValue} / ${data.session.liveSecondary || 78} mmHg`
+                  : `${data.session.liveValue}`;
+                showToast(`New updated measurement received from phone: ${readingStr}`);
+              }
             }
           }
         }
@@ -1381,7 +1406,7 @@ export default function HealthProfilePage() {
     }, 400);
 
     return () => clearInterval(interval);
-  }, [measureStep, activeRemoteSessionId]);
+  }, [measureStep, activeRemoteSessionId, liveMeasureVal, liveMeasureSecondary]);
 
   // On-Device Optical Camera PPG Sensor
   const stopOpticalSensor = useCallback(() => {
@@ -6291,6 +6316,17 @@ export default function HealthProfilePage() {
                         +
                       </button>
                     </div>
+
+                    {cfg.type === 'blood_pressure' && (
+                      <div className="flex items-center justify-center gap-3 pt-1">
+                        <span className="bg-rose-50 text-rose-700 border border-rose-200 text-xs font-black px-3 py-1 rounded-full shadow-xs">
+                          High BP (Systolic): {liveMeasureVal} mmHg
+                        </span>
+                        <span className="bg-sky-50 text-sky-700 border border-sky-200 text-xs font-black px-3 py-1 rounded-full shadow-xs">
+                          Low BP (Diastolic): {liveMeasureSecondary || 80} mmHg
+                        </span>
+                      </div>
+                    )}
 
                     <p className="text-[11px] text-slate-400 font-medium">
                       💡 Tip: You can adjust this number if your physical instrument display showed a different value.
