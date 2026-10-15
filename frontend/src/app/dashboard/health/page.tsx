@@ -5298,7 +5298,13 @@ export default function HealthProfilePage() {
                             <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800">Recommended</span>
                           </div>
                           <p className="text-[11px] text-slate-600 leading-tight mt-0.5">
-                            iPhone ya Android camera se barcode scan karein. Dedicated single-page sensor open hoga, flashlight button on karein aur finger lens par rakhein.
+                            {cfg.type === 'heart_rate' && 'iPhone ya Android se barcode scan karein: Dedicated optical PPG sensor open hoga (camera flashlight par finger rakhein).'}
+                            {cfg.type === 'blood_pressure' && 'iPhone ya Android se barcode scan karein: Optical pulse wave contour se High BP (Systolic) aur Low BP (Diastolic) calculate hoga.'}
+                            {cfg.type === 'spo2' && 'iPhone ya Android se barcode scan karein: Optical absorption ratio se Blood Oxygen Saturation (%) aur pulse measure hogi.'}
+                            {cfg.type === 'respiratory_rate' && 'iPhone ya Android se barcode scan karein: 30-Second Guided Breathing Cadence Tracker open hoga (Inhale/Exhale tap test).'}
+                            {cfg.type === 'peak_flow' && 'iPhone ya Android se barcode scan karein: Real-time Microphone Acoustic Blow Meter ya mechanical gauge confirm karein.'}
+                            {cfg.type === 'breath_hold' && 'iPhone ya Android se barcode scan karein: High-Precision Clinical Breath-Hold Stopwatch open hoga.'}
+                            {cfg.type === 'body_temp' && 'iPhone ya Android se barcode scan karein: Calibrated digital thermometer confirm karke transmit karein.'}
                           </p>
                         </div>
                       </div>

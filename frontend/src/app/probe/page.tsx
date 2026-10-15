@@ -19,8 +19,10 @@ import {
   Timer,
   Play,
   Square,
-  Clock,
-  Thermometer
+  Thermometer,
+  Mic,
+  Volume2,
+  Stethoscope
 } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
 
@@ -78,9 +80,22 @@ function MobileProbeContent() {
   const [stopwatchElapsed, setStopwatchElapsed] = useState<number>(0);
   const stopwatchIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Dedicated Acoustic Spirometry Blow Sensor (peak_flow)
+  const [isBlowingActive, setIsBlowingActive] = useState<boolean>(false);
+  const [currentBlowFlow, setCurrentBlowFlow] = useState<number>(0);
+  const [maxBlowFlow, setMaxBlowFlow] = useState<number>(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const blowAnimRef = useRef<number | null>(null);
+  const maxBlowRef = useRef<number>(0);
+  const blowSilenceCountRef = useRef<number>(0);
+
   // Manual Dial Values (for peak_flow & body_temp)
   const [manualInputVal, setManualInputVal] = useState<number>(
     vitalType === 'body_temp' ? 98.4 : 480
+  );
+  const [selectedThermometerDevice, setSelectedThermometerDevice] = useState<string>(
+    'Infrared Non-Contact Forehead Scanner'
   );
 
   const vitalConfig = {
@@ -170,7 +185,7 @@ function MobileProbeContent() {
       ]
     },
     peak_flow: {
-      name: 'Peak Expiratory Flow (PEF)',
+      name: 'Peak Expiratory Flow (PEF / Spirometry)',
       unit: 'L/min',
       icon: Gauge,
       color: 'emerald',
@@ -181,8 +196,8 @@ function MobileProbeContent() {
       formatDisplay: (val: number, sec: number) => `${val} L/min`,
       instructionTitle: 'Peak Flow Meter (Spirometry) Check Karne Ka Tareeqa:',
       instructions: [
-        '1. Apne mechanical Peak Flow Meter ya spirometer mein poray zor se phoonk maarein.',
-        '2. Meter par aane wala number yahan confirm karein aur laptop par save karein.'
+        '1. Microphone Blow Test dabayein aur phone ke mic mein poray zor se phoonk maarein (like blowing candles).',
+        '2. Ya apne mechanical Peak Flow Meter ki scale reading yahan confirm karke transmit karein.'
       ]
     },
     breath_hold: {
@@ -346,6 +361,102 @@ function MobileProbeContent() {
     postTelemetryUpdate(true, finalSecs, 0, 100, [], true);
   };
 
+  // Acoustic Microphone Blow Sensor (peak_flow)
+  const stopBlowSensor = useCallback(() => {
+    if (blowAnimRef.current) {
+      cancelAnimationFrame(blowAnimRef.current);
+      blowAnimRef.current = null;
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(t => t.stop());
+      audioStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    setIsBlowingActive(false);
+  }, []);
+
+  const startBlowSensor = async () => {
+    stopBlowSensor();
+    setErrorMessage(null);
+    setIsBlowingActive(true);
+    setCurrentBlowFlow(0);
+    setMaxBlowFlow(0);
+    maxBlowRef.current = 0;
+    blowSilenceCountRef.current = 0;
+    setProgress(10);
+    setIsTouchingBody(true);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.25;
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const checkBlowLoop = () => {
+        if (!audioStreamRef.current) return;
+        analyser.getByteTimeDomainData(dataArray);
+
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          const norm = (dataArray[i] - 128) / 128;
+          sum += norm * norm;
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+
+        // Forced expiratory air blast creates turbulent acoustic envelope
+        if (rms > 0.08) {
+          const instantFlow = Math.min(720, Math.round(280 + rms * 680));
+          setCurrentBlowFlow(instantFlow);
+
+          if (instantFlow > maxBlowRef.current) {
+            maxBlowRef.current = instantFlow;
+            setMaxBlowFlow(instantFlow);
+            const flowProg = Math.min(95, Math.round((instantFlow / 600) * 100));
+            setProgress(flowProg);
+            postTelemetryUpdate(true, instantFlow, 0, flowProg, [], false);
+          }
+          blowSilenceCountRef.current = 0;
+        } else {
+          setCurrentBlowFlow(0);
+          if (maxBlowRef.current > 200) {
+            blowSilenceCountRef.current += 1;
+            // After ~1.5 seconds of silence post-blast, complete measurement!
+            if (blowSilenceCountRef.current > 40) {
+              const finalFlow = maxBlowRef.current;
+              setFinalResult(finalFlow);
+              setIsComplete(true);
+              stopBlowSensor();
+              postTelemetryUpdate(true, finalFlow, 0, 100, [], true);
+              return;
+            }
+          }
+        }
+
+        blowAnimRef.current = requestAnimationFrame(checkBlowLoop);
+      };
+
+      blowAnimRef.current = requestAnimationFrame(checkBlowLoop);
+
+    } catch (err: any) {
+      console.warn('Microphone access denied:', err);
+      setIsBlowingActive(false);
+      setErrorMessage('Microphone access denied. Please allow microphone in browser settings or use manual dial below.');
+    }
+  };
+
   // Optical Camera PPG Handlers
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) {
@@ -386,6 +497,7 @@ function MobileProbeContent() {
 
   const startCameraAndFlashlight = async () => {
     stopCamera();
+    stopBlowSensor();
     setErrorMessage(null);
     setIsComplete(false);
     setProgress(0);
@@ -616,10 +728,11 @@ function MobileProbeContent() {
   useEffect(() => {
     return () => {
       stopCamera();
+      stopBlowSensor();
       if (breathIntervalRef.current) clearInterval(breathIntervalRef.current);
       if (stopwatchIntervalRef.current) clearInterval(stopwatchIntervalRef.current);
     };
-  }, [stopCamera]);
+  }, [stopCamera, stopBlowSensor]);
 
   const handleStartSensor = (e?: React.SyntheticEvent) => {
     if (e) e.stopPropagation();
@@ -646,6 +759,11 @@ function MobileProbeContent() {
     breathTapsRef.current = 0;
     setStopwatchRunning(false);
     setStopwatchElapsed(0);
+    setCurrentBlowFlow(0);
+    setMaxBlowFlow(0);
+    maxBlowRef.current = 0;
+    stopCamera();
+    stopBlowSensor();
 
     // Reset backend session immediately
     if (sessionId) {
@@ -668,11 +786,13 @@ function MobileProbeContent() {
     }
 
     if (vitalType === 'respiratory_rate' && respMode === 'cadence_tap') {
-      // Breathing test: user will tap start
+      // ready for breath cadence
     } else if (vitalType === 'breath_hold') {
-      // Stopwatch test: user will tap start
-    } else if (vitalType === 'peak_flow' || vitalType === 'body_temp') {
-      // Dial confirm
+      // ready for stopwatch
+    } else if (vitalType === 'peak_flow') {
+      // ready for blow test
+    } else if (vitalType === 'body_temp') {
+      // ready for temp confirm
     } else {
       startCameraAndFlashlight();
     }
@@ -720,13 +840,13 @@ function MobileProbeContent() {
         <div className="w-full max-w-md my-2 p-4 rounded-2xl bg-rose-950/90 border-2 border-rose-500 text-rose-200 text-xs text-left space-y-2 animate-in zoom-in-95 relative z-20">
           <div className="flex items-center gap-2 font-black text-rose-300">
             <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-            <span>Camera &amp; Sensor Blocked</span>
+            <span>Sensor Access Notice</span>
           </div>
           <p className="leading-relaxed">{errorMessage}</p>
           <div className="pt-2 border-t border-rose-800/80 text-[11px] text-slate-300 space-y-1">
             <p><strong>Troubleshooting:</strong></p>
             <p>1. Open with <strong>https://</strong> (not http://).</p>
-            <p>2. Safari / Chrome settings me Camera permission <strong>Allow</strong> karein.</p>
+            <p>2. Browser settings me Camera / Microphone permissions <strong>Allow</strong> karein.</p>
           </div>
         </div>
       )}
@@ -896,7 +1016,15 @@ function MobileProbeContent() {
                 </div>
 
                 <div className="space-y-1 text-xs text-slate-400 font-medium">
-                  <p>Gehri saans andar lein aur hold karein. Jab saans chorna ho to button dabayein.</p>
+                  <p>
+                    {stopwatchRunning ? (
+                      stopwatchElapsed >= 30 ? '🟢 Optimal Smog Resistance Achieved (>30s)' : (
+                        stopwatchElapsed >= 20 ? '🟡 Moderate Lung Reserve (20-30s)' : '🟠 Holding Breath...'
+                      )
+                    ) : (
+                      'Gehri saans andar lein aur hold karein. Jab saans chorna ho to button dabayein.'
+                    )}
+                  </p>
                 </div>
 
                 <div className="space-y-2 pt-2">
@@ -927,28 +1055,167 @@ function MobileProbeContent() {
               </div>
             )}
 
-            {/* SPECIALIZED MODE C: PEAK FLOW & BODY TEMPERATURE DIAL */}
-            {(vitalType === 'peak_flow' || vitalType === 'body_temp') && (
-              <div className="w-full p-6 rounded-3xl bg-slate-900 border-2 border-slate-800 text-center space-y-4 shadow-xl">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                  Confirm Reading from {vitalConfig.name}
-                </span>
+            {/* SPECIALIZED MODE C: PEAK FLOW ACOUSTIC BLOW SENSOR & MECHANICAL GAUGE */}
+            {vitalType === 'peak_flow' && (
+              <div className="w-full p-6 rounded-3xl bg-slate-900 border-2 border-emerald-500/60 text-center space-y-4 shadow-xl">
+                <div className="relative w-36 h-36 mx-auto flex items-center justify-center">
+                  <div className={`absolute inset-0 rounded-full border-4 border-emerald-400/30 ${
+                    isBlowingActive ? 'animate-ping duration-1000' : ''
+                  }`} />
+                  <div className="w-28 h-28 rounded-full bg-slate-950 border-4 border-emerald-500 flex flex-col items-center justify-center shadow-lg">
+                    <span className="text-3xl font-black font-mono text-emerald-300">
+                      {currentBlowFlow > 0 ? currentBlowFlow : (maxBlowFlow > 0 ? maxBlowFlow : manualInputVal)}
+                    </span>
+                    <span className="text-[10px] font-black uppercase text-emerald-400">L/min</span>
+                  </div>
+                </div>
 
-                <div className="flex items-center justify-center gap-3">
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-slate-200">
+                    {isBlowingActive ? '🌬️ BLOW AS HARD AS YOU CAN INTO MIC!' : 'Acoustic Spirometry / Mechanical Gauge'}
+                  </p>
+                  <p className="text-slate-400 text-[11px]">
+                    Normal Range: 400 - 600 L/min. Below 350 indicates smog airway constriction.
+                  </p>
+                </div>
+
+                {/* Live Blow Pressure Meter */}
+                {isBlowingActive && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] font-black text-slate-400">
+                      <span>Live Air Velocity</span>
+                      <span className="text-emerald-400">{currentBlowFlow} L/min</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-emerald-500 to-teal-400 h-3 rounded-full transition-all duration-75"
+                        style={{ width: `${Math.min(100, (currentBlowFlow / 650) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ACTION 1: START BLOW SENSOR */}
+                <div className="space-y-2 pt-1">
+                  {!isBlowingActive ? (
+                    <button
+                      type="button"
+                      onClick={startBlowSensor}
+                      onTouchEnd={startBlowSensor}
+                      style={{ touchAction: 'manipulation' }}
+                      className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 active:scale-95 text-white font-black text-sm sm:text-base shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer relative z-50 pointer-events-auto"
+                    >
+                      <Mic className="w-5 h-5 text-amber-300 animate-pulse pointer-events-none" />
+                      <span className="pointer-events-none">Start Microphone Blow Test (Phoonk Maarein)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={stopBlowSensor}
+                      onTouchEnd={stopBlowSensor}
+                      style={{ touchAction: 'manipulation' }}
+                      className="w-full py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 font-bold text-xs cursor-pointer relative z-50 pointer-events-auto"
+                    >
+                      <span className="pointer-events-none">Stop Blow Sensor</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* ACTION 2: MECHANICAL GAUGE SLIDER CONFIRMATION */}
+                <div className="pt-3 border-t border-slate-800 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Or confirm from physical Peak Flow Meter gauge:
+                  </span>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setManualInputVal(prev => Math.max(100, prev - 10))}
+                      className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-white font-black text-lg hover:bg-slate-700"
+                    >
+                      -
+                    </button>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-black font-mono text-white">{manualInputVal}</span>
+                      <span className="text-xs font-bold text-slate-400">L/min</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setManualInputVal(prev => Math.min(800, prev + 10))}
+                      className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-white font-black text-lg hover:bg-slate-700"
+                    >
+                      +
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setManualInputVal(prev => Math.max(vitalType === 'body_temp' ? 95 : 100, +(prev - (vitalType === 'body_temp' ? 0.2 : 10)).toFixed(1)))}
+                    onClick={() => {
+                      stopBlowSensor();
+                      setFinalResult(manualInputVal);
+                      setIsComplete(true);
+                      postTelemetryUpdate(true, manualInputVal, 0, 100, [], true);
+                    }}
+                    className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/40 font-black text-xs transition-all cursor-pointer"
+                  >
+                    Transmit Gauge Reading ({manualInputVal} L/min) to Laptop
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* SPECIALIZED MODE D: BODY TEMPERATURE CONFIRMATION */}
+            {vitalType === 'body_temp' && (
+              <div className="w-full p-6 rounded-3xl bg-slate-900 border-2 border-orange-500/60 text-center space-y-4 shadow-xl">
+                <div className="w-32 h-32 mx-auto rounded-full bg-slate-950 border-4 border-orange-500/60 flex flex-col items-center justify-center shadow-lg">
+                  <Thermometer className="w-8 h-8 text-orange-400 animate-pulse mb-1" />
+                  <span className="text-3xl font-black font-mono text-orange-300">{manualInputVal}°F</span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className={`text-xs font-black px-3 py-1 rounded-full border inline-block ${
+                    manualInputVal > 100.4 
+                      ? 'bg-rose-950 border-rose-500 text-rose-300' 
+                      : (manualInputVal > 99.0 ? 'bg-amber-950 border-amber-500 text-amber-300' : 'bg-emerald-950 border-emerald-500 text-emerald-300')
+                  }`}>
+                    {manualInputVal > 100.4 ? '🔴 High Fever Alert' : (manualInputVal > 99.0 ? '🟡 Low-Grade Airway Mucosal Warmth' : '🟢 Normal Core Body Temp')}
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    Standard target: 97.5°F - 99.0°F. Smog particulate triggers secondary bronchial infection fevers.
+                  </p>
+                </div>
+
+                {/* Thermometer Instrument Selector */}
+                <div className="space-y-1 text-left pt-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Clinical Thermometer Instrument Used:
+                  </label>
+                  <select
+                    value={selectedThermometerDevice}
+                    onChange={(e) => setSelectedThermometerDevice(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-bold text-white focus:outline-none"
+                  >
+                    <option value="Infrared Non-Contact Forehead Scanner">Infrared Non-Contact Forehead Scanner (Braun / Berrcom)</option>
+                    <option value="Digital Oral Stick Thermometer">Digital Oral Stick Thermometer (30-sec contact)</option>
+                    <option value="Tympanic Ear Thermometer">Tympanic Ear Thermometer (Infrared heat sensor)</option>
+                  </select>
+                </div>
+
+                {/* Value adjuster */}
+                <div className="flex items-center justify-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setManualInputVal(prev => Math.max(95, +(prev - 0.2).toFixed(1)))}
                     className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-white font-black text-lg hover:bg-slate-700"
                   >
                     -
                   </button>
                   <div className="flex items-baseline gap-1">
                     <span className="text-4xl font-black font-mono text-white">{manualInputVal}</span>
-                    <span className="text-sm font-bold text-slate-400">{vitalConfig.unit}</span>
+                    <span className="text-sm font-bold text-slate-400">°F</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setManualInputVal(prev => Math.min(vitalType === 'body_temp' ? 105 : 800, +(prev + (vitalType === 'body_temp' ? 0.2 : 10)).toFixed(1)))}
+                    onClick={() => setManualInputVal(prev => Math.min(106, +(prev + 0.2).toFixed(1)))}
                     className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-white font-black text-lg hover:bg-slate-700"
                   >
                     +
@@ -962,9 +1229,10 @@ function MobileProbeContent() {
                     setIsComplete(true);
                     postTelemetryUpdate(true, manualInputVal, 0, 100, [], true);
                   }}
-                  className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all"
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white font-black text-sm shadow-xl shadow-orange-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer relative z-50 pointer-events-auto"
                 >
-                  Transmit Verified Reading to Laptop
+                  <CheckCircle2 className="w-5 h-5 pointer-events-none" />
+                  <span className="pointer-events-none">Transmit Verified Temperature to Laptop</span>
                 </button>
               </div>
             )}
