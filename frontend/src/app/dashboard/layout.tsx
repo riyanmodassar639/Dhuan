@@ -60,6 +60,11 @@ export default function DashboardLayout({
     { name: 'SOS & Hospitals', href: '/dashboard/emergency', icon: PhoneCall, isEmergency: true },
   ];
 
+  // If this is a standalone biometric probe page, render isolated without dashboard chrome
+  if (pathname?.includes('/probe')) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
       
