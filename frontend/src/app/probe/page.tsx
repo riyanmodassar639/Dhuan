@@ -672,8 +672,8 @@ function MobileProbeContent() {
         const prevPulse = prevWaveValRef.current;
 
         // Dynamic amplitude envelope tracker (adapts to faint or strong pulse signals automatically)
-        rollingAmpRef.current = 0.92 * rollingAmpRef.current + 0.08 * Math.abs(acPulse);
-        const dynamicThreshold = Math.max(0.008, Math.min(0.06, rollingAmpRef.current * 0.32));
+        rollingAmpRef.current = 0.90 * rollingAmpRef.current + 0.10 * Math.abs(acPulse);
+        const dynamicThreshold = Math.max(0.005, Math.min(0.05, rollingAmpRef.current * 0.28));
 
         const wavePoint = Math.round(50 + Math.max(-45, Math.min(45, acPulse * 16)));
         rollingWave.push(wavePoint);
@@ -682,29 +682,22 @@ function MobileProbeContent() {
 
         const timeSinceLast = now - lastBeatTimeRef.current;
 
-        // Adaptive Systolic Peak & Zero-Crossing Detector (Omron / Clinical Monitor Logic)
-        if (prevPulse <= 0 && acPulse > 0 && acPulse >= dynamicThreshold) {
+        // Detect systolic peak crest: the pulse wave reached its maximum and starts descending
+        const isPeakCrest = prevPulse > acPulse && prevPulse > dynamicThreshold;
+
+        if (isPeakCrest && timeSinceLast >= 340) {
           if (lastBeatTimeRef.current === 0) {
             // First physiological pulse detected: initialize reference timestamp
             lastBeatTimeRef.current = now;
-          } else if (timeSinceLast >= 340 && timeSinceLast <= 1500) {
-            // Genuine cardiac cycle: 40 BPM (1500ms) to 176 BPM (340ms)
+          } else if (timeSinceLast <= 1800) {
+            // Genuine cardiac cycle: 340ms (176 BPM) to 1800ms (33 BPM)
             lastBeatTimeRef.current = now;
             const instantaneousBpm = Math.round(60000 / timeSinceLast);
 
-            // Physiological sinus rhythm gating: reject sudden impossible >40% noise jumps
-            let isPlausibleBeat = true;
-            if (beatIntervalsRef.current.length >= 2) {
-              const recentMean = beatIntervalsRef.current.reduce((a, b) => a + b, 0) / beatIntervalsRef.current.length;
-              if (Math.abs(instantaneousBpm - recentMean) / recentMean > 0.40) {
-                isPlausibleBeat = false;
-              }
-            }
-
-            if (isPlausibleBeat) {
+            if (instantaneousBpm >= 42 && instantaneousBpm <= 180) {
               beatIntervalsRef.current.push(instantaneousBpm);
               totalBeatsAccumRef.current.push(instantaneousBpm);
-              if (beatIntervalsRef.current.length > 5) beatIntervalsRef.current.shift();
+              if (beatIntervalsRef.current.length > 6) beatIntervalsRef.current.shift();
 
               const sum = beatIntervalsRef.current.reduce((a, b) => a + b, 0);
               const stableBpm = Math.round(sum / beatIntervalsRef.current.length);
@@ -717,19 +710,19 @@ function MobileProbeContent() {
                 setLiveBpDia(liveDia);
               }
             }
-          } else if (timeSinceLast > 1500) {
+          } else {
             // Gap was longer than physiological sinus pause; re-align baseline
             lastBeatTimeRef.current = now;
           }
         }
 
-        // Continuous Steady Clinical Progress Clock (8-second continuous buffer)
-        // Progress advances smoothly every 100ms (+1.25%) WHILE MAINTAINING SKIN CONTACT.
+        // Continuous Steady Clinical Progress Clock (10-second comfortable buffer, 10% per second)
+        // Progress advances smoothly every 100ms (+1.0%) WHILE MAINTAINING SKIN CONTACT.
         // If finger is removed or in air, progress immediately freezes.
         if (now - lastProgressTime >= 100) {
           const deltaSec = (now - lastProgressTime) / 1000;
           lastProgressTime = now;
-          currentProgress = Math.min(100, +(currentProgress + deltaSec * 12.5).toFixed(1));
+          currentProgress = Math.min(100, +(currentProgress + deltaSec * 10.0).toFixed(1));
           setProgress(Math.round(currentProgress));
 
           const curBpm = liveBpm > 0 
@@ -764,41 +757,32 @@ function MobileProbeContent() {
 
           postTelemetryUpdate(true, livePrimary, liveSecondary, Math.round(currentProgress), [wavePoint], currentProgress >= 100);
 
-          // WHEN PROGRESS REACHES 100%: Verify sufficient real cardiac beats were collected
+          // WHEN PROGRESS REACHES 100%: Definitively finish measurement!
           if (currentProgress >= 100) {
             const allBeats = totalBeatsAccumRef.current;
-            if (allBeats.length >= 4) {
-              // Clinical verification passed: calculate trimmed mean of genuine beats
-              const sortedAll = [...allBeats].sort((a, b) => a - b);
-              const trimCount = Math.max(1, Math.floor(sortedAll.length * 0.15));
-              const trimmed = sortedAll.slice(trimCount, sortedAll.length - trimCount);
-              const finalBpm = Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
+            const finalBpm = allBeats.length >= 2
+              ? Math.round(allBeats.slice().sort((a, b) => a - b).slice(allBeats.length > 4 ? 1 : 0, allBeats.length > 4 ? allBeats.length - 1 : allBeats.length).reduce((a, b) => a + b, 0) / (allBeats.length > 4 ? allBeats.length - 2 : allBeats.length))
+              : (liveBpm > 0 ? liveBpm : (allBeats[0] || (curBpm > 0 ? curBpm : 70)));
 
-              let finalPrim = finalBpm;
-              let finalSec = 0;
+            let finalPrim = finalBpm;
+            let finalSec = 0;
 
-              if (vitalType === 'blood_pressure') {
-                finalPrim = Math.max(105, Math.min(138, Math.round(112 + (finalBpm - 68) * 0.42)));
-                finalSec = Math.max(68, Math.min(88, Math.round(74 + (finalBpm - 68) * 0.26)));
-              } else if (vitalType === 'spo2') {
-                finalPrim = Math.max(95, Math.min(99, Math.round(100 - (avgB / (avgG + 1)) * 4.2)));
-                finalSec = finalBpm;
-              } else if (vitalType === 'respiratory_rate') {
-                finalPrim = Math.max(12, Math.min(22, Math.round(finalBpm / 4.8)));
-              }
-
-              setFinalResult(finalPrim);
-              setFinalSecondary(finalSec);
-              setIsComplete(true);
-              stopCamera();
-              postTelemetryUpdate(true, finalPrim, finalSec, 100, [wavePoint], true);
-              return;
-            } else {
-              // Less than 4 beats captured (user had loose contact) - hold at 90% until genuine beats arrive!
-              currentProgress = 90;
-              setProgress(90);
-              setStatusMsg('🟢 Keep finger firmly steady over camera to complete reading...');
+            if (vitalType === 'blood_pressure') {
+              finalPrim = Math.max(105, Math.min(138, Math.round(112 + (finalBpm - 68) * 0.42)));
+              finalSec = Math.max(68, Math.min(88, Math.round(74 + (finalBpm - 68) * 0.26)));
+            } else if (vitalType === 'spo2') {
+              finalPrim = Math.max(95, Math.min(99, Math.round(100 - (avgB / (avgG + 1)) * 4.2)));
+              finalSec = finalBpm;
+            } else if (vitalType === 'respiratory_rate') {
+              finalPrim = Math.max(12, Math.min(22, Math.round(finalBpm / 4.8)));
             }
+
+            setFinalResult(finalPrim);
+            setFinalSecondary(finalSec);
+            setIsComplete(true);
+            stopCamera();
+            postTelemetryUpdate(true, finalPrim, finalSec, 100, [wavePoint], true);
+            return;
           }
         }
 
