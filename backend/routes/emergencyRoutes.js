@@ -1131,26 +1131,26 @@ router.post('/telemetry/session', (req, res) => {
   const sessionId = requestedId || `DHUAN-${Math.floor(100000 + Math.random() * 900000)}`;
   const lanIp = getPrimaryLanIp();
   
-  if (!telemetrySessions.has(sessionId)) {
-    telemetrySessions.set(sessionId, {
-      sessionId,
-      vitalType,
-      deviceName,
-      status: 'awaiting_probe',
-      isTouchingBody: false,
-      liveValue: 0,
-      liveSecondary: 0,
-      progress: 0,
-      waveData: [],
-      lastUpdated: Date.now()
-    });
-  }
+  // ALWAYS initialize or reset session to clean fresh state
+  const freshSession = {
+    sessionId,
+    vitalType,
+    deviceName,
+    status: 'awaiting_probe',
+    isTouchingBody: false,
+    liveValue: 0,
+    liveSecondary: 0,
+    progress: 0,
+    waveData: [],
+    lastUpdated: Date.now()
+  };
+  telemetrySessions.set(sessionId, freshSession);
 
   res.json({
     success: true,
     sessionId,
     lanIp,
-    session: telemetrySessions.get(sessionId)
+    session: freshSession
   });
 });
 

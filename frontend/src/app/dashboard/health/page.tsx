@@ -1076,7 +1076,19 @@ export default function HealthProfilePage() {
     }
   };
 
-  // Log new symptom directly to SQLite backend
+  // Cleanly close modal and clear all live telemetry session state
+  const closeMeasureModal = () => {
+    setActiveMeasureModal(null);
+    setActiveRemoteSessionId('');
+    setRemoteSessionData(null);
+    setRemoteProbeUrl('');
+    setLiveMeasureVal(0);
+    setLiveMeasureSecondary(0);
+    setMeasureProgress(0);
+    setMeasureStep('no_device_detected');
+    setSensorContactState('idle');
+  };
+
   // Automatic device detection and measurement initiation (No manual questioning)
   const openMeasureModal = (vitalType: string) => {
     const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
@@ -1085,6 +1097,11 @@ export default function HealthProfilePage() {
     checkInstrumentLockout();
     setDetectionErrorMsg(null);
     setIsScanningBluetooth(false);
+
+    // Clear any previous remote probe session so stale results never bleed over
+    setActiveRemoteSessionId('');
+    setRemoteSessionData(null);
+    setRemoteProbeUrl('');
 
     setActiveMeasureModal(vitalType);
     setMeasureStep('detecting');
@@ -1323,14 +1340,19 @@ export default function HealthProfilePage() {
         }
       } catch (e) {}
 
-      // Keep active session if already exists, else create new
-      const targetSessionId = activeRemoteSessionId || `DHUAN-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Always generate a fresh unique session ID for each new barcode scan to prevent stale results
+      const freshSessionId = `DHUAN-${Math.floor(100000 + Math.random() * 900000)}`;
+      setActiveRemoteSessionId(freshSessionId);
+      setLiveMeasureVal(0);
+      setLiveMeasureSecondary(0);
+      setMeasureProgress(0);
+      setSensorContactState('idle');
 
       const res = await fetch(getApiEndpoint('/emergency/telemetry/session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: targetSessionId,
+          sessionId: freshSessionId,
           vitalType,
           deviceName: 'Apple iPhone'
         })
@@ -1351,7 +1373,7 @@ export default function HealthProfilePage() {
 
   // Poll Remote Probe Session (Auto-switches to result screen and listens for re-measurements)
   useEffect(() => {
-    if ((measureStep !== 'remote_probe_sync' && measureStep !== 'result') || !activeRemoteSessionId) return;
+    if ((measureStep !== 'remote_probe_sync' && measureStep !== 'result') || !activeRemoteSessionId || !activeMeasureModal) return;
 
     const interval = setInterval(async () => {
       try {
@@ -1359,6 +1381,10 @@ export default function HealthProfilePage() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.success && data.session) {
+            // Strict match: must belong to the active session and active vital modal
+            if (data.session.sessionId !== activeRemoteSessionId) return;
+            if (data.session.vitalType && data.session.vitalType !== activeMeasureModal) return;
+
             setRemoteSessionData(data.session);
 
             if (data.session.isTouchingBody) {
@@ -1667,7 +1693,7 @@ export default function HealthProfilePage() {
           setVitalsList(prev => [data.vital, ...prev]);
           setLatestVitals(prev => ({ ...prev, [cfg.type]: data.vital }));
           showToast(`Verified ${cfg.shortName} (${readingValue}${readingSecondary ? '/' + readingSecondary : ''} ${cfg.unit}) saved to SQLite database!`);
-          setActiveMeasureModal(null);
+          closeMeasureModal();
         } else {
           showToast(data.error || 'Failed to save vital measurement.');
         }
@@ -1711,7 +1737,7 @@ export default function HealthProfilePage() {
           setVitalsList(prev => [data.vital, ...prev]);
           setLatestVitals(prev => ({ ...prev, [cfg.type]: data.vital }));
           showToast(`${cfg.title} (${liveMeasureVal} ${cfg.unit}) saved to SQLite database!`);
-          setActiveMeasureModal(null);
+          closeMeasureModal();
         }
       }
     } catch (e) {
@@ -5203,7 +5229,7 @@ export default function HealthProfilePage() {
                 </div>
 
                 <button
-                  onClick={() => setActiveMeasureModal(null)}
+                  onClick={closeMeasureModal}
                   className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -5329,7 +5355,7 @@ export default function HealthProfilePage() {
                   <div className="pt-1 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => setActiveMeasureModal(null)}
+                      onClick={closeMeasureModal}
                       className="px-4 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
                     >
                       Close &amp; Cancel
@@ -6097,7 +6123,7 @@ export default function HealthProfilePage() {
                     <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
                       <button
                         type="button"
-                        onClick={() => setActiveMeasureModal(null)}
+                        onClick={closeMeasureModal}
                         className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
                       >
                         Cancel
