@@ -592,12 +592,12 @@ export default function HealthProfilePage() {
   const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
-  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor' | 'live_hardware_measuring'>('detecting');
+  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor'>('detecting');
   const [connectedDevices, setConnectedDevices] = useState<Record<string, string>>({});
   const [detectedSystem, setDetectedSystem] = useState<string>('Laptop / Desktop PC');
   const [scanMessage, setScanMessage] = useState<string>('Scanning for connected biometric sensors...');
   const [measureProgress, setMeasureProgress] = useState<number>(0);
-  const [liveMeasureVal, setLiveMeasureVal] = useState<number>(76);
+  const [liveMeasureVal, setLiveMeasureVal] = useState<number>(0);
   const [liveMeasureSecondary, setLiveMeasureSecondary] = useState<number | null>(null);
   const [isSavingVital, setIsSavingVital] = useState<boolean>(false);
   const [isManualInput, setIsManualInput] = useState<boolean>(false);
@@ -1217,11 +1217,9 @@ export default function HealthProfilePage() {
       setLockoutRemainingSeconds(0);
       setSelectedDevice(detectedName);
       setManualGaugeModel(detectedName);
-      setSensorContactState('not_on_body');
-      setHardwareProgress(0);
-      setHardwareMeasuringActive(false);
-      setMeasureStep('live_hardware_measuring');
-      showToast(`Medical Instrument "${detectedName}" connected! Place sensor on body to start measuring.`);
+      setSensorContactState('contact_verified');
+      setMeasureStep('manual_input');
+      showToast(`Bluetooth Medical Device "${detectedName}" linked! Enter your verified reading from device screen below.`);
     } else {
       // Physical instrument NOT detected
       const newCount = instrumentRetryCount + 1;
@@ -1296,11 +1294,9 @@ export default function HealthProfilePage() {
         setSelectedDevice(pairedName);
         setConnectedDevices(prev => ({ ...prev, [vitalType]: pairedName }));
         setManualGaugeModel(pairedName);
-        setSensorContactState('not_on_body');
-        setHardwareProgress(0);
-        setHardwareMeasuringActive(false);
-        showToast(`Cable connection verified: "${pairedName}"! Place sensor on body to measure.`);
-        setMeasureStep('live_hardware_measuring');
+        setSensorContactState('contact_verified');
+        showToast(`Hardware Cable "${pairedName}" connected! Enter reading from machine display.`);
+        setMeasureStep('manual_input');
       } else {
         showToast('No cable device selected. Ensure your USB cable is plugged into the laptop.');
       }
@@ -1310,55 +1306,6 @@ export default function HealthProfilePage() {
     } finally {
       setIsScanningCable(false);
     }
-  };
-
-  // Hardware Sensor Body Touch Simulation & Realtime Sequence
-  const handleSimulateHardwareTouch = (vitalType: string) => {
-    const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
-    if (!cfg) return;
-
-    setSensorContactState('contact_verified');
-    setHardwareMeasuringActive(true);
-    setHardwareProgress(0);
-
-    let prog = 0;
-    const interval = setInterval(() => {
-      prog += 10;
-      setHardwareProgress(prog);
-      if (prog >= 100) {
-        clearInterval(interval);
-        setHardwareMeasuringActive(false);
-        if (vitalType === 'blood_pressure') {
-          setManualSystolic(118);
-          setManualDiastolic(78);
-          setManualPulse(74);
-          setLiveMeasureVal(118);
-          setLiveMeasureSecondary(78);
-        } else if (vitalType === 'heart_rate') {
-          setManualPulse(74);
-          setLiveMeasureVal(74);
-        } else if (vitalType === 'spo2') {
-          setManualSpO2(98);
-          setLiveMeasureVal(98);
-        } else if (vitalType === 'peak_flow') {
-          setManualPEF(480);
-          setLiveMeasureVal(480);
-        } else if (vitalType === 'body_temp') {
-          setManualTemp(98.4);
-          setLiveMeasureVal(98.4);
-        } else if (vitalType === 'respiratory_rate') {
-          setManualRespiration(16);
-          setLiveMeasureVal(16);
-        } else if (vitalType === 'breath_hold') {
-          setManualBreathHold(38);
-          setLiveMeasureVal(38);
-        }
-        showToast('Skin contact measurement complete! Verified clinical reading captured.');
-        setTimeout(() => {
-          setMeasureStep('result');
-        }, 400);
-      }
-    }, 200);
   };
 
   // Start Wireless Remote Probe Sync (iPhone / Android sync over local network)
@@ -5576,149 +5523,6 @@ export default function HealthProfilePage() {
                 </div>
               )}
 
-              {/* CASE A1.5: LIVE HARDWARE MEASURING SEQUENCE (USB Cable / Bluetooth Medical Instrument) */}
-              {measureStep === 'live_hardware_measuring' && (
-                <div className="space-y-4 animate-in zoom-in-95">
-                  {/* Header bar with Back button */}
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setMeasureStep('no_device_detected')}
-                      className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      ← Back to Connection Options
-                    </button>
-                    <span className="px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-black uppercase tracking-wider">
-                      Hardware Connected Live
-                    </span>
-                  </div>
-
-                  {/* Connected Machine Card */}
-                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border-2 border-indigo-200 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                        <Cable className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                          <span className="text-xs font-black text-indigo-950">{selectedDevice || 'Hardware Medical Machine'}</span>
-                        </div>
-                        <span className="text-[10px] text-indigo-700 font-medium">
-                          USB Cable / Bluetooth Hardware Connection Verified
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      Link Active
-                    </span>
-                  </div>
-
-                  {/* Mobile Security Flashlight Notice */}
-                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs space-y-1">
-                    <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                      <Smartphone className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Mobile Flashlight &amp; Sensor Notice:</span>
-                    </div>
-                    <p className="text-[10.5px] text-slate-500 leading-tight">
-                      Agar aapne phone USB/Bluetooth se connect kiya hai, to iOS/Android security laptop ko silently phone ki flashlight on karne ki ijazat nahi deti. Mobile flashlight as optical sensor chalane ke liye <strong>&quot;Smartphone Touch Probe (QR Code)&quot;</strong> use karein. Apni external machine ya sensor ko jism par lagayein.
-                    </p>
-                  </div>
-
-                  {/* Body Touch Live Viewport */}
-                  <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 text-white text-center space-y-4 shadow-xl">
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded-full border border-emerald-800 inline-block">
-                        Biometric Skin Contact Sensor
-                      </span>
-                      <h4 className="text-base font-black tracking-tight">
-                        {sensorContactState === 'contact_verified' ? 'Measuring Physiological Vitals...' : 'Place Sensor on Body / Touch Skin'}
-                      </h4>
-                    </div>
-
-                    <div className={`relative w-32 h-32 mx-auto rounded-full flex items-center justify-center transition-all ${
-                      sensorContactState === 'contact_verified'
-                        ? 'bg-rose-600/25 border-4 border-rose-500 shadow-2xl shadow-rose-500/40 animate-pulse'
-                        : 'bg-slate-800/80 border-2 border-slate-700'
-                    }`}>
-                      <div className="text-center">
-                        <Heart className={`w-9 h-9 mx-auto transition-transform ${
-                          sensorContactState === 'contact_verified' ? 'text-rose-500 fill-current scale-110 animate-bounce' : 'text-slate-600'
-                        }`} />
-                        <span className="text-2xl font-black block tracking-tight mt-0.5">
-                          {sensorContactState === 'contact_verified' 
-                            ? (cfg.type === 'blood_pressure' ? '118 / 78' : (liveMeasureVal > 0 ? liveMeasureVal : (cfg.type === 'heart_rate' ? 74 : (cfg.type === 'spo2' ? 98 : cfg.defaultValue))))
-                            : '0'}
-                        </span>
-                        <span className="text-[10px] font-black uppercase text-slate-400">{cfg.unit}</span>
-                      </div>
-                    </div>
-
-                    {/* Sensor State Badge */}
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold">
-                      {sensorContactState === 'contact_verified' ? (
-                        <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-0.5 rounded-full flex items-center gap-1.5 text-xs">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          Skin Contact Verified (Body Detected)
-                        </span>
-                      ) : (
-                        <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-0.5 rounded-full flex items-center gap-1.5 text-xs animate-pulse">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                          Sensor Not On Body (Reading: 0 {cfg.unit})
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Progress Bar */}
-                    {sensorContactState === 'contact_verified' && (
-                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${hardwareProgress}%` }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Action Trigger Button */}
-                    <div className="pt-1">
-                      {sensorContactState !== 'contact_verified' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleSimulateHardwareTouch(cfg.type)}
-                          className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                        >
-                          <Activity className="w-4 h-4" />
-                          <span>Touch Sensor to Body / Start Live Measurement</span>
-                        </button>
-                      ) : (
-                        <div className="text-xs text-emerald-400 font-bold animate-pulse">
-                          Analyzing pulse waveform &amp; physiological pressure from hardware sensor...
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Footer options */}
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setMeasureStep('manual_input')}
-                      className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 underline cursor-pointer"
-                    >
-                      <Sliders className="w-3.5 h-3.5" />
-                      <span>Adjust / Type Reading Manually</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setMeasureStep('no_device_detected')}
-                      className="px-4 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* CASE A2: DIRECT ON-DEVICE OPTICAL CAMERA PPG SENSOR */}
               {measureStep === 'optical_cam_sensor' && (

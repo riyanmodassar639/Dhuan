@@ -24,6 +24,7 @@ export default function MobileBiometricProbePage() {
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [torchEnabled, setTorchEnabled] = useState<boolean>(false);
   const [hasTorchSupport, setHasTorchSupport] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Biometric state
   const [isTouchingBody, setIsTouchingBody] = useState<boolean>(false);
@@ -69,7 +70,6 @@ export default function MobileBiometricProbePage() {
   ) => {
     if (!sessionId) return;
     const now = Date.now();
-    // Throttle network updates to once every 350ms unless completion event
     if (!complete && now - lastStreamPostRef.current < 350) return;
     lastStreamPostRef.current = now;
 
@@ -120,54 +120,92 @@ export default function MobileBiometricProbePage() {
     setProgress(0);
     setLiveBpm(0);
     setIsTouchingBody(false);
+    setErrorMessage(null);
     ppgHistoryRef.current = [];
     peakTimesRef.current = [];
     totalBpmAccumRef.current = [];
     consecutiveValidBeatsRef.current = 0;
 
+    // 1. Verify mediaDevices availability
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setHasCameraPermission(false);
+      const isHttp = typeof window !== 'undefined' && window.location.protocol === 'http:';
+      const msg = isHttp 
+        ? 'Insecure HTTP context: Camera API is blocked by mobile browsers unless accessed via HTTPS. Please open https://' + (window?.location?.host || '192.168.100.22:3000') + ' and accept the security notice.'
+        : 'Camera access is not supported by this browser. Please use Safari (iPhone) or Chrome (Android).';
+      setErrorMessage(msg);
+      setStatusMsg(msg);
+      return;
+    }
+
+    let stream: MediaStream | null = null;
     try {
-      const constraints: MediaStreamConstraints = {
+      // 2. Request rear environment camera without restrictive micro-resolutions
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: {
-          facingMode: { ideal: 'environment' }, // Back camera for finger placement
-          width: { ideal: 192 },
-          height: { ideal: 192 }
-        }
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      setHasCameraPermission(true);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        video: { facingMode: { ideal: 'environment' } }
+      });
+    } catch (envErr: any) {
+      console.warn('Environment camera constraint rejected, trying generic video:', envErr);
+      try {
+        // Fallback to generic video
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: true
+        });
+      } catch (genErr: any) {
+        console.error('All camera requests rejected:', genErr);
+        setHasCameraPermission(false);
+        const errMsg = genErr?.name === 'NotAllowedError'
+          ? 'Camera permission denied! Please allow Camera access in Safari / Chrome settings.'
+          : `Camera failed (${genErr?.message || 'Error'}). Please refresh and grant camera permission.`;
+        setErrorMessage(errMsg);
+        setStatusMsg(errMsg);
+        return;
       }
+    }
 
-      // Check for torch / flash support and auto-enable
-      const videoTrack = stream.getVideoTracks()[0];
-      setHasTorchSupport(true); // Always make torch button visible for phone user
-      if (videoTrack && (videoTrack as any).applyConstraints) {
-        try {
+    if (!stream) {
+      setErrorMessage('No camera stream received from device.');
+      return;
+    }
+
+    streamRef.current = stream;
+    setHasCameraPermission(true);
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute('playsinline', 'true');
+      videoRef.current.setAttribute('webkit-playsinline', 'true');
+      videoRef.current.muted = true;
+      try {
+        await videoRef.current.play();
+      } catch (playErr) {
+        console.warn('Video play caught:', playErr);
+      }
+    }
+
+    // Check for torch / flash support
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+      try {
+        if ((videoTrack as any).applyConstraints) {
           await (videoTrack as any).applyConstraints({ advanced: [{ torch: true }] });
           setTorchEnabled(true);
-        } catch (e) {
-          console.warn('Auto torch enable failed, fallback to manual toggle:', e);
-          const capabilities = (videoTrack as any).getCapabilities ? (videoTrack as any).getCapabilities() : {};
-          if (capabilities.torch) {
-            setTorchEnabled(false);
-          }
+          setHasTorchSupport(true);
         }
+      } catch (torchErr) {
+        // On iOS Safari, applyConstraints with torch fails because Apple blocks torch API in WebKit
+        console.warn('Torch auto-enable rejected (Normal on iOS Safari):', torchErr);
+        setTorchEnabled(false);
+        const caps = (videoTrack as any).getCapabilities ? (videoTrack as any).getCapabilities() : {};
+        setHasTorchSupport(Boolean(caps.torch));
       }
-
-      setIsScanning(true);
-      setStatusMsg('Place finger gently over camera lens and flash');
-      processVideoFrames();
-    } catch (err: any) {
-      console.error('Camera permission or initialization failed:', err);
-      setHasCameraPermission(false);
-      setStatusMsg('Camera access is required for optical biometric pulse measurement. Please allow camera permissions in your browser.');
     }
+
+    setIsScanning(true);
+    setStatusMsg('Place finger gently over rear camera lens');
+    processVideoFrames();
   };
 
   // Toggle flash torch
@@ -227,9 +265,9 @@ export default function MobileBiometricProbePage() {
       const avgB = bSum / totalPixels;
 
       // 1. SKIN CONTACT DETECTION:
-      // When a finger or body skin covers the camera, red strongly dominates and green/blue drop
+      // Supports both torch-illuminated skin (Android) and ambient indoor lighting (iPhone WebKit without torch)
       const redRatio = avgR / (avgG + avgB + 1);
-      const hasSkinContact = avgR > 55 && redRatio > 1.25;
+      const hasSkinContact = (avgR > 35 && redRatio > 1.2) || (avgR > 16 && avgR > avgG * 1.12 && avgR > avgB * 1.1);
 
       if (!hasSkinContact) {
         // Sensor is in ambient room air, NOT on body!
@@ -354,6 +392,33 @@ export default function MobileBiometricProbePage() {
           <span className="font-mono font-black text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/80">
             {sessionId || 'INITIALIZING'}
           </span>
+        </div>
+
+        {/* Error Alert if Camera Request Rejected */}
+        {errorMessage && (
+          <div className="p-4 rounded-2xl bg-rose-950/80 border-2 border-rose-500 text-rose-200 text-xs text-left space-y-2 animate-in zoom-in-95">
+            <div className="flex items-center gap-2 font-black text-rose-300">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+              <span>Camera Initialization Error</span>
+            </div>
+            <p className="leading-relaxed">{errorMessage}</p>
+            <div className="pt-2 border-t border-rose-800/80 text-[11px] text-slate-300 space-y-1">
+              <p><strong>Troubleshooting:</strong></p>
+              <p>1. Make sure you opened the link with <strong>https://</strong> (not http://).</p>
+              <p>2. Safari / Chrome browser settings me Camera permissions ko <strong>Allow</strong> karein.</p>
+            </div>
+          </div>
+        )}
+
+        {/* iPhone Sensor Notice */}
+        <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 text-left space-y-1">
+          <div className="font-bold text-slate-200 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>iPhone Sensor Notice:</span>
+          </div>
+          <p className="leading-tight">
+            Apple iOS security web browsers ko physical LED flashlight on karne ki ijazat nahi deta. Apni finger ko rear camera lens par gently cover karein aur room light ke samne rakhein taakay camera pulse waveform capture kar sake.
+          </p>
         </div>
 
         {/* Video / Sensor Scanning Viewport */}
