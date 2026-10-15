@@ -1081,4 +1081,77 @@ router.delete('/vitals/:id', async (req, res) => {
   }
 });
 
+// 8. Mobile Probe Live Telemetry Endpoints (Real-Time Body-Touch Sync between iPhone/Android & Laptop)
+const telemetrySessions = new Map();
+
+// Periodic cleanup of old telemetry sessions (> 15 minutes old)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, sess] of telemetrySessions.entries()) {
+    if (now - sess.lastUpdated > 15 * 60 * 1000) {
+      telemetrySessions.delete(key);
+    }
+  }
+}, 60000);
+
+router.post('/telemetry/session', (req, res) => {
+  const { sessionId: requestedId, vitalType = 'heart_rate', deviceName = 'Apple iPhone' } = req.body || {};
+  const sessionId = requestedId || `DHUAN-${Math.floor(100000 + Math.random() * 900000)}`;
+  
+  if (!telemetrySessions.has(sessionId)) {
+    telemetrySessions.set(sessionId, {
+      sessionId,
+      vitalType,
+      deviceName,
+      status: 'awaiting_probe',
+      isTouchingBody: false,
+      liveValue: 0,
+      liveSecondary: 0,
+      progress: 0,
+      waveData: [],
+      lastUpdated: Date.now()
+    });
+  }
+
+  res.json({
+    success: true,
+    sessionId,
+    session: telemetrySessions.get(sessionId)
+  });
+});
+
+router.post('/telemetry/stream', (req, res) => {
+  const { sessionId, isTouchingBody, liveValue, liveSecondary, progress, waveData, status, deviceName } = req.body || {};
+  if (!sessionId) {
+    return res.status(400).json({ success: false, error: 'Session ID required' });
+  }
+
+  let session = telemetrySessions.get(sessionId);
+  if (!session) {
+    session = { sessionId, vitalType: 'heart_rate', lastUpdated: Date.now() };
+  }
+
+  session.isTouchingBody = !!isTouchingBody;
+  if (typeof liveValue === 'number') session.liveValue = liveValue;
+  if (typeof liveSecondary === 'number') session.liveSecondary = liveSecondary;
+  if (typeof progress === 'number') session.progress = progress;
+  if (Array.isArray(waveData)) session.waveData = waveData;
+  if (status) session.status = status;
+  if (deviceName) session.deviceName = deviceName;
+  session.lastUpdated = Date.now();
+
+  telemetrySessions.set(sessionId, session);
+  res.json({ success: true, session });
+});
+
+router.get('/telemetry/stream/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = telemetrySessions.get(sessionId);
+  if (!session) {
+    return res.status(404).json({ success: false, error: 'Session not found or expired' });
+  }
+
+  res.json({ success: true, session });
+});
+
 module.exports = router;

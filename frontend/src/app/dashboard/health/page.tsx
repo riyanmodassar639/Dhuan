@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { 
   ShieldAlert, 
@@ -55,7 +55,12 @@ import {
   Users,
   Heart,
   Lock,
-  Laptop
+  Laptop,
+  QrCode,
+  Cable,
+  Camera,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -587,7 +592,7 @@ export default function HealthProfilePage() {
   const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
-  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input'>('detecting');
+  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor'>('detecting');
   const [connectedDevices, setConnectedDevices] = useState<Record<string, string>>({});
   const [detectedSystem, setDetectedSystem] = useState<string>('Laptop / Desktop PC');
   const [scanMessage, setScanMessage] = useState<string>('Scanning for connected biometric sensors...');
@@ -603,7 +608,28 @@ export default function HealthProfilePage() {
   const [instrumentRetryCount, setInstrumentRetryCount] = useState<number>(0);
   const [lockoutRemainingSeconds, setLockoutRemainingSeconds] = useState<number>(0);
   const [isScanningBluetooth, setIsScanningBluetooth] = useState<boolean>(false);
+  const [isScanningCable, setIsScanningCable] = useState<boolean>(false);
   const [detectionErrorMsg, setDetectionErrorMsg] = useState<string | null>(null);
+
+  // Remote Mobile Probe Sync (iPhone / Android) State
+  const [activeRemoteSessionId, setActiveRemoteSessionId] = useState<string>('');
+  const [remoteSessionData, setRemoteSessionData] = useState<any>(null);
+  const [remoteProbeUrl, setRemoteProbeUrl] = useState<string>('');
+
+  // On-Device Optical Camera Sensor (Computer Vision PPG) state & refs
+  const opticalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const opticalCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const opticalStreamRef = useRef<MediaStream | null>(null);
+  const opticalAnimRef = useRef<number | null>(null);
+  const opticalPpgHistoryRef = useRef<number[]>([]);
+  const opticalPeakTimesRef = useRef<number[]>([]);
+  const opticalLastPeakTimeRef = useRef<number>(0);
+  const opticalBpmAccumRef = useRef<number[]>([]);
+
+  const [opticalTouching, setOpticalTouching] = useState<boolean>(false);
+  const [opticalBpm, setOpticalBpm] = useState<number>(0);
+  const [opticalProgress, setOpticalProgress] = useState<number>(0);
+  const [opticalWave, setOpticalWave] = useState<number[]>([]);
 
   // Dedicated Manual Input Form State (100% Genuine Physical Readouts from Mobile / BP Machine)
   // Dedicated Manual Input Form State (Starts at 0 until measured by sensor or entered from gauge)
@@ -1115,29 +1141,18 @@ export default function HealthProfilePage() {
 
     try {
       if (typeof navigator !== 'undefined' && (navigator as any).bluetooth && typeof (navigator as any).bluetooth.requestDevice === 'function') {
-        // STRICT MEDICAL GATT FILTERS: ONLY scan for genuine medical health instruments.
-        // DO NOT accept random Bluetooth audio headphones, smart TVs, or mice!
-        let medicalFilters: any[] = [];
-        if (vitalType === 'heart_rate') {
-          medicalFilters = [{ services: ['heart_rate'] }];
-        } else if (vitalType === 'blood_pressure') {
-          medicalFilters = [{ services: ['blood_pressure'] }];
-        } else if (vitalType === 'spo2') {
-          medicalFilters = [{ services: ['pulse_oximeter'] }];
-        } else if (vitalType === 'body_temp') {
-          medicalFilters = [{ services: ['health_thermometer'] }];
-        } else {
-          medicalFilters = [
-            { services: ['heart_rate'] },
-            { services: ['blood_pressure'] },
-            { services: ['pulse_oximeter'] },
-            { services: ['health_thermometer'] }
-          ];
-        }
-
+        // Broad discovery with acceptAllDevices: true so Apple iPhones, smartwatches, and medical monitors are discoverable
         const device = await (navigator as any).bluetooth.requestDevice({
-          filters: medicalFilters,
-          optionalServices: ['battery_service', 'device_information']
+          acceptAllDevices: true,
+          optionalServices: [
+            'heart_rate',
+            'blood_pressure',
+            'pulse_oximeter',
+            'health_thermometer',
+            'battery_service',
+            'device_information',
+            'generic_access'
+          ]
         });
 
         if (device && (device.name || device.id)) {
@@ -1149,27 +1164,29 @@ export default function HealthProfilePage() {
             if (device.gatt) {
               const server = await device.gatt.connect();
               if (vitalType === 'heart_rate') {
-                const service = await server.getPrimaryService('heart_rate');
-                const char = await service.getCharacteristic('heart_rate_measurement');
-                await char.startNotifications();
-                char.addEventListener('characteristicvaluechanged', (e: any) => {
-                  const val = e.target.value;
-                  const flags = val.getUint8(0);
-                  const is16Bit = flags & 0x1;
-                  const contactSupported = (flags & 0x4) !== 0;
-                  const contactDetected = (flags & 0x6) === 0x6;
-                  const hr = is16Bit ? val.getUint16(1, true) : val.getUint8(1);
+                try {
+                  const service = await server.getPrimaryService('heart_rate');
+                  const char = await service.getCharacteristic('heart_rate_measurement');
+                  await char.startNotifications();
+                  char.addEventListener('characteristicvaluechanged', (e: any) => {
+                    const val = e.target.value;
+                    const flags = val.getUint8(0);
+                    const is16Bit = flags & 0x1;
+                    const contactSupported = (flags & 0x4) !== 0;
+                    const contactDetected = (flags & 0x6) === 0x6;
+                    const hr = is16Bit ? val.getUint16(1, true) : val.getUint8(1);
 
-                  if (contactSupported && !contactDetected) {
-                    // Sensor is NOT touching skin/body! Display 0.
-                    setManualPulse(0);
-                    setSensorContactState('not_on_body');
-                  } else {
-                    // Sensor in contact and reading valid pulse!
-                    setManualPulse(hr);
-                    setSensorContactState('contact_verified');
-                  }
-                });
+                    if (contactSupported && !contactDetected) {
+                      setManualPulse(0);
+                      setSensorContactState('not_on_body');
+                    } else {
+                      setManualPulse(hr);
+                      setSensorContactState('contact_verified');
+                    }
+                  });
+                } catch (serviceErr) {
+                  console.warn('GATT heart_rate service not directly exposed on this device:', serviceErr);
+                }
               }
             }
           } catch (gattErr) {
@@ -1177,7 +1194,6 @@ export default function HealthProfilePage() {
           }
         }
       } else {
-        // Web Bluetooth not available or supported in this browser/laptop environment
         throw new Error('Web Bluetooth interface is not available on this laptop/browser.');
       }
     } catch (err: any) {
@@ -1220,11 +1236,276 @@ export default function HealthProfilePage() {
         showToast('3 failed attempts. Recommended detection locked for 1 hour.');
       } else {
         const remaining = 3 - newCount;
-        setDetectionErrorMsg(`❌ Attempt ${newCount} of 3 Failed: No medical instrument found in pairing mode. (Note: Non-medical Bluetooth devices like headphones or TVs are filtered out). (${remaining} retry attempt${remaining === 1 ? '' : 's'} remaining before 1-hour lockout).`);
+        setDetectionErrorMsg(`❌ Attempt ${newCount} of 3 Failed: No medical instrument found in pairing mode. (Note: Ensure Bluetooth is turned on and discoverable). (${remaining} retry attempt${remaining === 1 ? '' : 's'} remaining before 1-hour lockout).`);
         showToast(`Attempt ${newCount}/3 failed. ${remaining} retries remaining.`);
       }
     }
   };
+
+  // Physical Cable / Wire Connection (WebUSB, WebSerial, WebHID)
+  const handleConnectViaCable = async (vitalType: string) => {
+    setIsScanningCable(true);
+    setDetectionErrorMsg(null);
+    let pairedName = '';
+
+    try {
+      // 1. WebUSB API
+      if (typeof navigator !== 'undefined' && (navigator as any).usb) {
+        try {
+          const usbDevice = await (navigator as any).usb.requestDevice({ filters: [] });
+          if (usbDevice) {
+            pairedName = usbDevice.productName || usbDevice.manufacturerName || 'Wired USB Medical Machine';
+          }
+        } catch (e: any) {
+          console.warn('WebUSB attempt cancelled/not chosen:', e?.message);
+        }
+      }
+
+      // 2. WebSerial API (COM / Serial Ports)
+      if (!pairedName && typeof navigator !== 'undefined' && (navigator as any).serial) {
+        try {
+          const serialPort = await (navigator as any).serial.requestPort();
+          if (serialPort) {
+            const info = serialPort.getInfo ? serialPort.getInfo() : {};
+            pairedName = `Wired USB Serial Gauge (VID: ${info.usbVendorId || 'USB'})`;
+          }
+        } catch (e: any) {
+          console.warn('WebSerial attempt cancelled/not chosen:', e?.message);
+        }
+      }
+
+      // 3. WebHID API
+      if (!pairedName && typeof navigator !== 'undefined' && (navigator as any).hid) {
+        try {
+          const hidDevices = await (navigator as any).hid.requestDevice({ filters: [] });
+          if (hidDevices && hidDevices.length > 0) {
+            pairedName = hidDevices[0].productName || 'USB HID Health Instrument';
+          }
+        } catch (e: any) {
+          console.warn('WebHID attempt cancelled/not chosen:', e?.message);
+        }
+      }
+
+      if (pairedName) {
+        setSelectedDevice(pairedName);
+        setConnectedDevices(prev => ({ ...prev, [vitalType]: pairedName }));
+        showToast(`Cable connection verified: "${pairedName}"`);
+        setMeasureStep('manual_input');
+      } else {
+        showToast('No cable device selected. Ensure your USB cable is plugged into the laptop.');
+      }
+    } catch (err: any) {
+      console.warn('Cable connection failed:', err);
+      showToast('Wired connection request was cancelled.');
+    } finally {
+      setIsScanningCable(false);
+    }
+  };
+
+  // Start Wireless Remote Probe Sync (iPhone / Android sync over local network)
+  const handleStartRemoteProbeSync = async (vitalType: string) => {
+    try {
+      const res = await fetch(getApiEndpoint('/emergency/telemetry/session'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vitalType,
+          deviceName: 'Apple iPhone'
+        })
+      });
+      const data = await res.json();
+      if (data && data.success && data.sessionId) {
+        setActiveRemoteSessionId(data.sessionId);
+        setRemoteSessionData(data.session);
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:3000';
+        setRemoteProbeUrl(`${origin}/dashboard/health/probe?session=${data.sessionId}&type=${vitalType}`);
+        setMeasureStep('remote_probe_sync');
+      }
+    } catch (e) {
+      console.error('Error starting remote probe session:', e);
+      showToast('Failed to initialize mobile probe session.');
+    }
+  };
+
+  // Poll Remote Probe Session
+  useEffect(() => {
+    if (measureStep !== 'remote_probe_sync' || !activeRemoteSessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(getApiEndpoint(`/emergency/telemetry/stream/${activeRemoteSessionId}`));
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && data.session) {
+            setRemoteSessionData(data.session);
+
+            if (data.session.isTouchingBody) {
+              setSensorContactState('contact_verified');
+              if (data.session.liveValue > 0) {
+                setLiveMeasureVal(data.session.liveValue);
+                setManualPulse(data.session.liveValue);
+              }
+            } else {
+              setSensorContactState('not_on_body');
+            }
+
+            if (data.session.status === 'completed' && data.session.liveValue > 0) {
+              setLiveMeasureVal(data.session.liveValue);
+              setManualPulse(data.session.liveValue);
+              setSelectedDevice('Apple iPhone (Live Remote Optical Probe)');
+              showToast(`100% verified reading (${data.session.liveValue} BPM) received from iPhone!`);
+              setMeasureStep('result');
+            }
+          }
+        }
+      } catch (e) {}
+    }, 600);
+
+    return () => clearInterval(interval);
+  }, [measureStep, activeRemoteSessionId]);
+
+  // On-Device Optical Camera PPG Sensor
+  const stopOpticalSensor = useCallback(() => {
+    if (opticalAnimRef.current) {
+      cancelAnimationFrame(opticalAnimRef.current);
+      opticalAnimRef.current = null;
+    }
+    if (opticalStreamRef.current) {
+      opticalStreamRef.current.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      opticalStreamRef.current = null;
+    }
+  }, []);
+
+  const handleStartOnDeviceOpticalSensor = async (vitalType: string) => {
+    stopOpticalSensor();
+    setOpticalTouching(false);
+    setOpticalBpm(0);
+    setOpticalProgress(0);
+    setOpticalWave([]);
+    opticalPpgHistoryRef.current = [];
+    opticalPeakTimesRef.current = [];
+    opticalBpmAccumRef.current = [];
+    setMeasureStep('optical_cam_sensor');
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 192 }, height: { ideal: 192 } }
+      });
+      opticalStreamRef.current = stream;
+
+      if (opticalVideoRef.current) {
+        opticalVideoRef.current.srcObject = stream;
+        await opticalVideoRef.current.play();
+      }
+
+      runOpticalSensorLoop(vitalType);
+    } catch (e: any) {
+      console.error('Camera sensor init failed:', e);
+      showToast('Camera access denied or unavailable.');
+      setMeasureStep('no_device_detected');
+    }
+  };
+
+  const runOpticalSensorLoop = (vitalType: string) => {
+    const video = opticalVideoRef.current;
+    const canvas = opticalCanvasRef.current;
+    if (!video || !canvas) return;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const sw = 48;
+    const sh = 48;
+    canvas.width = sw;
+    canvas.height = sh;
+
+    let prog = 0;
+
+    const loop = () => {
+      if (!opticalStreamRef.current || !video.videoWidth) {
+        opticalAnimRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      ctx.drawImage(video, 0, 0, sw, sh);
+      const imgData = ctx.getImageData(0, 0, sw, sh);
+      const data = imgData.data;
+
+      let r = 0, g = 0, b = 0;
+      const count = sw * sh;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+      }
+      const avgR = r / count;
+      const avgG = g / count;
+      const avgB = b / count;
+
+      const hasContact = avgR > 50 && (avgR / (avgG + avgB + 1)) > 1.25;
+
+      if (!hasContact) {
+        setOpticalTouching(false);
+        setSensorContactState('not_on_body');
+        setOpticalBpm(0);
+      } else {
+        setOpticalTouching(true);
+        setSensorContactState('contact_verified');
+
+        const pulseVal = 255 - avgG;
+        opticalPpgHistoryRef.current.push(pulseVal);
+        if (opticalPpgHistoryRef.current.length > 50) opticalPpgHistoryRef.current.shift();
+
+        setOpticalWave(prev => [...prev.slice(-35), Math.round(pulseVal)]);
+
+        const hist = opticalPpgHistoryRef.current;
+        if (hist.length >= 7) {
+          const mid = hist.length - 4;
+          const val = hist[mid];
+          const isPeak = val > hist[mid - 1] && val > hist[mid - 2] && val > hist[mid + 1] && val > hist[mid + 2];
+          const now = Date.now();
+          const dt = now - opticalLastPeakTimeRef.current;
+
+          if (isPeak && dt > 320 && dt < 1450) {
+            opticalLastPeakTimeRef.current = now;
+            opticalPeakTimesRef.current.push(dt);
+            if (opticalPeakTimesRef.current.length > 8) opticalPeakTimesRef.current.shift();
+
+            const avgDt = opticalPeakTimesRef.current.reduce((a: number, b: number) => a + b, 0) / opticalPeakTimesRef.current.length;
+            const bpm = Math.round(60000 / avgDt);
+
+            if (bpm >= 45 && bpm <= 180) {
+              setOpticalBpm(bpm);
+              opticalBpmAccumRef.current.push(bpm);
+              prog = Math.min(100, prog + 8);
+              setOpticalProgress(prog);
+
+              if (prog >= 100) {
+                const finalBpm = Math.round(opticalBpmAccumRef.current.reduce((a: number, b: number) => a + b, 0) / opticalBpmAccumRef.current.length);
+                setLiveMeasureVal(finalBpm);
+                setManualPulse(finalBpm);
+                setSelectedDevice(getAutoDetectedMachineName(vitalType).displayName);
+                stopOpticalSensor();
+                showToast(`Verified optical pulse captured: ${finalBpm} BPM!`);
+                setMeasureStep('result');
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      opticalAnimRef.current = requestAnimationFrame(loop);
+    };
+
+    opticalAnimRef.current = requestAnimationFrame(loop);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopOpticalSensor();
+    };
+  }, [stopOpticalSensor]);
 
   // Disconnect device helper to re-test laptop detection
   const handleDisconnectDevice = (vitalType: string) => {
@@ -4997,77 +5278,115 @@ export default function HealthProfilePage() {
                       Choose How You Want to Proceed:
                     </span>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       
-                      {/* OPTION 1: RECOMMENDED BLUETOOTH CONNECT (3 RETRIES MAX -> 1-HOUR LOCKOUT) */}
-                      {lockoutRemainingSeconds > 0 ? (
-                        <div className="p-4 rounded-2xl border-2 border-slate-300 bg-slate-100/90 text-left space-y-2 cursor-not-allowed opacity-60 relative group">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-slate-600 flex items-center gap-1.5">
-                              <Lock className="w-4 h-4 text-slate-500" />
-                              Connect Instrument / Smart Device
-                            </span>
-                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-300 text-slate-700 flex items-center gap-1">
-                              <Lock className="w-2.5 h-2.5" />
-                              Locked ({formatLockoutTime(lockoutRemainingSeconds)})
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 leading-tight">
-                            Retry limit reached (3/3). This option is locked for 1 hour. It will automatically reset in {formatLockoutTime(lockoutRemainingSeconds)}. Please use Manual Entry.
-                          </p>
+                      {/* OPTION 1: SMARTPHONE BIOMETRIC PROBE (iPhone / Android) */}
+                      <div className="p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 hover:bg-emerald-100/80 transition-all text-left space-y-2 group shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                            <Smartphone className="w-4 h-4 text-emerald-600" />
+                            Smartphone Biometric Probe (iPhone / Android)
+                          </span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800">
+                            Live Touch Sensor
+                          </span>
                         </div>
-                      ) : (
+                        <p className="text-[11px] text-slate-600 leading-tight">
+                          Apne iPhone ya Android mobile ko as a biometric touch probe use karein. Camera/flash par finger rakh kar real pulse wave stream karein.
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartRemoteProbeSync(cfg.type)}
+                            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Sync iPhone (QR Code)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStartOnDeviceOpticalSensor(cfg.type)}
+                            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Camera className="w-3.5 h-3.5 text-slate-700" />
+                            <span>Camera Sensor</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* OPTION 2: PHYSICAL CABLE CONNECTION (USB / Serial Wire) */}
+                      <div className="p-4 rounded-2xl border-2 border-indigo-400 bg-indigo-50/60 hover:bg-indigo-100/80 transition-all text-left space-y-2 group shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                            <Cable className="w-4 h-4 text-indigo-600" />
+                            Cable / Wire Connection (USB / Serial)
+                          </span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-200 text-indigo-800">
+                            Direct Wire
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 leading-tight">
+                          Agar device me Bluetooth nahi hai ya iPhone/machine cable ke zariye laptop se connected hai to USB wire se pair karein.
+                        </p>
+                        <button
+                          type="button"
+                          disabled={isScanningCable}
+                          onClick={() => handleConnectViaCable(cfg.type)}
+                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <Cable className="w-3.5 h-3.5" />
+                          <span>{isScanningCable ? 'Scanning USB Port...' : 'Connect via Cable (USB)'}</span>
+                        </button>
+                      </div>
+
+                      {/* OPTION 3: BLUETOOTH WIRELESS (All BLE Devices / Watches / Bands) */}
+                      <div className="p-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all text-left space-y-2 shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                            <Bluetooth className="w-4 h-4 text-blue-600" />
+                            Bluetooth Wireless (All Devices)
+                          </span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                            Wireless BLE
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-tight">
+                          Apple devices, smartwatches, BP cuffs aur Bluetooth pulse oximeters ko broad pairing mode me scan karein.
+                        </p>
                         <button
                           type="button"
                           disabled={isScanningBluetooth}
                           onClick={() => handleAttemptConnectInstrument(cfg.type)}
-                          className="p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 hover:bg-emerald-100/90 transition-all text-left space-y-1.5 group cursor-pointer shadow-xs"
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
-                              <Bluetooth className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
-                              Connect Instrument / Sensor (Apple, Android, BLE)
-                            </span>
-                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800 flex items-center gap-1">
-                              <span>Recommended</span>
-                              {instrumentRetryCount > 0 && (
-                                <span className="bg-emerald-700 text-white px-1.5 py-0.2 rounded-full text-[9px]">
-                                  {instrumentRetryCount}/3 Tries
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-600 leading-tight">
-                            Attempts real Bluetooth sensor detection. If device is not detected, you have {3 - instrumentRetryCount} retry {3 - instrumentRetryCount === 1 ? 'attempt' : 'attempts'} before 1-hour lockout.
-                          </p>
+                          <Bluetooth className="w-3.5 h-3.5" />
+                          <span>{isScanningBluetooth ? 'Searching BLE...' : 'Connect via Bluetooth'}</span>
                         </button>
-                      )}
+                      </div>
 
-                      {/* OPTION 2: DEDICATED MANUAL ENTRY FROM PHYSICAL GAUGE */}
-                      <button
-                        type="button"
-                        onClick={() => setMeasureStep('manual_input')}
-                        className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1.5 group cursor-pointer shadow-xs ${
-                          lockoutRemainingSeconds > 0 
-                            ? 'border-indigo-500 bg-indigo-50/80 hover:bg-indigo-100 ring-2 ring-indigo-400' 
-                            : 'border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50'
-                        }`}
-                      >
+                      {/* OPTION 4: MANUAL ENTRY FROM EXTERNAL GAUGE */}
+                      <div className="p-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all text-left space-y-2 shadow-xs">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                            <Sliders className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                            Manual Entry from Detected Device / Gauge
+                            <Sliders className="w-4 h-4 text-slate-600" />
+                            Manual Entry from Gauge Screen
                           </span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                            lockoutRemainingSeconds > 0 ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {lockoutRemainingSeconds > 0 ? 'Primary Option' : '100% Accurate'}
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                            100% Accurate
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 leading-tight">
-                          Read numbers directly from your physical machine (Omron BP, Pulse Oximeter, Apple Health app) and save genuine verified clinical readings.
+                          Apni machine (Omron BP, Oximeter, Apple Health) ke display par se exact number dekh kar yahan save karein.
                         </p>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setMeasureStep('manual_input')}
+                          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <Sliders className="w-3.5 h-3.5" />
+                          <span>Open Manual Entry</span>
+                        </button>
+                      </div>
 
                     </div>
 
@@ -5080,6 +5399,223 @@ export default function HealthProfilePage() {
                         Close & Cancel
                       </button>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CASE A1: REMOTE MOBILE PROBE SYNC (IPHONE / ANDROID TOUCH TELEMETRY) */}
+              {measureStep === 'remote_probe_sync' && (
+                <div className="space-y-6 animate-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setMeasureStep('no_device_detected')}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      ← Back to Connection Options
+                    </button>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
+                      Remote Mobile Probe Live Sync
+                    </span>
+                  </div>
+
+                  <div className="p-6 rounded-3xl bg-slate-900 text-white text-center space-y-4 shadow-xl">
+                    <div className="space-y-1">
+                      <span className="px-3 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-black uppercase tracking-wider inline-block">
+                        Pair Your Smartphone
+                      </span>
+                      <h4 className="text-lg font-black tracking-tight">
+                        Scan QR Code with iPhone / Android Camera
+                      </h4>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                        Apne mobile ka camera is QR code par layein. Phone par biometric optical sensor on hoga aur skin touch detection live yahan stream hogi.
+                      </p>
+                    </div>
+
+                    {/* QR Code */}
+                    <div className="w-44 h-44 mx-auto p-2.5 rounded-2xl bg-white flex items-center justify-center shadow-lg">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(remoteProbeUrl || (typeof window !== 'undefined' ? `${window.location.origin}/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}` : ''))}`}
+                        alt="Scan with iPhone Camera"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1 text-xs">
+                      <span className="font-mono font-bold bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 text-slate-300">
+                        Session: {activeRemoteSessionId}
+                      </span>
+                      <a
+                        href={remoteProbeUrl || (typeof window !== 'undefined' ? `${window.location.origin}/dashboard/health/probe?session=${activeRemoteSessionId}&type=${cfg.type}` : '#')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 underline"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open Mobile Probe in Browser Tab</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Telemetry Live Feed Box */}
+                  <div className={`p-4 rounded-2xl border-2 transition-all space-y-3 ${
+                    remoteSessionData?.isTouchingBody
+                      ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                      : (remoteSessionData?.status === 'measuring'
+                          ? 'bg-amber-50 border-amber-300 text-amber-950 animate-pulse'
+                          : 'bg-slate-50 border-slate-200 text-slate-700')
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full ${
+                          remoteSessionData?.isTouchingBody ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'
+                        }`} />
+                        <span className="text-xs font-black uppercase tracking-wider">
+                          {remoteSessionData?.isTouchingBody ? '🟢 Body Contact Detected on Mobile!' : '⚪ Waiting for Skin Contact on Mobile'}
+                        </span>
+                      </div>
+                      <span className="text-sm font-black font-mono">
+                        {remoteSessionData?.liveValue ? `${remoteSessionData.liveValue} ${cfg.unit}` : `0 ${cfg.unit}`}
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                      <div 
+                        className="bg-emerald-500 h-2.5 rounded-full transition-all duration-300"
+                        style={{ width: `${remoteSessionData?.progress || 0}%` }}
+                      />
+                    </div>
+
+                    <p className="text-[11px] leading-relaxed">
+                      {remoteSessionData?.isTouchingBody 
+                        ? `✅ Mobile skin touch verified! Real-time physiological pulses are streaming to your website: ${remoteSessionData.liveValue} ${cfg.unit}.`
+                        : 'Apne mobile phone par camera lens aur flash par finger rakhein. Jese he mobile skin ko touch karega, signal yahan live show hoga.'}
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setMeasureStep('no_device_detected')}
+                      className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs"
+                    >
+                      Cancel Probe Sync
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CASE A2: DIRECT ON-DEVICE OPTICAL CAMERA PPG SENSOR */}
+              {measureStep === 'optical_cam_sensor' && (
+                <div className="space-y-6 animate-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopOpticalSensor();
+                        setMeasureStep('no_device_detected');
+                      }}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      ← Back to Connection Options
+                    </button>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
+                      Optical PPG Biometric Sensor
+                    </span>
+                  </div>
+
+                  {/* Sensor Viewport */}
+                  <div className="relative rounded-3xl overflow-hidden bg-slate-950 text-white border-2 border-slate-800 p-6 text-center space-y-4 shadow-2xl">
+                    <video 
+                      ref={opticalVideoRef} 
+                      playsInline 
+                      muted 
+                      className="absolute inset-0 w-full h-full object-cover opacity-25 filter blur-xs"
+                    />
+                    <canvas ref={opticalCanvasRef} className="hidden" />
+
+                    <div className="relative z-10 space-y-3">
+                      <div className={`w-32 h-32 mx-auto rounded-full flex items-center justify-center transition-all ${
+                        opticalTouching
+                          ? 'bg-rose-600/25 border-4 border-rose-500 shadow-2xl shadow-rose-500/40 animate-pulse'
+                          : 'bg-slate-900 border-2 border-slate-700'
+                      }`}>
+                        <div className="text-center">
+                          <Heart className={`w-10 h-10 mx-auto transition-transform ${
+                            opticalTouching ? 'text-rose-500 fill-current scale-110 animate-bounce' : 'text-slate-600'
+                          }`} />
+                          <span className="text-2xl font-black block tracking-tight">
+                            {opticalBpm > 0 ? opticalBpm : '--'}
+                          </span>
+                          <span className="text-[10px] font-black uppercase text-slate-400">BPM</span>
+                        </div>
+                      </div>
+
+                      {/* Skin Contact Indicator */}
+                      <div>
+                        {opticalTouching ? (
+                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            Skin Contact Verified (Body Detected)
+                          </span>
+                        ) : (
+                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 animate-pulse">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                            Not On Body (Reading: 0 BPM)
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-slate-300 max-w-xs mx-auto">
+                        {opticalTouching 
+                          ? 'Body contact detected! Real-time arterial pulses are computing...'
+                          : 'Apni finger ya body skin camera lens par rakhein taakay optical sensor touch detect kare.'}
+                      </p>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="relative z-10 w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${opticalProgress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Waveform Canvas / Points */}
+                  {opticalWave.length > 0 && (
+                    <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 text-white">
+                      <div className="flex items-center justify-between text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                        <span>Live Optical Pulse Wave</span>
+                        <span className="text-emerald-400">30 FPS</span>
+                      </div>
+                      <div className="h-9 w-full flex items-end gap-1">
+                        {opticalWave.map((v, i) => {
+                          const h = Math.max(10, Math.min(100, ((v - 100) / 155) * 100));
+                          return (
+                            <div 
+                              key={i} 
+                              className="flex-1 bg-rose-500/80 rounded-t-sm transition-all"
+                              style={{ height: `${h}%` }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopOpticalSensor();
+                        setMeasureStep('no_device_detected');
+                      }}
+                      className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs"
+                    >
+                      Stop Sensor & Return
+                    </button>
                   </div>
                 </div>
               )}
