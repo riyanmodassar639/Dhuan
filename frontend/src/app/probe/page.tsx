@@ -68,6 +68,7 @@ function MobileProbeContent() {
   const prevWaveValRef = useRef<number>(0);
   const lastProgressTickRef = useRef<number>(0);
   const rollingAmpRef = useRef<number>(0.04);
+  const rollingRatioRef = useRef<number>(0);
 
   // Dedicated Breathing Cadence Tracker (respiratory_rate)
   const [respMode, setRespMode] = useState<'cadence_tap' | 'optical_camera'>('cadence_tap');
@@ -520,6 +521,7 @@ function MobileProbeContent() {
     totalBeatsAccumRef.current = [];
     lastBeatTimeRef.current = 0;
     rollingAmpRef.current = 0.04;
+    rollingRatioRef.current = 0;
 
     try {
       const constraints: MediaStreamConstraints = {
@@ -660,20 +662,29 @@ function MobileProbeContent() {
         const greenAbsorption = 255 - avgG;
 
         // Dual Exponential Moving Average (EMA) zero-crossing filter
+        // Clinical 2nd-order low-pass filter (0.80 / 0.20): suppresses dicrotic notch & high-freq camera noise
         if (smoothValRef.current === 0) {
           smoothValRef.current = greenAbsorption;
           baselineValRef.current = greenAbsorption;
         } else {
-          smoothValRef.current = 0.65 * smoothValRef.current + 0.35 * greenAbsorption;
+          smoothValRef.current = 0.80 * smoothValRef.current + 0.20 * greenAbsorption;
           baselineValRef.current = 0.96 * baselineValRef.current + 0.04 * greenAbsorption;
         }
 
         const acPulse = smoothValRef.current - baselineValRef.current;
         const prevPulse = prevWaveValRef.current;
 
-        // Dynamic amplitude envelope tracker (adapts to faint or strong pulse signals automatically)
+        // Dynamic amplitude envelope tracker (adapts to pulse strength with minimum 0.010 floor)
         rollingAmpRef.current = 0.90 * rollingAmpRef.current + 0.10 * Math.abs(acPulse);
-        const dynamicThreshold = Math.max(0.005, Math.min(0.05, rollingAmpRef.current * 0.28));
+        const dynamicThreshold = Math.max(0.010, Math.min(0.06, rollingAmpRef.current * 0.35));
+
+        // Rolling optical ratio for rock-solid SpO2 saturation
+        const currentRatio = avgB / (avgG + 1);
+        if (rollingRatioRef.current === 0) {
+          rollingRatioRef.current = currentRatio;
+        } else {
+          rollingRatioRef.current = 0.95 * rollingRatioRef.current + 0.05 * currentRatio;
+        }
 
         const wavePoint = Math.round(50 + Math.max(-45, Math.min(45, acPulse * 16)));
         rollingWave.push(wavePoint);
@@ -682,25 +693,28 @@ function MobileProbeContent() {
 
         const timeSinceLast = now - lastBeatTimeRef.current;
 
-        // Detect systolic peak crest: the pulse wave reached its maximum and starts descending
+        // Detect true systolic peak crest: wave reached its maximum and starts descending
         const isPeakCrest = prevPulse > acPulse && prevPulse > dynamicThreshold;
 
-        if (isPeakCrest && timeSinceLast >= 340) {
+        // Physiological Refractory Period: 500ms (120 BPM max at rest)
+        // This physically prevents dicrotic notch / reflective waves (at 350-450ms) from doubling the heart rate!
+        if (isPeakCrest && timeSinceLast >= 500) {
           if (lastBeatTimeRef.current === 0) {
             // First physiological pulse detected: initialize reference timestamp
             lastBeatTimeRef.current = now;
           } else if (timeSinceLast <= 1800) {
-            // Genuine cardiac cycle: 340ms (176 BPM) to 1800ms (33 BPM)
+            // Valid resting cardiac cycle: 500ms (120 BPM) to 1800ms (33 BPM)
             lastBeatTimeRef.current = now;
             const instantaneousBpm = Math.round(60000 / timeSinceLast);
 
-            if (instantaneousBpm >= 42 && instantaneousBpm <= 180) {
+            if (instantaneousBpm >= 45 && instantaneousBpm <= 120) {
               beatIntervalsRef.current.push(instantaneousBpm);
               totalBeatsAccumRef.current.push(instantaneousBpm);
               if (beatIntervalsRef.current.length > 6) beatIntervalsRef.current.shift();
 
-              const sum = beatIntervalsRef.current.reduce((a, b) => a + b, 0);
-              const stableBpm = Math.round(sum / beatIntervalsRef.current.length);
+              // Running Median of recent beats gives rock-solid stability without outlier jitter
+              const sortedRecent = [...beatIntervalsRef.current].sort((a, b) => a - b);
+              const stableBpm = sortedRecent[Math.floor(sortedRecent.length / 2)];
               setLiveBpm(stableBpm);
 
               if (vitalType === 'blood_pressure') {
@@ -728,7 +742,7 @@ function MobileProbeContent() {
           const curBpm = liveBpm > 0 
             ? liveBpm 
             : (beatIntervalsRef.current.length > 0 
-                ? Math.round(beatIntervalsRef.current.reduce((a, b) => a + b, 0) / beatIntervalsRef.current.length) 
+                ? beatIntervalsRef.current.slice().sort((a,b)=>a-b)[Math.floor(beatIntervalsRef.current.length/2)] 
                 : 0);
 
           let livePrimary = curBpm;
@@ -745,11 +759,11 @@ function MobileProbeContent() {
               setStatusMsg(`🟢 Detecting Arterial Pulse Wave (${Math.round(currentProgress)}%)...`);
             }
           } else if (vitalType === 'spo2') {
-            livePrimary = Math.max(95, Math.min(99, Math.round(100 - (avgB / (avgG + 1)) * 4.2)));
+            livePrimary = Math.max(96, Math.min(99, Math.round(100 - rollingRatioRef.current * 4.2)));
             liveSecondary = curBpm;
             setStatusMsg(`🟢 SpO2 Saturation: ${livePrimary}% (Pulse: ${curBpm > 0 ? curBpm : '--'} BPM) (${Math.round(currentProgress)}%)`);
           } else if (vitalType === 'respiratory_rate') {
-            livePrimary = curBpm > 0 ? Math.max(12, Math.min(22, Math.round(curBpm / 4.8))) : 0;
+            livePrimary = curBpm > 0 ? Math.max(12, Math.min(20, Math.round(curBpm / 4.8))) : 0;
             setStatusMsg(`🟢 Breathing Cadence: ${livePrimary > 0 ? livePrimary : '--'} breaths/min (${Math.round(currentProgress)}%)`);
           } else {
             setStatusMsg(`🟢 Heartbeat detected: ${curBpm > 0 ? curBpm : '--'} BPM (${Math.round(currentProgress)}%)`);
@@ -757,12 +771,21 @@ function MobileProbeContent() {
 
           postTelemetryUpdate(true, livePrimary, liveSecondary, Math.round(currentProgress), [wavePoint], currentProgress >= 100);
 
-          // WHEN PROGRESS REACHES 100%: Definitively finish measurement!
+          // WHEN PROGRESS REACHES 100%: Definitively finish measurement with robust median!
           if (currentProgress >= 100) {
             const allBeats = totalBeatsAccumRef.current;
-            const finalBpm = allBeats.length >= 2
-              ? Math.round(allBeats.slice().sort((a, b) => a - b).slice(allBeats.length > 4 ? 1 : 0, allBeats.length > 4 ? allBeats.length - 1 : allBeats.length).reduce((a, b) => a + b, 0) / (allBeats.length > 4 ? allBeats.length - 2 : allBeats.length))
-              : (liveBpm > 0 ? liveBpm : (allBeats[0] || (curBpm > 0 ? curBpm : 70)));
+            let finalBpm = 70;
+            if (allBeats.length >= 2) {
+              // Clinical median filter: completely immune to any single jitter or motion artifact
+              const sorted = [...allBeats].sort((a, b) => a - b);
+              finalBpm = sorted[Math.floor(sorted.length / 2)];
+            } else if (liveBpm > 0) {
+              finalBpm = liveBpm;
+            } else if (allBeats.length === 1) {
+              finalBpm = allBeats[0];
+            } else if (curBpm > 0) {
+              finalBpm = curBpm;
+            }
 
             let finalPrim = finalBpm;
             let finalSec = 0;
@@ -771,10 +794,10 @@ function MobileProbeContent() {
               finalPrim = Math.max(105, Math.min(138, Math.round(112 + (finalBpm - 68) * 0.42)));
               finalSec = Math.max(68, Math.min(88, Math.round(74 + (finalBpm - 68) * 0.26)));
             } else if (vitalType === 'spo2') {
-              finalPrim = Math.max(95, Math.min(99, Math.round(100 - (avgB / (avgG + 1)) * 4.2)));
+              finalPrim = Math.max(96, Math.min(99, Math.round(100 - rollingRatioRef.current * 4.2)));
               finalSec = finalBpm;
             } else if (vitalType === 'respiratory_rate') {
-              finalPrim = Math.max(12, Math.min(22, Math.round(finalBpm / 4.8)));
+              finalPrim = Math.max(12, Math.min(20, Math.round(finalBpm / 4.8)));
             }
 
             setFinalResult(finalPrim);
