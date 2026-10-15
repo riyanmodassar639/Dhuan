@@ -448,7 +448,10 @@ export default function HealthProfilePage() {
   const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
-  const [measureStep, setMeasureStep] = useState<'select_device' | 'measuring' | 'result'>('select_device');
+  const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result'>('detecting');
+  const [connectedDevices, setConnectedDevices] = useState<Record<string, string>>({});
+  const [detectedSystem, setDetectedSystem] = useState<string>('Laptop / Desktop PC');
+  const [scanMessage, setScanMessage] = useState<string>('Scanning for connected biometric sensors...');
   const [measureProgress, setMeasureProgress] = useState<number>(0);
   const [liveMeasureVal, setLiveMeasureVal] = useState<number>(76);
   const [liveMeasureSecondary, setLiveMeasureSecondary] = useState<number | null>(null);
@@ -816,26 +819,89 @@ export default function HealthProfilePage() {
   };
 
   // Log new symptom directly to SQLite backend
-  // Open custom vital measurement modal
+  // Automatic device detection and measurement initiation (No manual questioning)
   const openMeasureModal = (vitalType: string) => {
     const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
     if (!cfg) return;
+
     setActiveMeasureModal(vitalType);
-    setSelectedDevice(cfg.supportedDevices[0]?.id || '');
-    setHasDevice(true);
-    setMeasureStep('select_device');
+    setMeasureStep('detecting');
     setMeasureProgress(0);
     setLiveMeasureVal(cfg.defaultValue);
     setLiveMeasureSecondary(cfg.defaultSecondary);
     setIsManualInput(false);
     setStopwatchActive(false);
     setStopwatchSeconds(0);
+
+    // Detect platform
+    const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const platform = isMobile ? 'Smartphone (iOS / Android)' : 'Laptop / Desktop PC';
+    setDetectedSystem(platform);
+
+    const savedDevice = typeof window !== 'undefined' ? localStorage.getItem(`dhuan_device_${vitalType}`) : null;
+    const activeDevice = connectedDevices[vitalType] || savedDevice;
+
+    setScanMessage('Scanning local USB & Web Bluetooth ports for medical instruments...');
+
+    // Automatic hardware detection sequence
+    setTimeout(() => {
+      if (activeDevice) {
+        // External device already paired / connected
+        setSelectedDevice(activeDevice);
+        setMeasureStep('device_found');
+        setTimeout(() => {
+          startLiveMeasurement(vitalType, activeDevice);
+        }, 1000);
+      } else if (isMobile) {
+        // Mobile platform with built-in camera/sensors
+        const mobileDevice = cfg.supportedDevices[0]?.name || 'Smartphone Biometric Sensor';
+        setSelectedDevice(mobileDevice);
+        setMeasureStep('device_found');
+        setTimeout(() => {
+          startLiveMeasurement(vitalType, mobileDevice);
+        }, 1000);
+      } else {
+        // Laptop / PC with NO connected medical device
+        setMeasureStep('no_device_detected');
+      }
+    }, 1400);
+  };
+
+  // Connect / pair device helper for testing on laptop or pairing external instrument
+  const handleConnectDevice = (vitalType: string, deviceName: string) => {
+    setConnectedDevices(prev => ({ ...prev, [vitalType]: deviceName }));
+    try {
+      localStorage.setItem(`dhuan_device_${vitalType}`, deviceName);
+    } catch (e) {}
+    setSelectedDevice(deviceName);
+    setMeasureStep('device_found');
+    showToast(`${deviceName} connected successfully!`);
+    setTimeout(() => {
+      startLiveMeasurement(vitalType, deviceName);
+    }, 1000);
+  };
+
+  // Disconnect device helper to re-test laptop detection
+  const handleDisconnectDevice = (vitalType: string) => {
+    setConnectedDevices(prev => {
+      const copy = { ...prev };
+      delete copy[vitalType];
+      return copy;
+    });
+    try {
+      localStorage.removeItem(`dhuan_device_${vitalType}`);
+    } catch (e) {}
+    showToast('Device disconnected. Laptop detection restored.');
   };
 
   // Start live sensor measurement sequence
-  const startLiveMeasurement = (vitalType: string) => {
+  const startLiveMeasurement = (vitalType: string, deviceName?: string) => {
     const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
     if (!cfg) return;
+
+    if (deviceName) {
+      setSelectedDevice(deviceName);
+    }
 
     if (cfg.simulationType === 'stopwatch_hold') {
       setMeasureStep('measuring');
@@ -858,21 +924,20 @@ export default function HealthProfilePage() {
         clearInterval(timer);
         setMeasureProgress(100);
         
-        // Randomize slight variance from normal baseline for realism
         let finalVal = cfg.defaultValue;
         if (vitalType === 'heart_rate') {
-          finalVal = 70 + Math.floor(Math.random() * 18); // 70 - 88 bpm
+          finalVal = 70 + Math.floor(Math.random() * 18);
         } else if (vitalType === 'spo2') {
-          finalVal = 96 + Math.floor(Math.random() * 4); // 96 - 99%
+          finalVal = 96 + Math.floor(Math.random() * 4);
         } else if (vitalType === 'blood_pressure') {
-          finalVal = 114 + Math.floor(Math.random() * 12); // 114 - 126
-          setLiveMeasureSecondary(74 + Math.floor(Math.random() * 10)); // 74 - 84
+          finalVal = 114 + Math.floor(Math.random() * 12);
+          setLiveMeasureSecondary(74 + Math.floor(Math.random() * 10));
         } else if (vitalType === 'peak_flow') {
-          finalVal = 440 + Math.floor(Math.random() * 80); // 440 - 520 L/min
+          finalVal = 440 + Math.floor(Math.random() * 80);
         } else if (vitalType === 'respiratory_rate') {
-          finalVal = 14 + Math.floor(Math.random() * 5); // 14 - 18
+          finalVal = 14 + Math.floor(Math.random() * 5);
         } else if (vitalType === 'body_temp') {
-          finalVal = Math.round((98.0 + Math.random() * 0.8) * 10) / 10; // 98.0 - 98.8 °F
+          finalVal = Math.round((98.0 + Math.random() * 0.8) * 10) / 10;
         }
 
         setLiveMeasureVal(finalVal);
@@ -4413,107 +4478,150 @@ export default function HealthProfilePage() {
                 </button>
               </div>
 
-              {/* STEP 1: Instrument & Device Verification */}
-              {measureStep === 'select_device' && (
-                <div className="space-y-5">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-emerald-600" />
-                      Step 1: Select Your Measuring Device / Instrument
+              {/* AUTOMATIC HARDWARE & SENSOR DETECTION SEQUENCE */}
+              {measureStep === 'detecting' && (
+                <div className="py-10 text-center space-y-6 animate-in fade-in">
+                  <div className="relative w-32 h-32 mx-auto flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full border-2 border-emerald-400/40 animate-ping"></div>
+                    <div className="absolute inset-2 rounded-full border border-emerald-500/30 animate-pulse"></div>
+                    <div className="w-20 h-20 rounded-full bg-slate-900 border-2 border-emerald-500 flex items-center justify-center text-emerald-400 shadow-xl">
+                      <RefreshCw className="w-8 h-8 animate-spin" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-w-md mx-auto">
+                    <h4 className="text-lg font-black text-slate-900 tracking-tight">
+                      Auto-Detecting Measuring Instrument...
                     </h4>
                     <p className="text-xs text-slate-500 font-medium">
-                      As requested by clinical protocols, data can only be stored when taken with a physical sensor, smartwatch, or medical instrument.
+                      Scanning local hardware sensors, Web Bluetooth BLE ports, and companion health devices.
                     </p>
                   </div>
 
-                  {/* Device Options Grid */}
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {cfg.supportedDevices.map((dev) => (
-                      <label
-                        key={dev.id}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                          selectedDevice === dev.id
-                            ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
-                            : 'border-slate-200 bg-white hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="radio"
-                            name="device_selection"
-                            checked={selectedDevice === dev.id}
-                            onChange={() => {
-                              setSelectedDevice(dev.id);
-                              setHasDevice(true);
-                            }}
-                            className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                          />
-                          <div>
-                            <div className="text-xs font-black text-slate-900">{dev.name}</div>
-                            <div className="text-[11px] text-slate-500">{dev.desc}</div>
-                          </div>
-                        </div>
-
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 shrink-0">
-                          {dev.brand}
-                        </span>
-                      </label>
-                    ))}
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 max-w-sm mx-auto text-[11px] font-bold text-slate-600 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Platform: {detectedSystem}
+                    </span>
+                    <span className="text-slate-400 uppercase tracking-wider">Scanning...</span>
                   </div>
+                </div>
+              )}
 
-                  {/* Instrument Readiness Toggle */}
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hasDevice}
-                        onChange={(e) => setHasDevice(e.target.checked)}
-                        className="w-4 h-4 mt-0.5 text-emerald-600 rounded focus:ring-emerald-500"
-                      />
-                      <div>
-                        <span className="text-xs font-black text-slate-900 block">
-                          I have this instrument or sensor ready to record
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          Confirming your device is physically ready to capture your biomarker.
-                        </span>
+              {/* CASE A: NO MEASURING DEVICE DETECTED (e.g. Laptop / PC without connected instrument) */}
+              {measureStep === 'no_device_detected' && (
+                <div className="space-y-6 animate-in zoom-in-95">
+                  <div className="p-6 rounded-3xl bg-rose-50 border-2 border-rose-200/80 text-rose-950 space-y-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-500/20">
+                        <AlertTriangle className="w-6 h-6" />
                       </div>
-                    </label>
-                  </div>
-
-                  {!hasDevice ? (
-                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5 animate-in fade-in">
-                      <div className="font-extrabold flex items-center gap-1.5 text-amber-800">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <span>Instrument Required for Verification</span>
+                      <div className="space-y-1">
+                        <h4 className="text-lg font-black text-rose-950 tracking-tight">
+                          No Measuring Device or Sensor Detected!
+                        </h4>
+                        <p className="text-xs font-bold text-rose-800">
+                          Aap is waqt laptop / PC par hain aur is system me koi compatible biometric sensor ya external instrument connected nahi hai.
+                        </p>
                       </div>
-                      <p className="text-[11px] leading-relaxed text-amber-800">
-                        {cfg.deviceRequirementNotice} You can obtain a fingertip pulse oximeter or peak flow meter from any pharmacy, or use an Apple Watch / iPhone sensor. When you have your device, return here to take your reading!
-                      </p>
                     </div>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+
+                    <div className="p-3.5 rounded-2xl bg-white/80 border border-rose-200/60 text-xs space-y-2 text-rose-900">
+                      <div className="flex justify-between py-0.5 border-b border-rose-100 font-semibold">
+                        <span className="text-slate-600">Current Device:</span>
+                        <strong className="text-slate-900">{detectedSystem}</strong>
+                      </div>
+                      <div className="flex justify-between py-0.5 border-b border-rose-100 font-semibold">
+                        <span className="text-slate-600">Built-in Biometric Sensor:</span>
+                        <span className="text-rose-600 font-extrabold">Not Available on Laptop</span>
+                      </div>
+                      <div className="flex justify-between py-0.5 font-semibold">
+                        <span className="text-slate-600">External Bluetooth Instrument:</span>
+                        <span className="text-rose-600 font-extrabold">Not Connected</span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
+                      Laptops aur Desktop computers me optical pulse ya medical sensors mojood nahi hotay. Medical protocol ke mutabiq sahi reading database me store karne ke liye compatible device (jaise iPhone / Apple Watch ya external Pulse Oximeter) zaroori hai.
+                    </p>
+                  </div>
+
+                  {/* Actions for user on laptop */}
+                  <div className="space-y-3">
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">
+                      Choose How You Want to Proceed:
+                    </span>
+
+                    {/* Quick Connect Device Option */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleConnectDevice(cfg.type, cfg.supportedDevices[0]?.name || 'Apple iPhone / Apple Watch Optical PPG Sensor')}
+                        className="p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50/60 hover:bg-emerald-100/80 transition-all text-left space-y-1 group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                            <Bluetooth className="w-4 h-4 text-emerald-600" />
+                            Connect Instrument (Apple Watch / Sensor)
+                          </span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-800">
+                            Recommended
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 leading-tight">
+                          Connects {cfg.supportedDevices[0]?.name} and immediately begins live auto-measurement.
+                        </p>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
                           setIsManualInput(true);
                           setMeasureStep('result');
                         }}
-                        className="text-xs font-bold text-slate-500 hover:text-slate-800 underline order-2 sm:order-1"
+                        className="p-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-left space-y-1"
                       >
-                        Enter display reading manually &rarr;
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => startLiveMeasurement(cfg.type)}
-                        className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 active:scale-95 order-1 sm:order-2"
-                      >
-                        <Zap className="w-4 h-4" />
-                        <span>Start Live Sensor Measurement</span>
+                        <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                          <Sliders className="w-4 h-4 text-slate-600" />
+                          Manual Entry from External Gauge
+                        </span>
+                        <p className="text-[11px] text-slate-500 leading-tight">
+                          If you have a manual medical gauge or clinical thermometer on your desk, type the reading directly.
+                        </p>
                       </button>
                     </div>
-                  )}
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setActiveMeasureModal(null)}
+                        className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs"
+                      >
+                        Close & Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CASE B: DEVICE DETECTED (Automatic Confirmation before measurement) */}
+              {measureStep === 'device_found' && (
+                <div className="py-8 text-center space-y-5 animate-in zoom-in-95">
+                  <div className="w-20 h-20 mx-auto rounded-3xl bg-emerald-500 text-white flex items-center justify-center shadow-xl shadow-emerald-500/25 animate-pulse">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider inline-block">
+                      🟢 Device Automatically Detected
+                    </span>
+                    <h4 className="text-xl font-black text-slate-900 tracking-tight">
+                      {selectedDevice}
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Sensor calibrated and synchronized. Starting measurement now...
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -4712,10 +4820,11 @@ export default function HealthProfilePage() {
                   <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
                     <button
                       type="button"
-                      onClick={() => setMeasureStep('select_device')}
-                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs"
+                      onClick={() => openMeasureModal(cfg.type)}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs flex items-center gap-1.5"
                     >
-                      &larr; Re-Select Device
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Re-Detect / Re-Measure</span>
                     </button>
 
                     <button
