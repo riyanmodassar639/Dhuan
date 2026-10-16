@@ -1936,7 +1936,7 @@ export default function HealthProfilePage() {
         if (data.success && data.vital) {
           setVitalsList(prev => [data.vital, ...prev]);
           setLatestVitals(prev => ({ ...prev, [cfg.type]: data.vital }));
-          showToast(`${cfg.title} (${liveMeasureVal} ${cfg.unit}) recorded successfully!`);
+          showToast(`${cfg.title} (${liveMeasureVal} ${cfg.unit}) recorded! Health Overview diagnostic status updated.`);
           closeMeasureModal();
         }
       }
@@ -2005,7 +2005,7 @@ export default function HealthProfilePage() {
     showToast("Today's respiratory symptoms logged and synced with clinical registry!");
   };
 
-  // Calculate dynamic Smog Vulnerability Score (0 - 100) taking into account user's full clinical smog spectrum (backend/DB synced)
+  // Calculate dynamic Smog Vulnerability Score (0 - 100) taking into account user's full clinical smog spectrum AND live Biomarkers & Vitals Audit
   const vulnerabilityMetrics = useMemo(() => {
     if (!hasProfile) {
       return {
@@ -2016,56 +2016,144 @@ export default function HealthProfilePage() {
         advisory: `Lahore air quality is monitored live at AQI ${currentLahoreAqi}. Create your medical profile to calculate your personalized smog vulnerability index and real-time safe outdoor exposure thresholds.`,
         safeMinutesUnmasked: 0,
         safeMinutesMasked: 0,
-        totalDailyPm25Ug: 0
+        totalDailyPm25Ug: 0,
+        triggersText: '',
+        vitalTriggers: [] as string[],
+        activeConditions: [] as string[],
+        detailedAdvisories: [] as any[],
+        actionBadges: [] as any[]
       };
-    }
-
-    if (serverVulnerability && typeof serverVulnerability.score === 'number') {
-      return serverVulnerability;
     }
 
     let score = 15; // base level
 
-    // Condition impacts
-    if (profile.asthmaSeverity === 'mild') score += 18;
-    if (profile.asthmaSeverity === 'moderate') score += 32;
-    if (profile.asthmaSeverity === 'severe') score += 48;
+    const activeConditions: string[] = serverVulnerability?.activeConditions ? [...serverVulnerability.activeConditions] : [];
+    const detailedAdvisories: any[] = serverVulnerability?.detailedAdvisories ? [...serverVulnerability.detailedAdvisories] : [];
+    const actionBadges: any[] = serverVulnerability?.actionBadges ? [...serverVulnerability.actionBadges] : [];
 
-    if (profile.hasCopd) score += 28;
-    if (profile.hasBronchitis) score += 22;
-    if (profile.hasReducedLungCapacity) score += 25;
-    if (profile.hasLungCancerRisk) score += 24;
-    if (profile.hasCardioCondition) score += 20;
-    if (profile.hasAllergies) score += 10;
-    if (profile.hasEyeIrritation) score += 6;
-    if (profile.hasEntIrritation) score += 6;
-    if (profile.hasHeadachesFatigue) score += 8;
+    if (!serverVulnerability?.activeConditions || activeConditions.length === 0) {
+      if (profile.asthmaSeverity !== 'none') activeConditions.push(`${profile.asthmaSeverity} Asthma`);
+      if (profile.hasCopd) activeConditions.push('COPD');
+      if (profile.hasBronchitis) activeConditions.push('Chronic Bronchitis');
+      if (profile.hasCardioCondition) activeConditions.push('Cardiovascular');
+      if (profile.hasAllergies) activeConditions.push('Particulate Allergies');
+    }
 
-    // Vulnerable cohorts
-    if (profile.hasPregnant) score += 20;
-    if (profile.hasElderly || profile.age > 60) score += 18;
-    if (profile.hasChild || profile.age < 12) score += 18;
-    if (profile.isVulnerableCohort) score += 12;
+    if (!serverVulnerability?.actionBadges || actionBadges.length === 0) {
+      actionBadges.push({ id: 'n95', label: 'Wear N95 Mask Outdoors', type: 'emerald' });
+    }
 
-    // Smoking
-    if (profile.smokerStatus === 'active') score += 20;
-    if (profile.smokerStatus === 'former') score += 6;
+    if (serverVulnerability && typeof serverVulnerability.score === 'number') {
+      score = serverVulnerability.score;
+    } else {
+      // Condition impacts
+      if (profile.asthmaSeverity === 'mild') score += 18;
+      if (profile.asthmaSeverity === 'moderate') score += 32;
+      if (profile.asthmaSeverity === 'severe') score += 48;
 
-    // Commute exposure
-    if (profile.primaryCommute === 'bike') score += 16;
-    if (profile.primaryCommute === 'walk') score += 14;
-    if (profile.primaryCommute === 'transit') score += 8;
-    if (profile.primaryCommute === 'car') score += 2;
+      if (profile.hasCopd) score += 28;
+      if (profile.hasBronchitis) score += 22;
+      if (profile.hasReducedLungCapacity) score += 25;
+      if (profile.hasLungCancerRisk) score += 24;
+      if (profile.hasCardioCondition) score += 20;
+      if (profile.hasAllergies) score += 10;
+      if (profile.hasEyeIrritation) score += 6;
+      if (profile.hasEntIrritation) score += 6;
+      if (profile.hasHeadachesFatigue) score += 8;
 
-    if (profile.dailyCommuteMinutes > 60) score += 10;
-    else if (profile.dailyCommuteMinutes > 30) score += 5;
+      // Vulnerable cohorts
+      if (profile.hasPregnant) score += 20;
+      if (profile.hasElderly || profile.age > 60) score += 18;
+      if (profile.hasChild || profile.age < 12) score += 18;
+      if (profile.isVulnerableCohort) score += 12;
 
-    // Protective mitigations (Reduce vulnerability)
-    if (profile.wearsMask === 'always') score -= 16;
-    else if (profile.wearsMask === 'high_aqi_only') score -= 10;
+      // Smoking
+      if (profile.smokerStatus === 'active') score += 20;
+      if (profile.smokerStatus === 'former') score += 6;
 
-    if (profile.maskType === 'n95') score -= 8;
-    if (profile.hasHepaPurifier) score -= 10;
+      // Commute exposure
+      if (profile.primaryCommute === 'bike') score += 16;
+      if (profile.primaryCommute === 'walk') score += 14;
+      if (profile.primaryCommute === 'transit') score += 8;
+      if (profile.primaryCommute === 'car') score += 2;
+
+      if (profile.dailyCommuteMinutes > 60) score += 10;
+      else if (profile.dailyCommuteMinutes > 30) score += 5;
+
+      // Protective mitigations (Reduce vulnerability)
+      if (profile.wearsMask === 'always') score -= 16;
+      else if (profile.wearsMask === 'high_aqi_only') score -= 10;
+
+      if (profile.maskType === 'n95') score -= 8;
+      if (profile.hasHepaPurifier) score -= 10;
+    }
+
+    // Dynamic adjustment based on Biomarkers & Clinical Vitals Audit
+    const vitalTriggers: string[] = [];
+
+    const spo2 = latestVitals['spo2'];
+    if (spo2 && typeof spo2.reading_value === 'number' && spo2.reading_value > 0) {
+      if (spo2.reading_value < 92) {
+        score += 20;
+        vitalTriggers.push(`Critical Hypoxemia (${spo2.reading_value}% SpO2)`);
+      } else if (spo2.reading_value < 95) {
+        score += 10;
+        vitalTriggers.push(`Low SpO2 (${spo2.reading_value}%)`);
+      }
+    }
+
+    const pef = latestVitals['peak_flow'];
+    if (pef && typeof pef.reading_value === 'number' && pef.reading_value > 0) {
+      if (pef.reading_value < 250) {
+        score += 18;
+        vitalTriggers.push(`Airway Obstruction (${pef.reading_value} L/min PEF)`);
+      } else if (pef.reading_value < 380) {
+        score += 8;
+        vitalTriggers.push(`Mild Expiratory Restriction (${pef.reading_value} L/min PEF)`);
+      }
+    }
+
+    const bp = latestVitals['blood_pressure'];
+    if (bp && typeof bp.reading_value === 'number' && bp.reading_value > 0) {
+      const sys = bp.reading_value;
+      const dia = bp.reading_secondary || 0;
+      if (sys >= 140 || dia >= 90) {
+        score += 14;
+        vitalTriggers.push(`Hypertensive Smog Strain (${sys}/${dia} mmHg)`);
+      }
+    }
+
+    const hr = latestVitals['heart_rate'];
+    if (hr && typeof hr.reading_value === 'number' && hr.reading_value > 0) {
+      if (hr.reading_value > 100) {
+        score += 10;
+        vitalTriggers.push(`Tachycardia Under Smog (${hr.reading_value} BPM)`);
+      }
+    }
+
+    const rr = latestVitals['respiratory_rate'];
+    if (rr && typeof rr.reading_value === 'number' && rr.reading_value > 0) {
+      if (rr.reading_value > 22) {
+        score += 10;
+        vitalTriggers.push(`Tachypnea (${rr.reading_value} bpm)`);
+      }
+    }
+
+    const bh = latestVitals['breath_hold'];
+    if (bh && typeof bh.reading_value === 'number' && bh.reading_value > 0) {
+      if (bh.reading_value < 20) {
+        score += 8;
+        vitalTriggers.push(`Low Breath Hold Capacity (${bh.reading_value}s)`);
+      }
+    }
+
+    const temp = latestVitals['body_temp'];
+    if (temp && typeof temp.reading_value === 'number' && temp.reading_value > 0) {
+      if (temp.reading_value > 100.4) {
+        score += 10;
+        vitalTriggers.push(`Febrile Airway Response (${temp.reading_value}°F)`);
+      }
+    }
 
     score = Math.max(5, Math.min(99, score));
 
@@ -2105,17 +2193,32 @@ export default function HealthProfilePage() {
     const indoorInhaledUg = (profile.hasHepaPurifier ? 25 : 55) * breathingRate * (24 - commuteHours);
     const totalDailyPm25Ug = Math.round(commuteInhaledUg + indoorInhaledUg);
 
+    // Formulate triggers text combining profile and vital triggers
+    let triggersText = '';
+    if (vitalTriggers.length > 0) {
+      triggersText = `Clinical Vitals Alert: ${vitalTriggers.join(', ')} • ${profile.asthmaSeverity !== 'none' ? `${profile.asthmaSeverity} Asthma` : 'Profile active'}.`;
+    } else if (serverVulnerability?.triggersText) {
+      triggersText = serverVulnerability.triggersText;
+    } else {
+      triggersText = (profile.asthmaSeverity !== 'none' ? `Triggered by ${profile.asthmaSeverity} Asthma` : profile.hasBronchitis ? 'Triggered by Chronic Bronchitis' : 'Baseline respiratory sensitivity') + ` + daily ${profile.dailyCommuteMinutes}m ${profile.primaryCommute} commute.`;
+    }
+
     return {
       score,
       tier,
       tierColor,
       progressBg,
       advisory,
+      triggersText,
+      vitalTriggers,
+      activeConditions,
+      detailedAdvisories,
+      actionBadges,
       safeMinutesUnmasked,
       safeMinutesMasked,
       totalDailyPm25Ug
     };
-  }, [profile, currentLahoreAqi, currentLahorePm25, hasProfile]);
+  }, [profile, currentLahoreAqi, currentLahorePm25, hasProfile, serverVulnerability, latestVitals]);
 
   
   // Stopwatch ticker for breath hold test
@@ -2130,6 +2233,8 @@ export default function HealthProfilePage() {
     }
     return () => clearInterval(interval);
   }, [stopwatchActive]);
+
+  const hasMeasuredVitals = vitalsList && vitalsList.length > 0;
 
   if (!mounted) {
     return (
@@ -2331,6 +2436,85 @@ export default function HealthProfilePage() {
                 </div>
               </div>
             )}
+
+            {/* Clinical & Smog Assessment Live Telemetry Sync Ribbon */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 text-white border border-slate-700/80 shadow-md relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full filter blur-3xl pointer-events-none"></div>
+
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                    hasMeasuredVitals
+                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                      : 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                  }`}>
+                    <Activity className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black tracking-tight text-white">
+                        Biomarkers &amp; Clinical Vitals Telemetry Sync
+                      </h4>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
+                        hasMeasuredVitals
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      }`}>
+                        {hasMeasuredVitals ? `${vitalsList.length} Tests Synced` : 'Audit Pending'}
+                      </span>
+                    </div>
+                    <p className="text-slate-300 text-xs font-medium mt-0.5">
+                      {hasMeasuredVitals
+                        ? `${Object.keys(latestVitals).length} of ${VITALS_CONFIG.length} physiological instruments calibrated • Directly synced with Diagnosed Health Problems &amp; AI Vulnerability`
+                        : 'No clinical vital tests recorded yet. Measure your SpO2, Peak Flow, or Blood Pressure in the Assessment tab to unlock full telemetry correlation.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 self-start md:self-auto shrink-0">
+                  <button
+                    onClick={() => setActiveTab('assessment')}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 shadow-sm active:scale-95"
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>{hasMeasuredVitals ? 'Go to Clinical Assessment Station' : 'Measure Vitals in Assessment'} &rarr;</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Instrument Telemetry Chips */}
+              <div className="relative z-10 mt-4 pt-3.5 border-t border-slate-700/70 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                {VITALS_CONFIG.map((cfg) => {
+                  const vital = latestVitals[cfg.type];
+                  return (
+                    <button
+                      key={cfg.type}
+                      type="button"
+                      onClick={() => setActiveTab('assessment')}
+                      className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/70 text-left transition-all group cursor-pointer"
+                      title={`Click to view or measure ${cfg.title} in Assessment Station`}
+                    >
+                      <span className="text-[10px] font-bold text-slate-400 block truncate group-hover:text-emerald-300 transition-colors">
+                        {cfg.shortName}
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className={`text-xs font-black truncate ${
+                          vital
+                            ? vital.status_tier === 'critical' ? 'text-rose-400' :
+                              vital.status_tier === 'warning' ? 'text-amber-400' : 'text-emerald-400'
+                            : 'text-slate-500 font-semibold'
+                        }`}>
+                          {vital
+                            ? `${vital.reading_value}${vital.reading_secondary ? `/${vital.reading_secondary}` : ''}`
+                            : 'Unmeasured'}
+                        </span>
+                        {vital && <span className="text-[9px] text-slate-400">{cfg.unit}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Top Scorecard Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2586,402 +2770,486 @@ export default function HealthProfilePage() {
                       <Stethoscope className="w-4 h-4" />
                     </div>
                     <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                      Diagnosed Smog Health Problems & Clinical Status
+                      Diagnosed Smog Health Problems &amp; Clinical Status
                     </h3>
                   </div>
                   <p className="text-xs text-slate-500 font-medium">
-                    Breakdown of chronic conditions, acute symptoms, and vulnerable categories configured in your clinical profile.
+                    {hasMeasuredVitals
+                      ? 'Dynamic clinical synthesis correlated with your Biomarkers & Clinical Vitals Audit telemetry.'
+                      : 'Awaiting clinical biomarker telemetry from Clinical & Smog Assessment to calculate diagnostic risk.'}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2 self-start sm:self-auto">
-                  {hasProfile ? (
-                    <button
-                      onClick={() => {
-                        setFormData(profile);
-                        setIsEditConditionsModalOpen(true);
-                      }}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Edit Conditions</span>
-                    </button>
+                  {hasMeasuredVitals ? (
+                    <>
+                      <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>{vitalsList.length} Tests Audited</span>
+                      </span>
+                      <button
+                        onClick={() => setActiveTab('assessment')}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Vitals Station &rarr;</span>
+                      </button>
+                    </>
                   ) : (
-                    <button
-                      onClick={() => {
-                        setFormData(EMPTY_PROFILE);
-                        setIsCreateModalOpen(true);
-                      }}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Create Profile</span>
-                    </button>
+                    <>
+                      <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold flex items-center gap-1.5">
+                        <span>0 Tests Recorded</span>
+                      </span>
+                      <button
+                        onClick={() => setActiveTab('assessment')}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <Activity className="w-3.5 h-3.5" />
+                        <span>Measure Vitals &rarr;</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
 
-              {/* 4 Health Condition Categories */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                
-                {/* 1. Respiratory & Bronchial Problems */}
-                <div 
-                  onClick={() => {
-                    if (hasProfile) {
-                      setFormData(profile);
-                      setIsEditConditionsModalOpen(true);
-                    } else {
-                      setFormData(EMPTY_PROFILE);
-                      setIsCreateModalOpen(true);
-                    }
-                  }}
-                  className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 hover:border-emerald-300 hover:shadow-xs transition-all cursor-pointer space-y-3 flex flex-col justify-between group"
-                >
-                  <div>
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide group-hover:text-emerald-700 transition-colors">
-                        <Wind className="w-3.5 h-3.5 text-emerald-600" />
-                        Respiratory Problems
-                      </span>
-                      {hasProfile && (profile.asthmaSeverity !== 'none' || profile.hasBronchitis || profile.hasCopd || profile.hasReducedLungCapacity || profile.hasLungCancerRisk) ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                          Active Risk
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                          Clear
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 mt-3 text-xs">
-                      {/* Asthma */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Asthma:</span>
-                        {hasProfile && profile.asthmaSeverity !== 'none' ? (
-                          <span className="font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 capitalize">
-                            {profile.asthmaSeverity}
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">None</span>
-                        )}
-                      </div>
-
-                      {/* Bronchitis */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Chronic Bronchitis:</span>
-                        {hasProfile && profile.hasBronchitis ? (
-                          <span className="font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            Diagnosed
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Negative</span>
-                        )}
-                      </div>
-
-                      {/* COPD */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">COPD / Obstruction:</span>
-                        {hasProfile && profile.hasCopd ? (
-                          <span className="font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            Diagnosed
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Negative</span>
-                        )}
-                      </div>
-
-                      {/* Reduced Lung Function */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Reduced Lung Function:</span>
-                        {hasProfile && profile.hasReducedLungCapacity ? (
-                          <span className="font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                            Diminished
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Normal</span>
-                        )}
-                      </div>
-
-                      {/* Lung Cancer Risk */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Lung Cancer Risk:</span>
-                        {hasProfile && profile.hasLungCancerRisk ? (
-                          <span className="font-extrabold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
-                            Elevated
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Low / None</span>
-                        )}
-                      </div>
-                    </div>
+              {!hasMeasuredVitals ? (
+                /* Empty / Unmeasured Prompt: Info is NOT shown when vitals audit is empty */
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-sm">
+                    <Stethoscope className="w-8 h-8 text-emerald-600" />
                   </div>
-
-                  <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
-                    Fine PM2.5 penetrates deep into lung alveoli causing spasms.
-                  </p>
-                </div>
-
-                {/* 2. Sensory & Upper Airway */}
-                <div 
-                  onClick={() => {
-                    if (hasProfile) {
-                      setFormData(profile);
-                      setIsEditConditionsModalOpen(true);
-                    } else {
-                      setFormData(EMPTY_PROFILE);
-                      setIsCreateModalOpen(true);
-                    }
-                  }}
-                  className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 hover:border-cyan-300 hover:shadow-xs transition-all cursor-pointer space-y-3 flex flex-col justify-between group"
-                >
-                  <div>
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide group-hover:text-cyan-700 transition-colors">
-                        <Eye className="w-3.5 h-3.5 text-cyan-600" />
-                        Sensory & Airway
-                      </span>
-                      {hasProfile && (profile.hasEyeIrritation || profile.hasEntIrritation || profile.hasAllergies) ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
-                          Irritation Active
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                          Clear
-                        </span>
-                      )}
+                  <div className="max-w-md space-y-2">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-black uppercase tracking-wider">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      Clinical Telemetry Required
                     </div>
-
-                    <div className="space-y-2 mt-3 text-xs">
-                      {/* Eye Irritation */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Eye Irritation:</span>
-                        {hasProfile && profile.hasEyeIrritation ? (
-                          <span className="font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
-                            Burning / Redness
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Negative</span>
-                        )}
-                      </div>
-
-                      {/* Nose & Throat */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Nose & Throat:</span>
-                        {hasProfile && profile.hasEntIrritation ? (
-                          <span className="font-extrabold text-yellow-800 bg-yellow-50 px-2 py-0.5 rounded border border-yellow-200">
-                            Sneezing / Sore
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Negative</span>
-                        )}
-                      </div>
-
-                      {/* Allergies */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Particulate Allergies:</span>
-                        {hasProfile && profile.hasAllergies ? (
-                          <span className="font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                            Present
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">None</span>
-                        )}
-                      </div>
-
-                      {/* Mask Protection */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Assigned Mask:</span>
-                        <span className="font-extrabold text-slate-800 uppercase bg-white px-2 py-0.5 rounded border border-slate-200">
-                          {hasProfile ? profile.maskType : 'None'}
-                        </span>
-                      </div>
-                    </div>
+                    <h4 className="text-lg font-black text-slate-900 tracking-tight">
+                      No Biomarkers or Clinical Vitals Recorded Yet
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      The Diagnosed Smog Health Problems &amp; Clinical Status analysis is correlated with your live Biomarkers &amp; Clinical Vitals Audit. Currently, 0 clinical measurements have been recorded. Conduct an instrument measurement (SpO2, Peak Flow, Breath Hold, Blood Pressure, etc.) to dynamically unlock diagnostic risk breakdowns here.
+                    </p>
                   </div>
-
-                  <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
-                    Ocular tears & nasal mucous protect against micro-soot particles.
-                  </p>
-                </div>
-
-                {/* 3. Cardiovascular & Neurological */}
-                <div 
-                  onClick={() => {
-                    if (hasProfile) {
-                      setFormData(profile);
-                      setIsEditConditionsModalOpen(true);
-                    } else {
-                      setFormData(EMPTY_PROFILE);
-                      setIsCreateModalOpen(true);
-                    }
-                  }}
-                  className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 hover:border-rose-300 hover:shadow-xs transition-all cursor-pointer space-y-3 flex flex-col justify-between group"
-                >
-                  <div>
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide group-hover:text-rose-700 transition-colors">
-                        <Heart className="w-3.5 h-3.5 text-rose-600" />
-                        Heart & Fatigue
-                      </span>
-                      {hasProfile && (profile.hasCardioCondition || profile.hasHeadachesFatigue) ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                          Monitor BP
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                          Stable
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 mt-3 text-xs">
-                      {/* Cardiovascular */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Heart / Stroke Risk:</span>
-                        {hasProfile && profile.hasCardioCondition ? (
-                          <span className="font-extrabold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
-                            High Risk
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Normal</span>
-                        )}
-                      </div>
-
-                      {/* Headaches & Fatigue */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Headaches & Fatigue:</span>
-                        {hasProfile && profile.hasHeadachesFatigue ? (
-                          <span className="font-extrabold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                            Frequent
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">None</span>
-                        )}
-                      </div>
-
-                      {/* Smoker Status */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">Smoking Exposure:</span>
-                        <span className="font-extrabold text-slate-800 capitalize bg-white px-2 py-0.5 rounded border border-slate-200">
-                          {hasProfile ? profile.smokerStatus : 'Non-smoker'}
-                        </span>
-                      </div>
-
-                      {/* Indoor Air Purifier */}
-                      <div className="flex items-center justify-between py-1">
-                        <span className="text-slate-600 font-medium">HEPA Purifier:</span>
-                        {hasProfile && profile.hasHepaPurifier ? (
-                          <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-slate-400">Not Installed</span>
-                        )}
-                      </div>
-                    </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveTab('assessment')}
+                      className="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2"
+                    >
+                      <Activity className="w-4 h-4" />
+                      <span>Go to Clinical &amp; Smog Assessment to Measure &rarr;</span>
+                    </button>
                   </div>
-
-                  <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
-                    Smog crosses pulmonary barrier into bloodstream elevating BP.
-                  </p>
                 </div>
-
-                {/* 4. Cohorts & Active Symptoms */}
-                <div 
-                  onClick={() => {
-                    if (hasProfile) {
-                      setFormData(profile);
-                      setIsEditConditionsModalOpen(true);
-                    } else {
-                      setFormData(EMPTY_PROFILE);
-                      setIsCreateModalOpen(true);
-                    }
-                  }}
-                  className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 hover:border-blue-300 hover:shadow-xs transition-all cursor-pointer space-y-3 flex flex-col justify-between group"
-                >
-                  <div>
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide group-hover:text-blue-700 transition-colors">
-                        <Users className="w-3.5 h-3.5 text-blue-600" />
-                        Cohorts & Symptoms
-                      </span>
-                      {hasProfile && (profile.hasPregnant || profile.hasChild || profile.hasElderly || (profile.smogSymptoms && profile.smogSymptoms.length > 0)) ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                          Special Care
+              ) : (
+                /* 4 Health Condition Categories with Live Vitals Telemetry Integration */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  
+                  {/* 1. Respiratory & Bronchial Problems */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3 flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                          <Wind className="w-3.5 h-3.5 text-emerald-600" />
+                          Respiratory Problems
                         </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                          Standard
-                        </span>
-                      )}
-                    </div>
+                        {hasProfile && (profile.asthmaSeverity !== 'none' || profile.hasBronchitis || profile.hasCopd || (latestVitals['peak_flow'] && latestVitals['peak_flow'].status_tier !== 'normal') || (latestVitals['spo2'] && latestVitals['spo2'].status_tier !== 'normal')) ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                            Active Risk
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Stable Airway
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="space-y-2 mt-3 text-xs">
-                      {/* Cohort Category */}
-                      <div className="py-1">
-                        <span className="text-slate-500 font-medium block mb-1">Vulnerable Demographics:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {hasProfile && profile.hasPregnant && (
-                            <span className="font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded text-[11px] border border-pink-200">
-                              Maternal / Pregnancy
+                      <div className="space-y-2 mt-3 text-xs">
+                        {/* Asthma */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Asthma:</span>
+                          {hasProfile && profile.asthmaSeverity !== 'none' ? (
+                            <span className="font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 capitalize">
+                              {profile.asthmaSeverity}
                             </span>
-                          )}
-                          {hasProfile && profile.hasChild && (
-                            <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[11px] border border-blue-200">
-                              Child (Pediatric Lungs)
-                            </span>
-                          )}
-                          {hasProfile && profile.hasElderly && (
-                            <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px] border border-slate-300">
-                              Senior (60+)
-                            </span>
-                          )}
-                          {(!hasProfile || (!profile.hasPregnant && !profile.hasChild && !profile.hasElderly)) && (
-                            <span className="text-slate-400 font-semibold text-[11px]">Standard Adult</span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">None</span>
                           )}
                         </div>
-                      </div>
 
-                      {/* Active Symptoms */}
-                      <div className="pt-2 border-t border-slate-200">
-                        <span className="text-slate-500 font-medium block mb-1.5">Active Smog Symptoms:</span>
-                        {hasProfile && profile.smogSymptoms && profile.smogSymptoms.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {profile.smogSymptoms.map((sym: string) => (
-                              <span key={sym} className="font-extrabold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded text-[10px] border border-rose-200 capitalize">
-                                {sym.replace(/_/g, ' ')}
-                              </span>
-                            ))}
+                        {/* Bronchitis */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Chronic Bronchitis:</span>
+                          {hasProfile && profile.hasBronchitis ? (
+                            <span className="font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                              Diagnosed
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Negative</span>
+                          )}
+                        </div>
+
+                        {/* COPD */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">COPD / Obstruction:</span>
+                          {hasProfile && profile.hasCopd ? (
+                            <span className="font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                              Diagnosed
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Negative</span>
+                          )}
+                        </div>
+
+                        {/* Reduced Lung Function */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Reduced Lung Function:</span>
+                          {hasProfile && profile.hasReducedLungCapacity ? (
+                            <span className="font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              Diminished
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Normal</span>
+                          )}
+                        </div>
+
+                        {/* Live Telemetry: Peak Flow & SpO2 */}
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Audited Telemetry:</span>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Peak Flow (PEF):</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                              latestVitals['peak_flow']
+                                ? latestVitals['peak_flow'].status_tier === 'critical'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : latestVitals['peak_flow'].status_tier === 'warning'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                                : 'text-slate-400'
+                            }`}>
+                              {latestVitals['peak_flow'] ? `${latestVitals['peak_flow'].reading_value} L/min` : 'Unmeasured'}
+                            </span>
                           </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Blood Oxygen (SpO2):</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                              latestVitals['spo2']
+                                ? latestVitals['spo2'].status_tier === 'critical'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : latestVitals['spo2'].status_tier === 'warning'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                                : 'text-slate-400'
+                            }`}>
+                              {latestVitals['spo2'] ? `${latestVitals['spo2'].reading_value}%` : 'Unmeasured'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Breath Hold:</span>
+                            <span className="font-bold text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                              {latestVitals['breath_hold'] ? `${latestVitals['breath_hold'].reading_value}s` : 'Unmeasured'}
+                            </span>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
+                      Fine PM2.5 penetrates deep into lung alveoli causing spasms.
+                    </p>
+                  </div>
+
+                  {/* 2. Sensory & Upper Airway */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3 flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                          <Eye className="w-3.5 h-3.5 text-cyan-600" />
+                          Sensory &amp; Airway
+                        </span>
+                        {hasProfile && (profile.hasEyeIrritation || profile.hasEntIrritation || profile.hasAllergies || (latestVitals['body_temp'] && latestVitals['body_temp'].reading_value > 99.5)) ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+                            Irritation Active
+                          </span>
                         ) : (
-                          <span className="text-slate-400 italic text-[11px]">No acute symptoms reported</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                            Clear
+                          </span>
                         )}
                       </div>
 
-                      {/* Diagnostic Lab Reports count */}
-                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                        <span className="text-slate-600 font-medium">Hospital Reports:</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveTab('reports');
-                          }}
-                          className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
-                        >
-                          <Hospital className="w-3 h-3 text-emerald-600" />
-                          <span>{hasProfile && profile.medicalReports ? profile.medicalReports.length : 0} Attached &rarr;</span>
-                        </button>
+                      <div className="space-y-2 mt-3 text-xs">
+                        {/* Eye Irritation */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Eye Irritation:</span>
+                          {hasProfile && profile.hasEyeIrritation ? (
+                            <span className="font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                              Burning / Redness
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Negative</span>
+                          )}
+                        </div>
+
+                        {/* Nose & Throat */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Nose &amp; Throat:</span>
+                          {hasProfile && profile.hasEntIrritation ? (
+                            <span className="font-extrabold text-yellow-800 bg-yellow-50 px-2 py-0.5 rounded border border-yellow-200">
+                              Sneezing / Sore
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Negative</span>
+                          )}
+                        </div>
+
+                        {/* Allergies */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Particulate Allergies:</span>
+                          {hasProfile && profile.hasAllergies ? (
+                            <span className="font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              Present
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">None</span>
+                          )}
+                        </div>
+
+                        {/* Mask Protection */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Assigned Mask:</span>
+                          <span className="font-extrabold text-slate-800 uppercase bg-white px-2 py-0.5 rounded border border-slate-200">
+                            {hasProfile ? profile.maskType : 'None'}
+                          </span>
+                        </div>
+
+                        {/* Live Telemetry: Body Temperature & Respiration */}
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Audited Telemetry:</span>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Core Body Temp:</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                              latestVitals['body_temp']
+                                ? latestVitals['body_temp'].status_tier === 'critical'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : latestVitals['body_temp'].status_tier === 'warning'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                                : 'text-slate-400'
+                            }`}>
+                              {latestVitals['body_temp'] ? `${latestVitals['body_temp'].reading_value} °F` : 'Unmeasured'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Mucosal Smog Load:</span>
+                            <span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[10px]">
+                              {currentLahoreAqi > 150 ? 'High' : currentLahoreAqi > 100 ? 'Moderate' : 'Normal'}
+                            </span>
+                          </div>
+                        </div>
+
                       </div>
                     </div>
+
+                    <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
+                      Ocular tears &amp; nasal mucous protect against micro-soot particles.
+                    </p>
                   </div>
 
-                  <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
-                    Children, pregnant women, and seniors exhibit 2x particulate sensitivity.
-                  </p>
-                </div>
+                  {/* 3. Cardiovascular & Neurological */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3 flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                          <Heart className="w-3.5 h-3.5 text-rose-600" />
+                          Heart &amp; Fatigue
+                        </span>
+                        {hasProfile && (profile.hasCardioCondition || profile.hasHeadachesFatigue || (latestVitals['blood_pressure'] && latestVitals['blood_pressure'].status_tier !== 'normal') || (latestVitals['heart_rate'] && latestVitals['heart_rate'].status_tier !== 'normal')) ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                            Monitor BP
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                            Stable
+                          </span>
+                        )}
+                      </div>
 
-              </div>
+                      <div className="space-y-2 mt-3 text-xs">
+                        {/* Cardiovascular */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Heart / Stroke Risk:</span>
+                          {hasProfile && profile.hasCardioCondition ? (
+                            <span className="font-extrabold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                              High Risk
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Normal</span>
+                          )}
+                        </div>
+
+                        {/* Headaches & Fatigue */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Headaches &amp; Fatigue:</span>
+                          {hasProfile && profile.hasHeadachesFatigue ? (
+                            <span className="font-extrabold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                              Frequent
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">None</span>
+                          )}
+                        </div>
+
+                        {/* Smoker Status */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">Smoking Exposure:</span>
+                          <span className="font-extrabold text-slate-800 capitalize bg-white px-2 py-0.5 rounded border border-slate-200">
+                            {hasProfile ? profile.smokerStatus : 'Non-smoker'}
+                          </span>
+                        </div>
+
+                        {/* Indoor Air Purifier */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-600 font-medium">HEPA Purifier:</span>
+                          {hasProfile && profile.hasHepaPurifier ? (
+                            <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-400">Not Installed</span>
+                          )}
+                        </div>
+
+                        {/* Live Telemetry: Blood Pressure & Heart Rate */}
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Audited Telemetry:</span>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Blood Pressure:</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                              latestVitals['blood_pressure']
+                                ? latestVitals['blood_pressure'].status_tier === 'critical'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : latestVitals['blood_pressure'].status_tier === 'warning'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                                : 'text-slate-400'
+                            }`}>
+                              {latestVitals['blood_pressure'] ? `${latestVitals['blood_pressure'].reading_value}/${latestVitals['blood_pressure'].reading_secondary || 0} mmHg` : 'Unmeasured'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Resting Heart Rate:</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                              latestVitals['heart_rate']
+                                ? latestVitals['heart_rate'].status_tier === 'critical'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : latestVitals['heart_rate'].status_tier === 'warning'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                                : 'text-slate-400'
+                            }`}>
+                              {latestVitals['heart_rate'] ? `${latestVitals['heart_rate'].reading_value} BPM` : 'Unmeasured'}
+                            </span>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
+                      Smog crosses pulmonary barrier into bloodstream elevating BP.
+                    </p>
+                  </div>
+
+                  {/* 4. Cohorts & Active Symptoms */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3 flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className="text-xs font-black text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                          <Users className="w-3.5 h-3.5 text-blue-600" />
+                          Cohorts &amp; Audit Feed
+                        </span>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                          {vitalsList.length} Tests Logged
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 mt-3 text-xs">
+                        {/* Cohort Category */}
+                        <div className="py-1">
+                          <span className="text-slate-500 font-medium block mb-1">Vulnerable Demographics:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {hasProfile && profile.hasPregnant && (
+                              <span className="font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded text-[11px] border border-pink-200">
+                                Maternal / Pregnancy
+                              </span>
+                            )}
+                            {hasProfile && profile.hasChild && (
+                              <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[11px] border border-blue-200">
+                                Child (Pediatric Lungs)
+                              </span>
+                            )}
+                            {hasProfile && profile.hasElderly && (
+                              <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px] border border-slate-300">
+                                Senior (60+)
+                              </span>
+                            )}
+                            {(!hasProfile || (!profile.hasPregnant && !profile.hasChild && !profile.hasElderly)) && (
+                              <span className="text-slate-400 font-semibold text-[11px]">Standard Adult</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Active Symptoms */}
+                        <div className="pt-2 border-t border-slate-200">
+                          <span className="text-slate-500 font-medium block mb-1.5">Active Smog Symptoms:</span>
+                          {hasProfile && profile.smogSymptoms && profile.smogSymptoms.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {profile.smogSymptoms.map((sym: string) => (
+                                <span key={sym} className="font-extrabold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded text-[10px] border border-rose-200 capitalize">
+                                  {sym.replace(/_/g, ' ')}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">No acute symptoms reported</span>
+                          )}
+                        </div>
+
+                        {/* Live Biomarkers Audit Summary & Button */}
+                        <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Instruments Active:</span>
+                            <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px]">
+                              {Object.keys(latestVitals).length} of {VITALS_CONFIG.length} Instruments
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">Latest Vital Audit:</span>
+                            <span className="font-mono text-[10px] text-slate-700 truncate max-w-[120px]">
+                              {vitalsList.length > 0 ? vitalsList[0].vital_type.replace(/_/g, ' ') : 'None'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('assessment')}
+                            className="w-full mt-2 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+                          >
+                            <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Launch Assessment Station &rarr;</span>
+                          </button>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-200/60">
+                      Children, pregnant women, and seniors exhibit 2x particulate sensitivity.
+                    </p>
+                  </div>
+
+                </div>
+              )}
             </div>
 
             {/* Full Width Weekly Inhalation & Respiratory Stress Graph */}
@@ -3123,6 +3391,14 @@ export default function HealthProfilePage() {
                       </div>
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => setActiveTab('overview')}
+                    className="px-4 py-3 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"
+                  >
+                    <HeartPulse className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>View Health Overview &rarr;</span>
+                  </button>
 
                   <button
                     onClick={fetchVitals}
