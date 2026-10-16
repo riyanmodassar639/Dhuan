@@ -842,6 +842,8 @@ router.post('/consents', async (req, res) => {
 router.get('/vitals', async (req, res) => {
   try {
     const userId = req.query.userId || 'default_user';
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+    const vitalType = req.query.vitalType;
 
     // Get live ambient context
     let liveAqi = 81;
@@ -854,11 +856,17 @@ router.get('/vitals', async (req, res) => {
       }
     } catch (e) {}
 
-    // Fetch vitals history
-    const history = await dbAll(
-      'SELECT * FROM user_clinical_vitals WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50',
-      [userId]
-    );
+    // Fetch vitals history from SQLite
+    let query = 'SELECT * FROM user_clinical_vitals WHERE user_id = ?';
+    const params = [userId];
+    if (vitalType) {
+      query += ' AND vital_type = ?';
+      params.push(vitalType);
+    }
+    query += ' ORDER BY created_at DESC, id DESC LIMIT ?';
+    params.push(limit);
+
+    const history = await dbAll(query, params);
 
     // Group latest reading for each vital type
     const latestMap = {};
@@ -872,6 +880,7 @@ router.get('/vitals', async (req, res) => {
       success: true,
       latestVitals: latestMap,
       history,
+      count: history.length,
       ambient: {
         aqi: liveAqi,
         pm25: livePm25

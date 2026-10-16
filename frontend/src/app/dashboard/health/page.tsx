@@ -60,11 +60,16 @@ import {
   Cable,
   Camera,
   ExternalLink,
-  Copy
+  Copy,
+  BarChart3,
+  TrendingUp
 } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
+  LineChart,
+  Line,
+  ReferenceLine,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -590,6 +595,7 @@ export default function HealthProfilePage() {
   const [latestVitals, setLatestVitals] = useState<Record<string, VitalMeasurement>>({});
   const [isLoadingVitals, setIsLoadingVitals] = useState<boolean>(false);
   const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
+  const [activeDetailVital, setActiveDetailVital] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
   const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor'>('detecting');
@@ -1087,6 +1093,103 @@ export default function HealthProfilePage() {
     setMeasureProgress(0);
     setMeasureStep('no_device_detected');
     setSensorContactState('idle');
+  };
+
+  // Open Dedicated Biomarker Detail Modal with full test history & graphs
+  const openDetailModal = async (vitalType: string) => {
+    setActiveDetailVital(vitalType);
+    try {
+      const res = await fetch(getApiEndpoint(`/emergency/vitals?vitalType=${vitalType}&limit=200`));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.history) {
+          setVitalsList(prev => {
+            const otherVitals = prev.filter(v => v.vital_type !== vitalType);
+            return [...data.history, ...otherVitals];
+          });
+        }
+      }
+    } catch (e) {
+      console.log('Background vitals sync deferred:', e);
+    }
+  };
+
+  const closeDetailModal = () => {
+    setActiveDetailVital(null);
+  };
+
+  // Export Longitudinal Vitals History to CSV File
+  const exportVitalHistoryCSV = (vitalType: string) => {
+    const cfg = VITALS_CONFIG.find(v => v.type === vitalType);
+    const vitalTitle = cfg ? cfg.shortName : vitalType;
+    const history = vitalsList.filter(v => v.vital_type === vitalType);
+
+    if (history.length === 0) {
+      alert(`No recorded measurements found for ${vitalTitle} in the database yet.`);
+      return;
+    }
+
+    const headers = [
+      'Test ID',
+      'Timestamp (UTC)',
+      'Local Date Time',
+      'Biomarker',
+      'Primary Reading',
+      'Secondary Reading (Diastolic)',
+      'Unit',
+      'Clinical Status Tier',
+      'Clinical Interpretation',
+      'Device Name',
+      'Device Type',
+      'Recorded Lahore AQI',
+      'Recorded PM2.5 (ug/m3)',
+      'Smog Correlation Notes'
+    ];
+
+    const escapeCSV = (str: any) => {
+      if (str === null || str === undefined) return '""';
+      const s = String(str).replace(/"/g, '""');
+      return `"${s}"`;
+    };
+
+    const rows = history.map((item, idx) => [
+      item.id || (idx + 1),
+      escapeCSV(item.created_at),
+      escapeCSV(new Date(item.created_at).toLocaleString()),
+      escapeCSV(item.vital_type),
+      item.reading_value,
+      item.reading_secondary !== null && item.reading_secondary !== undefined ? item.reading_secondary : '',
+      escapeCSV(item.unit),
+      escapeCSV(item.status_tier),
+      escapeCSV(item.clinical_interpretation),
+      escapeCSV(item.device_name),
+      escapeCSV(item.device_type),
+      item.recorded_aqi ?? '',
+      item.recorded_pm25 ?? '',
+      escapeCSV(item.smog_correlation_notes)
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `DHUAN_${vitalType}_Clinical_History_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export / Print Clean Medical Clinical Summary
+  const exportVitalHistoryPrint = () => {
+    setTimeout(() => {
+      window.print();
+    }, 200);
   };
 
   // Automatic device detection and measurement initiation (No manual questioning)
@@ -3077,18 +3180,35 @@ export default function HealthProfilePage() {
                       </div>
                     </div>
 
-                    {/* Measure Button */}
-                    <div className="pt-2">
+                    {/* Action Buttons: Compact Measure + Dedicated Detail & Analytics Button */}
+                    <div className="pt-2 grid grid-cols-2 gap-2">
                       <button
+                        type="button"
                         onClick={() => openMeasureModal(cfg.type)}
-                        className={`w-full py-3 rounded-2xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 active:scale-95 shadow-xs ${
+                        className={`py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-xs ${
                           isMeasured
                             ? 'bg-slate-900 hover:bg-slate-800 text-white'
                             : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
                         }`}
+                        title={isMeasured ? `Re-Check / Measure ${cfg.shortName}` : `Measure ${cfg.shortName}`}
                       >
-                        <Stethoscope className="w-4 h-4 text-emerald-400" />
-                        <span>{isMeasured ? `Re-Check / Measure ${cfg.shortName}` : `Measure ${cfg.shortName}`}</span>
+                        <Stethoscope className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="truncate">{isMeasured ? 'Re-Measure' : 'Measure'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openDetailModal(cfg.type)}
+                        className="py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 active:scale-95 border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 shadow-xs hover:border-emerald-400 hover:text-emerald-700 hover:shadow-sm"
+                        title={`View ${cfg.shortName} Full History & Analytics`}
+                      >
+                        <BarChart3 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">Detail</span>
+                        {vitalsList.filter(v => v.vital_type === cfg.type).length > 0 && (
+                          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-emerald-100 text-[10px] font-black text-emerald-800 shrink-0">
+                            {vitalsList.filter(v => v.vital_type === cfg.type).length}
+                          </span>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -5163,17 +5283,20 @@ export default function HealthProfilePage() {
           }
           /* Only make the printable clinical report and its children visible */
           #printable-clinical-report,
-          #printable-clinical-report * {
+          #printable-clinical-report *,
+          #printable-vital-detail-report,
+          #printable-vital-detail-report * {
             visibility: visible !important;
           }
-          #printable-clinical-report {
+          #printable-clinical-report,
+          #printable-vital-detail-report {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
-            padding: 20px !important;
+            padding: 24px !important;
             border: 1px solid #0f172a !important;
             box-shadow: none !important;
             background: #ffffff !important;
@@ -6417,6 +6540,560 @@ export default function HealthProfilePage() {
                 </div>
               )}
 
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* DEDICATED BIOMARKER DETAIL & HISTORICAL ANALYTICS MODAL */}
+      {activeDetailVital && (() => {
+        const cfg = VITALS_CONFIG.find(v => v.type === activeDetailVital);
+        if (!cfg) return null;
+
+        const history = vitalsList.filter(v => v.vital_type === activeDetailVital);
+        const count = history.length;
+        const latest = history[0];
+
+        // Summary Statistics Calculation
+        let avgPrimary = 0;
+        let avgSecondary: number | null = null;
+        let minPrimary = 0;
+        let maxPrimary = 0;
+
+        if (count > 0) {
+          const vals = history.map(h => h.reading_value).filter(v => typeof v === 'number' && !isNaN(v));
+          if (vals.length > 0) {
+            avgPrimary = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+            minPrimary = Math.min(...vals);
+            maxPrimary = Math.max(...vals);
+          }
+          if (cfg.type === 'blood_pressure') {
+            const dias = history.map(h => h.reading_secondary).filter(v => typeof v === 'number' && !isNaN(v)) as number[];
+            if (dias.length > 0) {
+              avgSecondary = Math.round((dias.reduce((a, b) => a + b, 0) / dias.length) * 10) / 10;
+            }
+          }
+        }
+
+        // Chronological chart data points (oldest first to newest last)
+        const chartData = [...history].reverse().map((item, idx) => {
+          const d = new Date(item.created_at);
+          const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+          return {
+            index: idx + 1,
+            label: `${dateStr} ${timeStr}`,
+            shortTime: timeStr,
+            primary: item.reading_value,
+            secondary: item.reading_secondary,
+            unit: item.unit,
+            status: item.status_tier,
+            aqi: item.recorded_aqi,
+            pm25: item.recorded_pm25,
+            device: item.device_name,
+            interpretation: item.clinical_interpretation,
+            rawDate: item.created_at
+          };
+        });
+
+        return (
+          <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+              
+              {/* Modal Header */}
+              <div className="flex items-start justify-between pb-4 border-b border-slate-100 gap-3">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-md ${
+                    cfg.colorTheme === 'rose' ? 'bg-rose-600 shadow-rose-600/20' :
+                    cfg.colorTheme === 'cyan' ? 'bg-cyan-600 shadow-cyan-600/20' :
+                    cfg.colorTheme === 'indigo' ? 'bg-indigo-600 shadow-indigo-600/20' :
+                    cfg.colorTheme === 'emerald' ? 'bg-emerald-600 shadow-emerald-600/20' :
+                    cfg.colorTheme === 'amber' ? 'bg-amber-600 shadow-amber-600/20' :
+                    cfg.colorTheme === 'orange' ? 'bg-orange-600 shadow-orange-600/20' :
+                    'bg-teal-600 shadow-teal-600/20'
+                  }`}>
+                    {cfg.type === 'heart_rate' && <HeartPulse className="w-6 h-6" />}
+                    {cfg.type === 'spo2' && <Wind className="w-6 h-6" />}
+                    {cfg.type === 'blood_pressure' && <Activity className="w-6 h-6" />}
+                    {cfg.type === 'peak_flow' && <Stethoscope className="w-6 h-6" />}
+                    {cfg.type === 'respiratory_rate' && <Wind className="w-6 h-6" />}
+                    {cfg.type === 'body_temp' && <ShieldAlert className="w-6 h-6" />}
+                    {cfg.type === 'breath_hold' && <Clock className="w-6 h-6" />}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-black text-xl text-slate-900 leading-tight">
+                        {cfg.title}
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        SQLite Log
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      Clinical Reference Target: <strong className="text-slate-800">{cfg.normalRange}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={closeDetailModal}
+                  className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Action Toolbar: Total Tests, Export CSV, Print/PDF, Measure Now */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                  <Activity className="w-4 h-4 text-emerald-600" />
+                  <span>Total Database Records: <strong className="text-emerald-700 font-black">{count} Tests</strong></span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Export CSV Button */}
+                  <button
+                    type="button"
+                    onClick={() => exportVitalHistoryCSV(cfg.type)}
+                    disabled={count === 0}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
+                    title="Export complete measurements table as CSV spreadsheet"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Export CSV</span>
+                  </button>
+
+                  {/* Export / Print PDF Report Button */}
+                  <button
+                    type="button"
+                    onClick={exportVitalHistoryPrint}
+                    disabled={count === 0}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
+                    title="Print / Save formatted Clinical Medical Report as PDF"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Print / PDF Report</span>
+                  </button>
+
+                  {/* Measure New Reading Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeDetailModal();
+                      setTimeout(() => openMeasureModal(cfg.type), 150);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
+                  >
+                    <Stethoscope className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Measure Now</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                    Latest Reading
+                  </span>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-xl sm:text-2xl font-black text-slate-900">
+                      {latest ? latest.reading_value : '—'}
+                      {latest && latest.reading_secondary ? `/${latest.reading_secondary}` : ''}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">{cfg.unit}</span>
+                  </div>
+                  {latest && (
+                    <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
+                      latest.status_tier === 'critical' ? 'bg-rose-100 text-rose-800' :
+                      latest.status_tier === 'warning' ? 'bg-amber-100 text-amber-900' :
+                      'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {latest.status_tier}
+                    </span>
+                  )}
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                    Historical Average
+                  </span>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-xl sm:text-2xl font-black text-slate-900">
+                      {count > 0 ? avgPrimary : '—'}
+                      {avgSecondary ? `/${avgSecondary}` : ''}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">{cfg.unit}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-medium block mt-1">
+                    Across {count} recorded tests
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                    Range (Min / Max)
+                  </span>
+                  <div className="mt-1 text-slate-900 font-black text-lg sm:text-xl">
+                    {count > 0 ? `${minPrimary} - ${maxPrimary}` : '—'}
+                    <span className="text-xs font-bold text-slate-500 ml-1">{cfg.unit}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-medium block mt-1">
+                    Spread variance
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                    Target Status
+                  </span>
+                  <div className="mt-1 text-slate-900 font-black text-xs sm:text-sm">
+                    {cfg.normalRange}
+                  </div>
+                  <span className="text-[10px] text-emerald-700 font-bold block mt-1.5 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    Clinical Reference
+                  </span>
+                </div>
+              </div>
+
+              {/* Longitudinal Trend Chart (Recharts) */}
+              <div className="p-4 sm:p-5 rounded-3xl bg-slate-50/80 border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-600" />
+                    <h4 className="font-extrabold text-sm text-slate-900">
+                      Longitudinal Trend &amp; Progression Waveform
+                    </h4>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    Chronological Timeline
+                  </span>
+                </div>
+
+                {count > 0 ? (
+                  <div className="h-64 w-full pt-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {cfg.type === 'blood_pressure' ? (
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorSys" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35}/>
+                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0}/>
+                            </linearGradient>
+                            <linearGradient id="colorDia" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35}/>
+                              <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="shortTime" stroke="#94a3b8" fontSize={11} />
+                          <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                            labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
+                          <Area type="monotone" dataKey="primary" name="Systolic (mmHg)" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSys)" />
+                          <Area type="monotone" dataKey="secondary" name="Diastolic (mmHg)" stroke="#06b6d4" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDia)" />
+                          {cfg.normalMax && <ReferenceLine y={cfg.normalMax} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: 'Systolic Limit (120)', fill: '#f43f5e', fontSize: 10 }} />}
+                          <ReferenceLine y={80} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Diastolic Limit (80)', fill: '#3b82f6', fontSize: 10 }} />
+                        </AreaChart>
+                      ) : (
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id={`colorVital_${cfg.type}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor={
+                                cfg.colorTheme === 'rose' ? '#f43f5e' :
+                                cfg.colorTheme === 'cyan' ? '#06b6d4' :
+                                cfg.colorTheme === 'emerald' ? '#10b981' :
+                                cfg.colorTheme === 'amber' ? '#f59e0b' :
+                                '#6366f1'
+                              } stopOpacity={0.35}/>
+                              <stop offset="95%" stopColor={
+                                cfg.colorTheme === 'rose' ? '#f43f5e' :
+                                cfg.colorTheme === 'cyan' ? '#06b6d4' :
+                                cfg.colorTheme === 'emerald' ? '#10b981' :
+                                cfg.colorTheme === 'amber' ? '#f59e0b' :
+                                '#6366f1'
+                              } stopOpacity={0.0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="shortTime" stroke="#94a3b8" fontSize={11} />
+                          <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                            labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="primary" 
+                            name={`${cfg.shortName} (${cfg.unit})`} 
+                            stroke={
+                              cfg.colorTheme === 'rose' ? '#f43f5e' :
+                              cfg.colorTheme === 'cyan' ? '#06b6d4' :
+                              cfg.colorTheme === 'emerald' ? '#10b981' :
+                              cfg.colorTheme === 'amber' ? '#f59e0b' :
+                              '#6366f1'
+                            } 
+                            strokeWidth={2.5} 
+                            fillOpacity={1} 
+                            fill={`url(#colorVital_${cfg.type})`} 
+                          />
+                          {cfg.normalMin && <ReferenceLine y={cfg.normalMin} stroke="#10b981" strokeDasharray="3 3" label={{ value: `Target Min (${cfg.normalMin})`, fill: '#10b981', fontSize: 10 }} />}
+                          {cfg.normalMax && <ReferenceLine y={cfg.normalMax} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `Target Max (${cfg.normalMax})`, fill: '#f59e0b', fontSize: 10 }} />}
+                        </AreaChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="py-12 text-center space-y-2 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <Activity className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-bold text-slate-600">No test data recorded for {cfg.shortName} yet.</p>
+                    <p className="text-[11px] text-slate-400">Perform your first measurement to start building this biomarker&apos;s timeline graph.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Full Test Audit Log Table for this Vital */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-emerald-600" />
+                    All Recorded Tests History ({count})
+                  </h4>
+                  {count > 0 && (
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Stored in SQLite Database
+                    </span>
+                  )}
+                </div>
+
+                {count > 0 ? (
+                  <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[10px]">
+                          <th className="py-2.5 px-3">#</th>
+                          <th className="py-2.5 px-3">Date &amp; Time</th>
+                          <th className="py-2.5 px-3">Measured Reading</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3">Instrument / Sensor</th>
+                          <th className="py-2.5 px-3">Lahore Smog AQI</th>
+                          <th className="py-2.5 px-3">Clinical Evaluation</th>
+                          <th className="py-2.5 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                        {history.map((item, idx) => (
+                          <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-2.5 px-3 font-bold text-slate-400 text-[11px]">
+                              {count - idx}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-[11px]">
+                              {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className="font-black text-slate-900 text-sm">
+                                {item.reading_value}{item.reading_secondary ? ` / ${item.reading_secondary}` : ''}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-bold ml-1">{item.unit}</span>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                item.status_tier === 'critical' ? 'bg-rose-100 text-rose-800' :
+                                item.status_tier === 'warning' ? 'bg-amber-100 text-amber-900' :
+                                'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {item.status_tier}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap text-slate-600 text-[11px]">
+                              {item.device_name}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap text-[11px]">
+                              {item.recorded_aqi ? (
+                                <span className="font-bold text-slate-700">
+                                  {item.recorded_aqi} AQI <span className="text-slate-400 font-normal">({item.recorded_pm25} µg/m³)</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 max-w-xs text-[11px] text-slate-600">
+                              {item.clinical_interpretation}
+                            </td>
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteVital(item.id)}
+                                className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                                title="Delete this entry from database"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No past tests to display.</p>
+                )}
+              </div>
+
+              {/* Smog Advisory Box */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <span>Smog Pathophysiology &amp; Environmental Advisory</span>
+                </div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  {cfg.smogImpact}
+                </p>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* PRINTABLE DEDICATED VITAL CLINICAL REPORT FOR PDF EXPORT */}
+      {activeDetailVital && (() => {
+        const cfg = VITALS_CONFIG.find(v => v.type === activeDetailVital);
+        if (!cfg) return null;
+        const history = vitalsList.filter(v => v.vital_type === activeDetailVital);
+        const count = history.length;
+        const latest = history[0];
+        
+        let avgPrimary = 0;
+        let minPrimary = 0;
+        let maxPrimary = 0;
+        if (count > 0) {
+          const vals = history.map(h => h.reading_value).filter(v => typeof v === 'number');
+          if (vals.length > 0) {
+            avgPrimary = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+            minPrimary = Math.min(...vals);
+            maxPrimary = Math.max(...vals);
+          }
+        }
+
+        return (
+          <div id="printable-vital-detail-report" className="hidden print:block p-8 bg-white text-slate-900">
+            {/* Medical Header */}
+            <div className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start">
+              <div>
+                <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+                  DHUAN Clinical Biomarker Registry
+                </h1>
+                <p className="text-xs font-bold text-slate-600 mt-1">
+                  Environmental Pulmonary &amp; Cardiovascular Health Monitoring Directorate
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Official Audit Report &bull; Verified SQLite Data Store &bull; Lahore Smog Cohort
+                </p>
+              </div>
+              <div className="text-right text-xs">
+                <p className="font-extrabold text-slate-900">Date: {new Date().toLocaleDateString()}</p>
+                <p className="text-slate-500">Time: {new Date().toLocaleTimeString()}</p>
+                <p className="font-mono text-[10px] text-emerald-700 font-bold mt-1">AUDIT REF: DHUAN-VTL-{(activeDetailVital || '').toUpperCase()}</p>
+              </div>
+            </div>
+
+            {/* Patient & Biomarker Info */}
+            <div className="grid grid-cols-2 gap-4 mb-6 p-4 border border-slate-300 rounded-lg text-xs">
+              <div>
+                <p><strong>Patient Name:</strong> {profile.fullName || 'Registered Lahore Citizen'}</p>
+                <p><strong>Age / Gender:</strong> {profile.age} yrs &bull; {profile.gender}</p>
+                <p><strong>Blood Group:</strong> {profile.bloodGroup || 'O+'}</p>
+                <p><strong>Asthma / Respiratory Risk:</strong> {profile.asthmaSeverity} ({profile.hasCopd ? 'COPD Positive' : 'No COPD'})</p>
+              </div>
+              <div>
+                <p><strong>Biomarker Evaluated:</strong> {cfg.title}</p>
+                <p><strong>Clinical Standard Unit:</strong> {cfg.unit}</p>
+                <p><strong>Standard Normal Range:</strong> {cfg.normalRange}</p>
+                <p><strong>Total Audited Scans:</strong> {count} Tests Recorded</p>
+              </div>
+            </div>
+
+            {/* Statistical Overview */}
+            <div className="grid grid-cols-4 gap-3 mb-6 text-center text-xs">
+              <div className="p-3 border border-slate-300 rounded">
+                <span className="text-[10px] text-slate-500 uppercase block font-bold">Latest Reading</span>
+                <span className="text-base font-black text-slate-900">
+                  {latest ? `${latest.reading_value}${latest.reading_secondary ? `/${latest.reading_secondary}` : ''} ${cfg.unit}` : 'N/A'}
+                </span>
+              </div>
+              <div className="p-3 border border-slate-300 rounded">
+                <span className="text-[10px] text-slate-500 uppercase block font-bold">Historical Mean</span>
+                <span className="text-base font-black text-slate-900">
+                  {count > 0 ? `${avgPrimary} ${cfg.unit}` : 'N/A'}
+                </span>
+              </div>
+              <div className="p-3 border border-slate-300 rounded">
+                <span className="text-[10px] text-slate-500 uppercase block font-bold">Minimum Reading</span>
+                <span className="text-base font-black text-slate-900">
+                  {count > 0 ? `${minPrimary} ${cfg.unit}` : 'N/A'}
+                </span>
+              </div>
+              <div className="p-3 border border-slate-300 rounded">
+                <span className="text-[10px] text-slate-500 uppercase block font-bold">Maximum Reading</span>
+                <span className="text-base font-black text-slate-900">
+                  {count > 0 ? `${maxPrimary} ${cfg.unit}` : 'N/A'}
+                </span>
+              </div>
+            </div>
+
+            {/* Chronological Table */}
+            <table className="w-full text-left text-xs border border-slate-300 mb-6">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 text-[10px] uppercase font-bold text-slate-700">
+                  <th className="p-2 border-r border-slate-300">#</th>
+                  <th className="p-2 border-r border-slate-300">Timestamp</th>
+                  <th className="p-2 border-r border-slate-300">Measured Value</th>
+                  <th className="p-2 border-r border-slate-300">Clinical Tier</th>
+                  <th className="p-2 border-r border-slate-300">Instrument Used</th>
+                  <th className="p-2 border-r border-slate-300">Lahore AQI</th>
+                  <th className="p-2">Diagnostic Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {history.map((item, idx) => (
+                  <tr key={item.id}>
+                    <td className="p-2 border-r border-slate-200 font-bold">{count - idx}</td>
+                    <td className="p-2 border-r border-slate-200">{new Date(item.created_at).toLocaleString()}</td>
+                    <td className="p-2 border-r border-slate-200 font-bold">
+                      {item.reading_value}{item.reading_secondary ? `/${item.reading_secondary}` : ''} {item.unit}
+                    </td>
+                    <td className="p-2 border-r border-slate-200 uppercase font-bold text-[10px]">
+                      {item.status_tier}
+                    </td>
+                    <td className="p-2 border-r border-slate-200">{item.device_name}</td>
+                    <td className="p-2 border-r border-slate-200">{item.recorded_aqi ? `${item.recorded_aqi} AQI` : '—'}</td>
+                    <td className="p-2 text-[11px]">{item.clinical_interpretation}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Clinical Smog Footnote & Signoff */}
+            <div className="border-t border-slate-300 pt-4 text-[11px] text-slate-600 space-y-2">
+              <p><strong>Smog Pathophysiology Advisory:</strong> {cfg.smogImpact}</p>
+              <div className="flex justify-between items-end pt-8">
+                <div>
+                  <p className="font-bold text-slate-900">DHUAN Telehealth Medical Registry</p>
+                  <p className="text-[10px] text-slate-400">Digital Cryptographic Audit ID: #DHUAN-SQL-{activeDetailVital}</p>
+                </div>
+                <div className="text-right border-t border-slate-400 pt-1 w-48">
+                  <p className="font-bold text-slate-900">Clinical Attestation</p>
+                  <p className="text-[10px] text-slate-500">Authorized Medical Reviewer</p>
+                </div>
+              </div>
             </div>
           </div>
         );
