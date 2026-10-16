@@ -3340,23 +3340,25 @@ export default function HealthProfilePage() {
                 });
 
                 return (
-                  <div className="md:col-span-2 lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-4">
+                  <div className="md:col-span-2 lg:col-span-2 bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-700/80 shadow-xl flex flex-col justify-between space-y-5 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-3xl pointer-events-none"></div>
+
                     {/* Component Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-700/80 gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
-                          <TrendingUp className="w-5 h-5 text-emerald-600" />
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-sm">
+                          <TrendingUp className="w-5 h-5 text-emerald-400" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
+                            <h3 className="font-extrabold text-sm sm:text-base text-white leading-snug">
                               Biomarkers Multi-Stream Telemetry &amp; Smog Correlation
                             </h3>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                               Live Stream
                             </span>
                           </div>
-                          <span className="text-[11px] font-semibold text-slate-400 block">
+                          <span className="text-[11px] font-semibold text-slate-300 block">
                             Visual progression of all clinical physiological tests recorded below
                           </span>
                         </div>
@@ -3368,26 +3370,26 @@ export default function HealthProfilePage() {
                           type="button"
                           onClick={handleRefreshVitals}
                           disabled={isRefreshingVitals}
-                          className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 disabled:opacity-50"
+                          className="px-3.5 py-1.5 rounded-xl border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 disabled:opacity-50"
                           title="Sync latest readings"
                         >
-                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingVitals ? 'animate-spin text-emerald-600' : ''}`} />
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingVitals ? 'animate-spin text-emerald-400' : ''}`} />
                           <span>Refresh</span>
                         </button>
                       </div>
                     </div>
 
                     {/* Filter Tabs & Status Metrics */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
                       {/* Biomarker Filter Tabs */}
                       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
                         <button
                           type="button"
                           onClick={() => setMasterChartFilter('all')}
-                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all whitespace-nowrap ${
+                          className={`px-3 py-1 rounded-lg font-extrabold text-[11px] transition-all whitespace-nowrap ${
                             masterChartFilter === 'all'
-                              ? 'bg-slate-900 text-white shadow-xs'
-                              : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                              ? 'bg-emerald-500 text-slate-900 shadow-sm'
+                              : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
                           }`}
                         >
                           All Tests ({vitalsList.length})
@@ -3400,10 +3402,10 @@ export default function HealthProfilePage() {
                               key={c.type}
                               type="button"
                               onClick={() => setMasterChartFilter(c.type)}
-                              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all whitespace-nowrap flex items-center gap-1 ${
+                              className={`px-3 py-1 rounded-lg font-extrabold text-[11px] transition-all whitespace-nowrap flex items-center gap-1 ${
                                 masterChartFilter === c.type
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                                  ? 'bg-emerald-500 text-slate-900 shadow-sm'
+                                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
                               }`}
                             >
                               <span>{c.shortName.split(' ')[0]}</span>
@@ -3415,69 +3417,70 @@ export default function HealthProfilePage() {
 
                       {/* Status Breakdown Badges */}
                       <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-extrabold uppercase tracking-wider">
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           {relevantList.filter(v => v.status_tier === 'normal').length} Normal
                         </span>
-                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
                           {relevantList.filter(v => v.status_tier === 'warning').length} Warning
                         </span>
-                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                        <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
                           {relevantList.filter(v => v.status_tier === 'critical').length} Critical
                         </span>
                       </div>
                     </div>
 
                     {/* Chart Display Area */}
-                    <div className="h-60 w-full pt-1">
+                    <div className="relative z-10 h-60 w-full pt-1">
                       {relevantList.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
                           {!isAll && activeCfg?.type === 'blood_pressure' ? (
                             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                               <defs>
                                 <linearGradient id="colorMasterSys" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35}/>
-                                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0}/>
+                                  <stop offset="5%" stopColor="#818cf8" stopOpacity={0.4}/>
+                                  <stop offset="95%" stopColor="#818cf8" stopOpacity={0.0}/>
                                 </linearGradient>
                                 <linearGradient id="colorMasterDia" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35}/>
-                                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0}/>
+                                  <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
+                                  <stop offset="95%" stopColor="#22d3ee" stopOpacity={0.0}/>
                                 </linearGradient>
                               </defs>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} />
-                              <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
+                              <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
                               <Tooltip 
-                                contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
+                                labelStyle={{ fontWeight: 'bold', color: '#94a3b8' }}
+                                itemStyle={{ color: '#f8fafc' }}
                               />
-                              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-                              <Area type="monotone" dataKey="primary" name="Systolic (mmHg)" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMasterSys)" />
-                              <Area type="monotone" dataKey="secondary" name="Diastolic (mmHg)" stroke="#06b6d4" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMasterDia)" />
+                              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6, color: '#94a3b8' }} />
+                              <Area type="monotone" dataKey="primary" name="Systolic (mmHg)" stroke="#818cf8" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMasterSys)" />
+                              <Area type="monotone" dataKey="secondary" name="Diastolic (mmHg)" stroke="#22d3ee" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMasterDia)" />
                               <ReferenceLine y={120} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: '120 mmHg', fill: '#f43f5e', fontSize: 10 }} />
-                              <ReferenceLine y={80} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: '80 mmHg', fill: '#3b82f6', fontSize: 10 }} />
+                              <ReferenceLine y={80} stroke="#38bdf8" strokeDasharray="3 3" label={{ value: '80 mmHg', fill: '#38bdf8', fontSize: 10 }} />
                             </AreaChart>
                           ) : (
                             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                               <defs>
                                 <linearGradient id="colorMasterArea" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
+                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.45}/>
                                   <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
                                 </linearGradient>
                                 <linearGradient id="colorMasterAqi" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
+                                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25}/>
                                   <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0}/>
                                 </linearGradient>
                               </defs>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} />
-                              <YAxis yAxisId="vital" domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
-                              <YAxis yAxisId="aqi" orientation="right" domain={[0, 300]} stroke="#f59e0b" fontSize={10} tick={{ fill: '#d97706' }} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
+                              <YAxis yAxisId="vital" domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
+                              <YAxis yAxisId="aqi" orientation="right" domain={[0, 300]} stroke="#f59e0b" fontSize={10} tick={{ fill: '#fbbf24' }} />
                               <Tooltip 
                                 content={({ active, payload }: any) => {
                                   if (active && payload && payload.length) {
                                     const d = payload[0].payload;
                                     return (
-                                      <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl border border-slate-700 text-xs space-y-1 max-w-xs z-50">
+                                      <div className="bg-slate-900 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs space-y-1 max-w-xs z-50">
                                         <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1 text-[11px] text-slate-400">
                                           <span>{d.label}</span>
                                           <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase ${
@@ -3506,7 +3509,7 @@ export default function HealthProfilePage() {
                                   return null;
                                 }}
                               />
-                              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
+                              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6, color: '#94a3b8' }} />
                               <Area 
                                 yAxisId="vital"
                                 type="monotone" 
@@ -3523,7 +3526,7 @@ export default function HealthProfilePage() {
                                 dataKey="aqi" 
                                 name="Ambient Smog AQI" 
                                 stroke="#f59e0b" 
-                                strokeWidth={2}
+                                strokeWidth={2} 
                                 strokeDasharray="3 3"
                                 dot={{ r: 2.5, fill: '#f59e0b' }}
                               />
@@ -3531,25 +3534,25 @@ export default function HealthProfilePage() {
                           )}
                         </ResponsiveContainer>
                       ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-center space-y-1.5 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-4">
-                          <Activity className="w-6 h-6 text-slate-300" />
-                          <div className="text-xs font-bold text-slate-600">No Tests Found for Selected Filter</div>
+                        <div className="h-full flex flex-col items-center justify-center text-center space-y-1.5 bg-slate-800/40 rounded-2xl border border-dashed border-slate-700/80 p-4">
+                          <Activity className="w-6 h-6 text-slate-500" />
+                          <div className="text-xs font-bold text-slate-300">No Tests Found for Selected Filter</div>
                           <p className="text-[11px] text-slate-400">Perform a measurement using the cards above to record clinical data.</p>
                         </div>
                       )}
                     </div>
 
                     {/* Footer Insight Strip */}
-                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-1.5">
+                    <div className="relative z-10 pt-3 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-400 gap-1.5">
                       <div className="flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span>
+                        <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span className="text-slate-300">
                           {vitalsList.length > 0 
                             ? `Latest recorded test: ${vitalsList[0].vital_type.replace(/_/g, ' ')} (${vitalsList[0].reading_value} ${vitalsList[0].unit}) at ${new Date(vitalsList[0].created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                             : 'No vitals recorded yet.'}
                         </span>
                       </div>
-                      <span className="text-emerald-700 font-bold text-[10px]">
+                      <span className="text-emerald-400 font-bold text-[10px]">
                         Verified Clinical Synchronization
                       </span>
                     </div>
@@ -5687,20 +5690,21 @@ export default function HealthProfilePage() {
         if (!cfg) return null;
 
         return (
-          <div className="fixed inset-0 z-[9999] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-              
+          <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-[#0B1528] text-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto relative">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-[90px] pointer-events-none"></div>
+
               {/* Modal Header */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="relative z-10 flex items-center justify-between pb-4 border-b border-slate-800">
                 <div className="flex items-center gap-3.5">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-md ${
-                    cfg.colorTheme === 'rose' ? 'bg-rose-600 shadow-rose-600/20' :
-                    cfg.colorTheme === 'cyan' ? 'bg-cyan-600 shadow-cyan-600/20' :
-                    cfg.colorTheme === 'indigo' ? 'bg-indigo-600 shadow-indigo-600/20' :
-                    cfg.colorTheme === 'emerald' ? 'bg-emerald-600 shadow-emerald-600/20' :
-                    cfg.colorTheme === 'amber' ? 'bg-amber-600 shadow-amber-600/20' :
-                    cfg.colorTheme === 'orange' ? 'bg-orange-600 shadow-orange-600/20' :
-                    'bg-teal-600 shadow-teal-600/20'
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-lg ${
+                    cfg.colorTheme === 'rose' ? 'bg-rose-500 shadow-rose-500/25' :
+                    cfg.colorTheme === 'cyan' ? 'bg-cyan-500 shadow-cyan-500/25' :
+                    cfg.colorTheme === 'indigo' ? 'bg-indigo-500 shadow-indigo-500/25' :
+                    cfg.colorTheme === 'emerald' ? 'bg-emerald-500 shadow-emerald-500/25' :
+                    cfg.colorTheme === 'amber' ? 'bg-amber-500 shadow-amber-500/25' :
+                    cfg.colorTheme === 'orange' ? 'bg-orange-500 shadow-orange-500/25' :
+                    'bg-teal-500 shadow-teal-500/25'
                   }`}>
                     {cfg.type === 'heart_rate' && <HeartPulse className="w-6 h-6" />}
                     {cfg.type === 'spo2' && <Wind className="w-6 h-6" />}
@@ -5712,20 +5716,20 @@ export default function HealthProfilePage() {
                   </div>
 
                   <div>
-                    <h3 className="font-black text-xl text-slate-900 leading-tight">
+                    <h3 className="font-black text-xl text-white leading-tight">
                       Measure {cfg.shortName}
                     </h3>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
-                      <span>Normal Target: <strong className="text-slate-800">{cfg.normalRange}</strong></span>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400 font-medium">
+                      <span>Normal Target: <strong className="text-white">{cfg.normalRange}</strong></span>
                       <span>•</span>
-                      <span className="text-emerald-600 font-bold">Clinical Instrument Connected</span>
+                      <span className="text-emerald-400 font-bold">Clinical Instrument Connected</span>
                     </div>
                   </div>
                 </div>
 
                 <button
                   onClick={closeMeasureModal}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors border border-slate-700"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -6254,53 +6258,53 @@ export default function HealthProfilePage() {
                     )}
 
                     {/* Notice card */}
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
-                      <div className="font-black text-slate-900 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/70 text-xs text-slate-300 space-y-1">
+                      <div className="font-black text-white flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         <span>Clinical Measurement Entry</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                      <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
                         Apni machine ya mobile health app se verified reading yahan adjust karein. Machine/device hamari application ne khud automatically detect kar li hai aur aapke clinical profile me 100% genuine form me record hogi.
                       </p>
                     </div>
 
                     {/* AUTO-DETECTED INSTRUMENT / MACHINE DISPLAY (Permanently Auto-Identified, No Options / Typing) */}
-                    <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-emerald-50/40 border border-slate-200/90 space-y-2">
+                    <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-300">
                             Auto-Detected Measuring Instrument / Device:
                           </span>
                         </div>
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider border border-emerald-300">
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
                           Auto-Identified
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/90 border border-slate-700 shadow-2xs">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-lg shrink-0">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
                             {autoDetectedMachine.platformCategory === 'apple' ? (
-                              <Smartphone className="w-5 h-5 text-slate-800" />
+                              <Smartphone className="w-5 h-5 text-white" />
                             ) : autoDetectedMachine.platformCategory === 'android' ? (
-                              <Smartphone className="w-5 h-5 text-emerald-600" />
+                              <Smartphone className="w-5 h-5 text-emerald-400" />
                             ) : autoDetectedMachine.platformCategory === 'bluetooth' ? (
-                              <Activity className="w-5 h-5 text-cyan-600" />
+                              <Activity className="w-5 h-5 text-cyan-400" />
                             ) : (
-                              <Laptop className="w-5 h-5 text-indigo-600" />
+                              <Laptop className="w-5 h-5 text-indigo-400" />
                             )}
                           </div>
                           <div>
-                            <div className="text-xs font-black text-slate-900 flex items-center gap-2">
+                            <div className="text-xs font-black text-white flex items-center gap-2">
                               <span>{autoDetectedMachine.displayName}</span>
                             </div>
-                            <div className="text-[10px] text-slate-500 font-medium">
+                            <div className="text-[10px] text-slate-400 font-medium">
                               {autoDetectedMachine.sensorLabel}
                             </div>
                           </div>
                         </div>
-                        <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
+                        <span className="text-[10px] font-black uppercase text-emerald-300 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30 shrink-0">
                           Active &amp; Verified
                         </span>
                       </div>
@@ -6634,16 +6638,16 @@ export default function HealthProfilePage() {
                         type="button"
                         disabled={isSavingVital || isUnmeasured}
                         onClick={() => handleSaveManualMeasurement(cfg.type)}
-                        className={`px-6 py-3 rounded-xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 ${
+                        className={`px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 ${
                           isUnmeasured 
-                            ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60' 
-                            : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                            ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60' 
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900 cursor-pointer shadow-lg shadow-emerald-500/20'
                         }`}
                       >
                         {isSavingVital ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
                         ) : (
-                          <Check className="w-4 h-4" />
+                          <Check className="w-4 h-4 text-slate-900" />
                         )}
                         <span>
                           {isUnmeasured 
@@ -6965,20 +6969,21 @@ export default function HealthProfilePage() {
         });
 
         return (
-          <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-            <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-              
+          <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-[#0B1528] text-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-6 my-6 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto relative">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full filter blur-[100px] pointer-events-none"></div>
+
               {/* Modal Header */}
-              <div className="flex items-start justify-between pb-4 border-b border-slate-100 gap-3">
+              <div className="relative z-10 flex items-start justify-between pb-4 border-b border-slate-800 gap-3">
                 <div className="flex items-center gap-3.5">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-md ${
-                    cfg.colorTheme === 'rose' ? 'bg-rose-600 shadow-rose-600/20' :
-                    cfg.colorTheme === 'cyan' ? 'bg-cyan-600 shadow-cyan-600/20' :
-                    cfg.colorTheme === 'indigo' ? 'bg-indigo-600 shadow-indigo-600/20' :
-                    cfg.colorTheme === 'emerald' ? 'bg-emerald-600 shadow-emerald-600/20' :
-                    cfg.colorTheme === 'amber' ? 'bg-amber-600 shadow-amber-600/20' :
-                    cfg.colorTheme === 'orange' ? 'bg-orange-600 shadow-orange-600/20' :
-                    'bg-teal-600 shadow-teal-600/20'
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-lg ${
+                    cfg.colorTheme === 'rose' ? 'bg-rose-500 shadow-rose-500/25' :
+                    cfg.colorTheme === 'cyan' ? 'bg-cyan-500 shadow-cyan-500/25' :
+                    cfg.colorTheme === 'indigo' ? 'bg-indigo-500 shadow-indigo-500/25' :
+                    cfg.colorTheme === 'emerald' ? 'bg-emerald-500 shadow-emerald-500/25' :
+                    cfg.colorTheme === 'amber' ? 'bg-amber-500 shadow-amber-500/25' :
+                    cfg.colorTheme === 'orange' ? 'bg-orange-500 shadow-orange-500/25' :
+                    'bg-teal-500 shadow-teal-500/25'
                   }`}>
                     {cfg.type === 'heart_rate' && <HeartPulse className="w-6 h-6" />}
                     {cfg.type === 'spo2' && <Wind className="w-6 h-6" />}
@@ -6991,15 +6996,15 @@ export default function HealthProfilePage() {
 
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-black text-xl text-slate-900 leading-tight">
+                      <h3 className="font-black text-xl sm:text-2xl text-white leading-tight">
                         {cfg.title}
                       </h3>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         Clinical Audit Log
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Clinical Reference Target: <strong className="text-slate-800">{cfg.normalRange}</strong>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">
+                      Clinical Reference Target: <strong className="text-emerald-400 font-bold">{cfg.normalRange}</strong>
                     </p>
                   </div>
                 </div>
@@ -7008,17 +7013,17 @@ export default function HealthProfilePage() {
                 <button
                   type="button"
                   onClick={closeDetailModal}
-                  className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0"
+                  className="w-9 h-9 rounded-full bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0 border border-slate-700/80"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Action Toolbar: Total Tests, Export CSV, Print/PDF, Measure Now */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                  <Activity className="w-4 h-4 text-emerald-600" />
-                  <span>Total Recorded Tests: <strong className="text-emerald-700 font-black">{count} Tests</strong></span>
+              <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/80 backdrop-blur-xs">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                  <Activity className="w-4 h-4 text-emerald-400" />
+                  <span>Total Recorded Tests: <strong className="text-emerald-400 font-black">{count} Tests</strong></span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -7027,10 +7032,10 @@ export default function HealthProfilePage() {
                     type="button"
                     onClick={() => exportVitalHistoryCSV(cfg.type)}
                     disabled={count === 0}
-                    className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
+                    className="px-3.5 py-2 rounded-xl border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
                     title="Export complete measurements table as CSV spreadsheet"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Export CSV</span>
                   </button>
 
@@ -7039,10 +7044,10 @@ export default function HealthProfilePage() {
                     type="button"
                     onClick={exportVitalHistoryPrint}
                     disabled={count === 0}
-                    className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
+                    className="px-3.5 py-2 rounded-xl border border-indigo-700 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
                     title="Print / Save formatted Clinical Medical Report as PDF"
                   >
-                    <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                    <Printer className="w-3.5 h-3.5 text-indigo-400" />
                     <span>Print / PDF Report</span>
                   </button>
 
@@ -7053,91 +7058,91 @@ export default function HealthProfilePage() {
                       closeDetailModal();
                       setTimeout(() => openMeasureModal(cfg.type), 150);
                     }}
-                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
                   >
-                    <Stethoscope className="w-3.5 h-3.5 text-emerald-400" />
+                    <Stethoscope className="w-3.5 h-3.5 text-slate-900" />
                     <span>Measure Now</span>
                   </button>
                 </div>
               </div>
 
               {/* KPI Summary Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+              <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
                     Latest Reading
                   </span>
                   <div className="mt-1 flex items-baseline gap-1">
-                    <span className="text-xl sm:text-2xl font-black text-slate-900">
+                    <span className="text-xl sm:text-2xl font-black text-white">
                       {latest ? latest.reading_value : '—'}
                       {latest && latest.reading_secondary ? `/${latest.reading_secondary}` : ''}
                     </span>
-                    <span className="text-xs font-bold text-slate-500">{cfg.unit}</span>
+                    <span className="text-xs font-bold text-slate-400">{cfg.unit}</span>
                   </div>
                   {latest && (
                     <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
-                      latest.status_tier === 'critical' ? 'bg-rose-100 text-rose-800' :
-                      latest.status_tier === 'warning' ? 'bg-amber-100 text-amber-900' :
-                      'bg-emerald-100 text-emerald-800'
+                      latest.status_tier === 'critical' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                      latest.status_tier === 'warning' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                      'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                     }`}>
                       {latest.status_tier}
                     </span>
                   )}
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
                     Historical Average
                   </span>
                   <div className="mt-1 flex items-baseline gap-1">
-                    <span className="text-xl sm:text-2xl font-black text-slate-900">
+                    <span className="text-xl sm:text-2xl font-black text-white">
                       {count > 0 ? avgPrimary : '—'}
                       {avgSecondary ? `/${avgSecondary}` : ''}
                     </span>
-                    <span className="text-xs font-bold text-slate-500">{cfg.unit}</span>
+                    <span className="text-xs font-bold text-slate-400">{cfg.unit}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-medium block mt-1">
+                  <span className="text-[10px] text-slate-400 font-medium block mt-1">
                     Across {count} recorded tests
                   </span>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
                     Range (Min / Max)
                   </span>
-                  <div className="mt-1 text-slate-900 font-black text-lg sm:text-xl">
+                  <div className="mt-1 text-white font-black text-lg sm:text-xl">
                     {count > 0 ? `${minPrimary} - ${maxPrimary}` : '—'}
-                    <span className="text-xs font-bold text-slate-500 ml-1">{cfg.unit}</span>
+                    <span className="text-xs font-bold text-slate-400 ml-1">{cfg.unit}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-medium block mt-1">
+                  <span className="text-[10px] text-slate-400 font-medium block mt-1">
                     Spread variance
                   </span>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
                     Target Status
                   </span>
-                  <div className="mt-1 text-slate-900 font-black text-xs sm:text-sm">
+                  <div className="mt-1 text-emerald-400 font-black text-xs sm:text-sm">
                     {cfg.normalRange}
                   </div>
-                  <span className="text-[10px] text-emerald-700 font-bold block mt-1.5 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  <span className="text-[10px] text-emerald-300 font-bold block mt-1.5 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                     Clinical Reference
                   </span>
                 </div>
               </div>
 
               {/* Longitudinal Trend Chart (Recharts) */}
-              <div className="p-4 sm:p-5 rounded-3xl bg-slate-50/80 border border-slate-200/90 space-y-3">
+              <div className="relative z-10 p-4 sm:p-5 rounded-3xl bg-slate-800/50 border border-slate-700/70 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-emerald-600" />
-                    <h4 className="font-extrabold text-sm text-slate-900">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    <h4 className="font-extrabold text-sm text-white">
                       Longitudinal Trend &amp; Progression Waveform
                     </h4>
                   </div>
-                  <span className="text-[11px] font-semibold text-slate-500">
+                  <span className="text-[11px] font-semibold text-slate-400">
                     Chronological Timeline
                   </span>
                 </div>
@@ -7149,26 +7154,27 @@ export default function HealthProfilePage() {
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                           <defs>
                             <linearGradient id="colorSys" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0}/>
+                              <stop offset="5%" stopColor="#818cf8" stopOpacity={0.4}/>
+                              <stop offset="95%" stopColor="#818cf8" stopOpacity={0.0}/>
                             </linearGradient>
                             <linearGradient id="colorDia" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35}/>
-                              <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0}/>
+                              <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
+                              <stop offset="95%" stopColor="#22d3ee" stopOpacity={0.0}/>
                             </linearGradient>
                           </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis dataKey="shortTime" stroke="#94a3b8" fontSize={11} />
-                          <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                          <XAxis dataKey="shortTime" stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
+                          <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
                           <Tooltip 
-                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                            labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
+                            labelStyle={{ fontWeight: 'bold', color: '#94a3b8' }}
+                            itemStyle={{ color: '#f8fafc' }}
                           />
-                          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-                          <Area type="monotone" dataKey="primary" name="Systolic (mmHg)" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSys)" />
-                          <Area type="monotone" dataKey="secondary" name="Diastolic (mmHg)" stroke="#06b6d4" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDia)" />
+                          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6, color: '#94a3b8' }} />
+                          <Area type="monotone" dataKey="primary" name="Systolic (mmHg)" stroke="#818cf8" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSys)" />
+                          <Area type="monotone" dataKey="secondary" name="Diastolic (mmHg)" stroke="#22d3ee" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDia)" />
                           {cfg.normalMax && <ReferenceLine y={cfg.normalMax} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: 'Systolic Limit (120)', fill: '#f43f5e', fontSize: 10 }} />}
-                          <ReferenceLine y={80} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Diastolic Limit (80)', fill: '#3b82f6', fontSize: 10 }} />
+                          <ReferenceLine y={80} stroke="#38bdf8" strokeDasharray="3 3" label={{ value: 'Diastolic Limit (80)', fill: '#38bdf8', fontSize: 10 }} />
                         </AreaChart>
                       ) : (
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -7179,23 +7185,24 @@ export default function HealthProfilePage() {
                                 cfg.colorTheme === 'cyan' ? '#06b6d4' :
                                 cfg.colorTheme === 'emerald' ? '#10b981' :
                                 cfg.colorTheme === 'amber' ? '#f59e0b' :
-                                '#6366f1'
-                              } stopOpacity={0.35}/>
+                                '#818cf8'
+                              } stopOpacity={0.4}/>
                               <stop offset="95%" stopColor={
                                 cfg.colorTheme === 'rose' ? '#f43f5e' :
                                 cfg.colorTheme === 'cyan' ? '#06b6d4' :
                                 cfg.colorTheme === 'emerald' ? '#10b981' :
                                 cfg.colorTheme === 'amber' ? '#f59e0b' :
-                                '#6366f1'
+                                '#818cf8'
                               } stopOpacity={0.0}/>
                             </linearGradient>
                           </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis dataKey="shortTime" stroke="#94a3b8" fontSize={11} />
-                          <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                          <XAxis dataKey="shortTime" stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
+                          <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} tick={{ fill: '#94a3b8' }} />
                           <Tooltip 
-                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                            labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
+                            labelStyle={{ fontWeight: 'bold', color: '#94a3b8' }}
+                            itemStyle={{ color: '#f8fafc' }}
                           />
                           <Area 
                             type="monotone" 
@@ -7206,7 +7213,7 @@ export default function HealthProfilePage() {
                               cfg.colorTheme === 'cyan' ? '#06b6d4' :
                               cfg.colorTheme === 'emerald' ? '#10b981' :
                               cfg.colorTheme === 'amber' ? '#f59e0b' :
-                              '#6366f1'
+                              '#818cf8'
                             } 
                             strokeWidth={2.5} 
                             fillOpacity={1} 
@@ -7219,33 +7226,33 @@ export default function HealthProfilePage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="py-12 text-center space-y-2 bg-white rounded-2xl border border-dashed border-slate-200">
-                    <Activity className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="text-xs font-bold text-slate-600">No test data recorded for {cfg.shortName} yet.</p>
+                  <div className="py-12 text-center space-y-2 bg-slate-900/60 rounded-2xl border border-dashed border-slate-700">
+                    <Activity className="w-8 h-8 text-slate-500 mx-auto" />
+                    <p className="text-xs font-bold text-slate-300">No test data recorded for {cfg.shortName} yet.</p>
                     <p className="text-[11px] text-slate-400">Perform your first measurement to start building this biomarker&apos;s timeline graph.</p>
                   </div>
                 )}
               </div>
 
               {/* Full Test Audit Log Table for this Vital */}
-              <div className="space-y-3">
+              <div className="relative z-10 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-emerald-600" />
+                  <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-emerald-400" />
                     All Recorded Tests History ({count})
                   </h4>
                   {count > 0 && (
-                    <span className="text-[11px] text-slate-500 font-medium">
+                    <span className="text-[11px] text-slate-400 font-medium">
                       Verified Clinical Records
                     </span>
                   )}
                 </div>
 
                 {count > 0 ? (
-                  <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                  <div className="overflow-x-auto border border-slate-700/80 rounded-2xl">
                     <table className="w-full text-left text-xs">
                       <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[10px]">
+                        <tr className="border-b border-slate-700 bg-slate-800/90 text-slate-400 font-black uppercase tracking-wider text-[10px]">
                           <th className="py-2.5 px-3">#</th>
                           <th className="py-2.5 px-3">Date &amp; Time</th>
                           <th className="py-2.5 px-3">Measured Reading</th>
@@ -7256,50 +7263,52 @@ export default function HealthProfilePage() {
                           <th className="py-2.5 px-3 text-right">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      <tbody className="divide-y divide-slate-800 font-medium text-slate-300">
                         {history.map((item, idx) => (
-                          <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-2.5 px-3 font-bold text-slate-400 text-[11px]">
+                          <tr key={item.id} className="hover:bg-slate-800/50 transition-colors">
+                            <td className="py-2.5 px-3 font-bold text-slate-500 text-[11px]">
                               {count - idx}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-[11px]">
+                            <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap text-[11px]">
                               {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                             </td>
                             <td className="py-2.5 px-3 whitespace-nowrap">
-                              <span className="font-black text-slate-900 text-sm">
+                              <span className="font-black text-white text-sm">
                                 {item.reading_value}{item.reading_secondary ? ` / ${item.reading_secondary}` : ''}
                               </span>
-                              <span className="text-[11px] text-slate-500 font-bold ml-1">{item.unit}</span>
+                              <span className="text-[11px] text-slate-400 font-bold ml-1">{item.unit}</span>
                             </td>
                             <td className="py-2.5 px-3 whitespace-nowrap">
                               <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                                item.status_tier === 'critical' ? 'bg-rose-100 text-rose-800' :
-                                item.status_tier === 'warning' ? 'bg-amber-100 text-amber-900' :
-                                'bg-emerald-100 text-emerald-800'
+                                item.status_tier === 'critical' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                                item.status_tier === 'warning' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                                'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                               }`}>
                                 {item.status_tier}
                               </span>
                             </td>
-                            <td className="py-2.5 px-3 whitespace-nowrap text-slate-600 text-[11px]">
-                              {item.device_name}
+                            <td className="py-2.5 px-3 whitespace-nowrap text-slate-300 text-[11px]">
+                              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                {item.device_name}
+                              </span>
                             </td>
                             <td className="py-2.5 px-3 whitespace-nowrap text-[11px]">
                               {item.recorded_aqi ? (
-                                <span className="font-bold text-slate-700">
+                                <span className="font-bold text-slate-300">
                                   {item.recorded_aqi} AQI <span className="text-slate-400 font-normal">({item.recorded_pm25} µg/m³)</span>
                                 </span>
                               ) : (
-                                <span className="text-slate-400">—</span>
+                                <span className="text-slate-500">—</span>
                               )}
                             </td>
-                            <td className="py-2.5 px-3 max-w-xs text-[11px] text-slate-600">
+                            <td className="py-2.5 px-3 max-w-xs text-[11px] text-slate-300">
                               {item.clinical_interpretation}
                             </td>
                             <td className="py-2.5 px-3 text-right whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() => handleDeleteVital(item.id)}
-                                className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                                className="p-1.5 rounded-lg hover:bg-rose-950/40 text-slate-500 hover:text-rose-400 transition-colors"
                                 title="Delete this entry"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -7311,17 +7320,17 @@ export default function HealthProfilePage() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 italic">No past tests to display.</p>
+                  <p className="text-xs text-slate-500 italic">No past tests to display.</p>
                 )}
               </div>
 
               {/* Smog Advisory Box */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                  <Zap className="w-4 h-4 text-amber-500" />
+              <div className="relative z-10 p-4 rounded-2xl bg-slate-800/60 border border-slate-700/70 space-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-white">
+                  <Zap className="w-4 h-4 text-amber-400" />
                   <span>Smog Pathophysiology &amp; Environmental Advisory</span>
                 </div>
-                <p className="text-slate-600 leading-relaxed text-[11px]">
+                <p className="text-slate-300 leading-relaxed text-[11px]">
                   {cfg.smogImpact}
                 </p>
               </div>
