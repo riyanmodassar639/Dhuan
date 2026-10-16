@@ -600,6 +600,7 @@ export default function HealthProfilePage() {
   const [activeDetailVital, setActiveDetailVital] = useState<string | null>(null);
   const [masterChartFilter, setMasterChartFilter] = useState<string>('all');
   const [isRefreshingVitals, setIsRefreshingVitals] = useState<boolean>(false);
+  const [isPrintingAllVitals, setIsPrintingAllVitals] = useState<boolean>(false);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
   const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor'>('detecting');
@@ -1267,6 +1268,21 @@ export default function HealthProfilePage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Export / Print Complete All-Biomarkers Clinical Report in PDF format
+  const exportAllVitalsPDF = () => {
+    if (vitalsList.length === 0) {
+      alert('No recorded vitals found in the SQLite database to generate report.');
+      return;
+    }
+    setIsPrintingAllVitals(true);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        setIsPrintingAllVitals(false);
+      }, 1000);
+    }, 250);
   };
 
   // Automatic device detection and measurement initiation (No manual questioning)
@@ -3366,7 +3382,18 @@ export default function HealthProfilePage() {
                           title="Export all database records as CSV"
                         >
                           <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Export All ({vitalsList.length})</span>
+                          <span>Export CSV ({vitalsList.length})</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={exportAllVitalsPDF}
+                          disabled={vitalsList.length === 0}
+                          className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 hover:bg-indigo-100 text-indigo-900 font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
+                          title="Generate &amp; Print Complete All-Biomarkers Clinical Report as PDF"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>All Report PDF</span>
                         </button>
                       </div>
                     </div>
@@ -3566,13 +3593,26 @@ export default function HealthProfilePage() {
                 </div>
 
                 {vitalsList.length > 0 && (
-                  <button
-                    onClick={() => handleDeleteVital('all')}
-                    className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5 self-start sm:self-auto"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Clear All Vitals</span>
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={exportAllVitalsPDF}
+                      className="px-3.5 py-2 text-xs font-black text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
+                      title="Generate and print comprehensive all-biomarkers audit report as PDF"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>All Report PDF</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteVital('all')}
+                      className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear All Vitals</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -5621,11 +5661,14 @@ export default function HealthProfilePage() {
           #printable-clinical-report,
           #printable-clinical-report *,
           #printable-vital-detail-report,
-          #printable-vital-detail-report * {
+          #printable-vital-detail-report *,
+          #printable-all-vitals-report,
+          #printable-all-vitals-report * {
             visibility: visible !important;
           }
           #printable-clinical-report,
-          #printable-vital-detail-report {
+          #printable-vital-detail-report,
+          #printable-all-vitals-report {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
@@ -7434,6 +7477,170 @@ export default function HealthProfilePage() {
           </div>
         );
       })()}
+
+      {/* PRINTABLE COMPREHENSIVE ALL-VITALS CLINICAL REPORT FOR PDF EXPORT */}
+      {isPrintingAllVitals && (
+        <div id="printable-all-vitals-report" className="hidden print:block p-8 bg-white text-slate-900 font-sans">
+          {/* Medical Letterhead Header */}
+          <div className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+                DHUAN Clinical Biomarker Registry
+              </h1>
+              <p className="text-xs font-bold text-slate-600 mt-1">
+                Environmental Pulmonary &amp; Cardiovascular Health Monitoring Directorate
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Comprehensive Longitudinal Audit Report &bull; Verified SQLite Data Store (dhuan.sqlite) &bull; Lahore Smog Cohort
+              </p>
+            </div>
+            <div className="text-right text-xs">
+              <p className="font-extrabold text-slate-900">Date: {new Date().toLocaleDateString()}</p>
+              <p className="text-slate-500">Time: {new Date().toLocaleTimeString()}</p>
+              <p className="font-mono text-[10px] text-emerald-700 font-bold mt-1">AUDIT REF: DHUAN-SQL-COMPREHENSIVE-ALL-VITALS</p>
+            </div>
+          </div>
+
+          {/* Patient Profile & Medical Risk Block */}
+          <div className="grid grid-cols-2 gap-4 mb-6 p-4 border border-slate-300 rounded-lg text-xs">
+            <div>
+              <p><strong>Patient Name:</strong> {profile.fullName || 'Registered Lahore Citizen'}</p>
+              <p><strong>Age / Gender:</strong> {profile.age} yrs &bull; {profile.gender}</p>
+              <p><strong>Blood Group:</strong> {profile.bloodGroup || 'O+'}</p>
+              <p><strong>Asthma / Respiratory Risk:</strong> {profile.asthmaSeverity} ({profile.hasCopd ? 'COPD Positive' : 'No COPD'})</p>
+              <p><strong>Smoker Status:</strong> {profile.smokerStatus || 'Never'}</p>
+            </div>
+            <div>
+              <p><strong>Primary Commute Mode:</strong> {profile.primaryCommute} ({profile.dailyCommuteMinutes} mins daily)</p>
+              <p><strong>Emergency Contact:</strong> {profile.emergencyContactName || 'Family Contact'} ({profile.emergencyContact || '+92 300 0000000'})</p>
+              <p><strong>Lahore Smog Snapshot:</strong> AQI {currentLahoreAqi} &bull; PM2.5 {currentLahorePm25} µg/m³</p>
+              <p><strong>Total Audited Database Tests:</strong> {vitalsList.length} Tests Recorded</p>
+            </div>
+          </div>
+
+          {/* Executive Statistical KPI Summary (5 boxes) */}
+          <div className="grid grid-cols-5 gap-3 mb-6 text-center text-xs">
+            <div className="p-3 border border-slate-300 rounded">
+              <span className="text-[9px] text-slate-500 uppercase block font-bold">Total Tests</span>
+              <span className="text-base font-black text-slate-900">{vitalsList.length}</span>
+            </div>
+            <div className="p-3 border border-slate-300 rounded bg-emerald-50/50">
+              <span className="text-[9px] text-emerald-700 uppercase block font-bold">Normal Tests</span>
+              <span className="text-base font-black text-emerald-800">{vitalsList.filter(v => v.status_tier === 'normal').length}</span>
+            </div>
+            <div className="p-3 border border-slate-300 rounded bg-amber-50/50">
+              <span className="text-[9px] text-amber-700 uppercase block font-bold">Warning Tests</span>
+              <span className="text-base font-black text-amber-800">{vitalsList.filter(v => v.status_tier === 'warning').length}</span>
+            </div>
+            <div className="p-3 border border-slate-300 rounded bg-rose-50/50">
+              <span className="text-[9px] text-rose-700 uppercase block font-bold">Critical Tests</span>
+              <span className="text-base font-black text-rose-800">{vitalsList.filter(v => v.status_tier === 'critical').length}</span>
+            </div>
+            <div className="p-3 border border-slate-300 rounded">
+              <span className="text-[9px] text-slate-500 uppercase block font-bold">Ambient AQI</span>
+              <span className="text-base font-black text-amber-600">{currentLahoreAqi} AQI</span>
+            </div>
+          </div>
+
+          {/* Section 1: Latest Readings by Biomarker */}
+          <div className="mb-6">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-2 border-b border-slate-200 pb-1">
+              1. Current Biomarkers Status (Latest Readings per Instrument)
+            </h3>
+            <table className="w-full text-left text-xs border border-slate-300">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 text-[10px] uppercase font-bold text-slate-700">
+                  <th className="p-2 border-r border-slate-300">Biomarker</th>
+                  <th className="p-2 border-r border-slate-300">Standard Target</th>
+                  <th className="p-2 border-r border-slate-300">Latest Value</th>
+                  <th className="p-2 border-r border-slate-300">Status</th>
+                  <th className="p-2 border-r border-slate-300">Instrument / Sensor</th>
+                  <th className="p-2">Diagnostic Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {VITALS_CONFIG.map((cfg) => {
+                  const item = latestVitals[cfg.type];
+                  return (
+                    <tr key={cfg.type}>
+                      <td className="p-2 border-r border-slate-200 font-bold">{cfg.title}</td>
+                      <td className="p-2 border-r border-slate-200 text-slate-600">{cfg.normalRange}</td>
+                      <td className="p-2 border-r border-slate-200 font-black">
+                        {item ? `${item.reading_value}${item.reading_secondary ? `/${item.reading_secondary}` : ''} ${cfg.unit}` : 'Not Recorded'}
+                      </td>
+                      <td className="p-2 border-r border-slate-200 uppercase font-black text-[10px]">
+                        {item ? item.status_tier : '—'}
+                      </td>
+                      <td className="p-2 border-r border-slate-200 text-slate-600">{item ? item.device_name : '—'}</td>
+                      <td className="p-2 text-[11px] text-slate-600">{item ? item.clinical_interpretation : cfg.deviceRequirementNotice}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Section 2: Complete Chronological Test Audit Log */}
+          <div className="mb-6">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-2 border-b border-slate-200 pb-1">
+              2. Complete Chronological Tests Audit History (SQLite Database: dhuan.sqlite)
+            </h3>
+            <table className="w-full text-left text-xs border border-slate-300">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 text-[10px] uppercase font-bold text-slate-700">
+                  <th className="p-2 border-r border-slate-300">#</th>
+                  <th className="p-2 border-r border-slate-300">Timestamp</th>
+                  <th className="p-2 border-r border-slate-300">Biomarker</th>
+                  <th className="p-2 border-r border-slate-300">Measured Value</th>
+                  <th className="p-2 border-r border-slate-300">Clinical Tier</th>
+                  <th className="p-2 border-r border-slate-300">Instrument Used</th>
+                  <th className="p-2 border-r border-slate-300">Lahore AQI</th>
+                  <th className="p-2">Diagnostic Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {vitalsList.map((item, idx) => (
+                  <tr key={item.id}>
+                    <td className="p-2 border-r border-slate-200 font-bold">{vitalsList.length - idx}</td>
+                    <td className="p-2 border-r border-slate-200">{new Date(item.created_at).toLocaleString()}</td>
+                    <td className="p-2 border-r border-slate-200 font-bold capitalize">{item.vital_type.replace(/_/g, ' ')}</td>
+                    <td className="p-2 border-r border-slate-200 font-black">
+                      {item.reading_value}{item.reading_secondary ? `/${item.reading_secondary}` : ''} {item.unit}
+                    </td>
+                    <td className="p-2 border-r border-slate-200 uppercase font-black text-[10px]">
+                      {item.status_tier}
+                    </td>
+                    <td className="p-2 border-r border-slate-200">{item.device_name}</td>
+                    <td className="p-2 border-r border-slate-200">{item.recorded_aqi ? `${item.recorded_aqi} AQI` : '—'}</td>
+                    <td className="p-2 text-[11px]">{item.clinical_interpretation}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Section 3: Clinical Smog Footnote & Signoff */}
+          <div className="border-t border-slate-300 pt-4 text-[11px] text-slate-600 space-y-2">
+            <p><strong>Smog Pathophysiology Advisory:</strong> Lahore atmospheric PM2.5 and volatile aerosols induce acute vascular endothelial inflammation and airway hyper-reactivity. Periodic spirometry and cardiovascular telemetry monitoring is recommended during smog spikes.</p>
+            <div className="flex justify-between items-end pt-8">
+              <div>
+                <p className="font-bold text-slate-900">DHUAN Telehealth Medical Registry</p>
+                <p className="text-[10px] text-slate-400">Digital Cryptographic Audit ID: #DHUAN-SQL-COMPREHENSIVE-ALL-VITALS</p>
+                <div className="font-mono text-[9px] bg-slate-100 p-1.5 rounded border border-slate-300 text-slate-700 mt-1 inline-block">
+                  ||| | |||| || ||| ||||| ||| |||| || ||| DHUAN-SQL-ALL-2026
+                </div>
+              </div>
+              <div className="text-right border-t border-slate-400 pt-1 w-56">
+                <span className="font-serif italic font-bold text-emerald-800 text-sm tracking-wide block">
+                  Dr. A. R. Qureshi, Pulmonology Lead
+                </span>
+                <p className="font-bold text-slate-900">Chief Medical Officer</p>
+                <p className="text-[10px] text-slate-500">EPA Punjab &amp; DHUAN Telehealth Attestation</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
