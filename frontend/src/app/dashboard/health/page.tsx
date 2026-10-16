@@ -982,13 +982,13 @@ export default function HealthProfilePage() {
             });
           } catch (e) {}
 
-          showToast('Medical Health Profile & Smog Conditions saved to SQLite database!');
+          showToast('Medical Health Profile & Smog Conditions saved successfully!');
           return true;
         }
       }
     } catch (e) {
       console.error('Error saving health profile:', e);
-      showToast('Error saving health profile to database.');
+      showToast('Error saving health profile.');
     }
     return false;
   };
@@ -1046,23 +1046,23 @@ export default function HealthProfilePage() {
     setFormData({ ...formData, smogSymptoms: updated });
   };
 
-  // Dedicated save for smog health conditions directly to SQLite database
+  // Dedicated save for smog health conditions
   const handleSaveConditionsOnly = async () => {
     setIsSavingConditions(true);
     try {
       const success = await handleSaveProfile(formData);
       if (success) {
         setIsEditConditionsModalOpen(false);
-        showToast('Smog health problems updated and saved to SQLite database!');
+        showToast('Smog health conditions updated and saved successfully!');
       }
     } finally {
       setIsSavingConditions(false);
     }
   };
 
-  // Delete Medical Profile from SQLite
+  // Delete Medical Profile
   const handleDeleteProfile = async () => {
-    if (confirm('Are you sure you want to delete your Medical Profile and attached lab reports from SQLite database?')) {
+    if (confirm('Are you sure you want to delete your Medical Profile and attached lab reports?')) {
       try {
         const res = await fetch(getApiEndpoint('/emergency/health-profile'), { method: 'DELETE' });
         if (res.ok) {
@@ -1078,7 +1078,7 @@ export default function HealthProfilePage() {
           try {
             localStorage.removeItem('dhuan_user_health_profile');
           } catch (e) {}
-          showToast('Medical profile deleted from SQLite database. Back to initial state.');
+          showToast('Medical profile deleted. Back to initial state.');
         }
       } catch (e) {
         console.error('Error deleting profile:', e);
@@ -1130,7 +1130,7 @@ export default function HealthProfilePage() {
     const history = vitalsList.filter(v => v.vital_type === vitalType);
 
     if (history.length === 0) {
-      alert(`No recorded measurements found for ${vitalTitle} in the database yet.`);
+      alert(`No recorded measurements found for ${vitalTitle} yet.`);
       return;
     }
 
@@ -1210,7 +1210,7 @@ export default function HealthProfilePage() {
   // Export Complete Biomarkers & Vitals Audit Log to CSV File
   const exportAllVitalsCSV = () => {
     if (vitalsList.length === 0) {
-      alert('No recorded vitals found in the SQLite database to export yet.');
+      alert('No recorded vitals found to export yet.');
       return;
     }
 
@@ -1273,7 +1273,7 @@ export default function HealthProfilePage() {
   // Export / Print Complete All-Biomarkers Clinical Report in PDF format
   const exportAllVitalsPDF = () => {
     if (vitalsList.length === 0) {
-      alert('No recorded vitals found in the SQLite database to generate report.');
+      alert('No recorded vitals found to generate report.');
       return;
     }
     setIsPrintingAllVitals(true);
@@ -1892,7 +1892,7 @@ export default function HealthProfilePage() {
         if (data.success && data.vital) {
           setVitalsList(prev => [data.vital, ...prev]);
           setLatestVitals(prev => ({ ...prev, [cfg.type]: data.vital }));
-          showToast(`Verified ${cfg.shortName} (${readingValue}${readingSecondary ? '/' + readingSecondary : ''} ${cfg.unit}) saved to SQLite database!`);
+          showToast(`Verified ${cfg.shortName} (${readingValue}${readingSecondary ? '/' + readingSecondary : ''} ${cfg.unit}) recorded successfully!`);
           closeMeasureModal();
         } else {
           showToast(data.error || 'Failed to save vital measurement.');
@@ -1902,13 +1902,13 @@ export default function HealthProfilePage() {
       }
     } catch (e) {
       console.error('Error saving manual vital:', e);
-      showToast('Error saving measurement to database.');
+      showToast('Error saving measurement.');
     } finally {
       setIsSavingVital(false);
     }
   };
 
-  // Save vital measurement to SQLite database
+  // Save vital measurement
   const handleSaveVitalMeasurement = async () => {
     if (!activeMeasureModal) return;
     const cfg = VITALS_CONFIG.find(v => v.type === activeMeasureModal);
@@ -1936,13 +1936,13 @@ export default function HealthProfilePage() {
         if (data.success && data.vital) {
           setVitalsList(prev => [data.vital, ...prev]);
           setLatestVitals(prev => ({ ...prev, [cfg.type]: data.vital }));
-          showToast(`${cfg.title} (${liveMeasureVal} ${cfg.unit}) saved to SQLite database!`);
+          showToast(`${cfg.title} (${liveMeasureVal} ${cfg.unit}) recorded successfully!`);
           closeMeasureModal();
         }
       }
     } catch (e) {
       console.error('Error saving vital measurement:', e);
-      showToast('Error saving measurement to database.');
+      showToast('Error saving measurement.');
     } finally {
       setIsSavingVital(false);
     }
@@ -1955,7 +1955,7 @@ export default function HealthProfilePage() {
         method: 'DELETE'
       });
       if (res.ok) {
-        showToast('Vital record removed from database.');
+        showToast('Vital record removed successfully.');
         fetchVitals();
       }
     } catch (e) {
@@ -2002,7 +2002,7 @@ export default function HealthProfilePage() {
       inhalerPuffsUsed: 1,
       notes: ''
     });
-    showToast("Today's respiratory symptoms logged and synced with database!");
+    showToast("Today's respiratory symptoms logged and synced with clinical registry!");
   };
 
   // Calculate dynamic Smog Vulnerability Score (0 - 100) taking into account user's full clinical smog spectrum (backend/DB synced)
@@ -2179,7 +2179,7 @@ export default function HealthProfilePage() {
             {isLoadingProfile ? (
               <div className="flex items-center gap-2 px-5 py-3 bg-slate-100 rounded-2xl text-xs font-bold text-slate-500 border border-slate-200">
                 <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                <span>Checking Database...</span>
+                <span>Checking Records...</span>
               </div>
             ) : !hasProfile ? (
               <button
@@ -2315,7 +2315,7 @@ export default function HealthProfilePage() {
                       Create Your Respiratory & Smog Health Profile
                     </h3>
                     <p className="text-slate-300 text-xs sm:text-sm font-medium leading-relaxed">
-                      Your medical profile has not been configured yet in the database. Add your daily transit habits, chronic smog symptoms (bronchitis, coughing, eye irritation), and hospital diagnostic reports to unlock personalized exposure warnings and your printable DHUAN Medical Smog Report Card.
+                      Your medical profile has not been configured yet. Add your daily transit habits, chronic smog symptoms (bronchitis, coughing, eye irritation), and hospital diagnostic reports to unlock personalized exposure warnings and your printable DHUAN Medical Smog Report Card.
                     </p>
                   </div>
                   <button
@@ -2590,7 +2590,7 @@ export default function HealthProfilePage() {
                     </h3>
                   </div>
                   <p className="text-xs text-slate-500 font-medium">
-                    Breakdown of chronic conditions, acute symptoms, and vulnerable categories configured in your profile and synced with SQLite database.
+                    Breakdown of chronic conditions, acute symptoms, and vulnerable categories configured in your clinical profile.
                   </p>
                 </div>
 
@@ -2993,13 +2993,13 @@ export default function HealthProfilePage() {
                     Weekly Respiratory Stress vs. Ambient PM2.5 (Lahore Correlation)
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    Dual-axis clinical correlation between live Lahore atmospheric PM2.5 (µg/m³) and patient respiratory stress symptoms saved in SQLite database.
+                    Dual-axis clinical correlation between live Lahore atmospheric PM2.5 (µg/m³) and patient respiratory stress symptoms recorded in your health log.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 self-start sm:self-auto">
                   <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Database Synced
+                    Clinically Synced
                   </span>
                   <button
                     onClick={() => setActiveTab('symptoms')}
@@ -3130,7 +3130,7 @@ export default function HealthProfilePage() {
                     className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isLoadingVitals ? 'animate-spin' : ''}`} />
-                    <span>Sync Database</span>
+                    <span>Refresh Vitals</span>
                   </button>
                 </div>
               </div>
@@ -3353,47 +3353,26 @@ export default function HealthProfilePage() {
                               Biomarkers Multi-Stream Telemetry &amp; Smog Correlation
                             </h3>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
-                              SQLite Feed
+                              Live Stream
                             </span>
                           </div>
                           <span className="text-[11px] font-semibold text-slate-400 block">
-                            Visual progression of all physiological tests recorded in the audit database below
+                            Visual progression of all clinical physiological tests recorded below
                           </span>
                         </div>
                       </div>
 
-                      {/* Header Actions: Refresh & Export */}
+                      {/* Header Actions: Refresh Button */}
                       <div className="flex items-center gap-2 self-start sm:self-auto">
                         <button
                           type="button"
                           onClick={handleRefreshVitals}
                           disabled={isRefreshingVitals}
-                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shadow-xs active:scale-95 disabled:opacity-50"
-                          title="Sync latest readings from SQLite database"
+                          className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 disabled:opacity-50"
+                          title="Sync latest readings"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingVitals ? 'animate-spin text-emerald-600' : ''}`} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={exportAllVitalsCSV}
-                          disabled={vitalsList.length === 0}
-                          className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
-                          title="Export all database records as CSV"
-                        >
-                          <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Export CSV ({vitalsList.length})</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={exportAllVitalsPDF}
-                          disabled={vitalsList.length === 0}
-                          className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 hover:bg-indigo-100 text-indigo-900 font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
-                          title="Generate &amp; Print Complete All-Biomarkers Clinical Report as PDF"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>All Report PDF</span>
+                          <span>Refresh</span>
                         </button>
                       </div>
                     </div>
@@ -3555,7 +3534,7 @@ export default function HealthProfilePage() {
                         <div className="h-full flex flex-col items-center justify-center text-center space-y-1.5 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-4">
                           <Activity className="w-6 h-6 text-slate-300" />
                           <div className="text-xs font-bold text-slate-600">No Tests Found for Selected Filter</div>
-                          <p className="text-[11px] text-slate-400">Perform a measurement using the cards above to record data into the database.</p>
+                          <p className="text-[11px] text-slate-400">Perform a measurement using the cards above to record clinical data.</p>
                         </div>
                       )}
                     </div>
@@ -3566,12 +3545,12 @@ export default function HealthProfilePage() {
                         <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span>
                           {vitalsList.length > 0 
-                            ? `Latest database entry: ${vitalsList[0].vital_type.replace(/_/g, ' ')} (${vitalsList[0].reading_value} ${vitalsList[0].unit}) at ${new Date(vitalsList[0].created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            ? `Latest recorded test: ${vitalsList[0].vital_type.replace(/_/g, ' ')} (${vitalsList[0].reading_value} ${vitalsList[0].unit}) at ${new Date(vitalsList[0].created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                             : 'No vitals recorded yet.'}
                         </span>
                       </div>
                       <span className="text-emerald-700 font-bold text-[10px]">
-                        Synced with user_clinical_vitals table
+                        Verified Clinical Synchronization
                       </span>
                     </div>
                   </div>
@@ -3579,13 +3558,13 @@ export default function HealthProfilePage() {
               })()}
             </div>
 
-            {/* Recent Measurements History (Live SQLite Feed) */}
+            {/* Recent Measurements History */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
                 <div>
                   <h3 className="font-black text-lg text-slate-900 tracking-tight flex items-center gap-2">
                     <Activity className="w-5 h-5 text-emerald-600" />
-                    Biomarkers & Vitals Audit Log (SQLite Database)
+                    Biomarkers &amp; Clinical Vitals Audit Log
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
                     Permanent audit history of physiological readings recorded with your connected instruments.
@@ -3593,15 +3572,25 @@ export default function HealthProfilePage() {
                 </div>
 
                 {vitalsList.length > 0 && (
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                    <button
+                      type="button"
+                      onClick={exportAllVitalsCSV}
+                      className="px-3.5 py-2 text-xs font-black text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
+                      title="Export complete measurements table as CSV"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Export CSV</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={exportAllVitalsPDF}
                       className="px-3.5 py-2 text-xs font-black text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
-                      title="Generate and print comprehensive all-biomarkers audit report as PDF"
+                      title="Generate and print comprehensive clinical report as PDF"
                     >
                       <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>All Report PDF</span>
+                      <span>Export PDF</span>
                     </button>
 
                     <button
@@ -3610,7 +3599,7 @@ export default function HealthProfilePage() {
                       className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Clear All Vitals</span>
+                      <span>Clear All</span>
                     </button>
                   </div>
                 )}
@@ -3680,7 +3669,7 @@ export default function HealthProfilePage() {
                   <Activity className="w-8 h-8 text-slate-300 mx-auto" />
                   <p className="text-sm font-bold text-slate-600">No Vitals Stored Yet</p>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    Select any biomarker above, verify your device or instrument, and start a measurement to store your data into SQLite.
+                    Select any biomarker above, verify your device or instrument, and start a measurement to record your clinical vitals.
                   </p>
                 </div>
               )}
@@ -4037,7 +4026,7 @@ export default function HealthProfilePage() {
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
                     {isCreateModalOpen 
-                      ? 'Saved securely to SQLite database with your chronic smog symptoms & hospital records.' 
+                      ? 'Saved securely with your chronic smog symptoms & hospital records.' 
                       : 'Update demographics, chronic respiratory conditions, and hospital reports.'}
                   </p>
                 </div>
@@ -4523,10 +4512,10 @@ export default function HealthProfilePage() {
                 </div>
                 <div>
                   <h3 className="font-black text-lg text-slate-900 leading-tight">
-                    Update Smog Health Conditions & Diagnoses
+                    Update Smog Health Conditions &amp; Diagnoses
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    Configure your chronic smog diseases, sensory irritations, and active symptoms stored in SQLite database.
+                    Configure your chronic smog diseases, sensory irritations, and active symptoms for your clinical profile.
                   </p>
                 </div>
               </div>
@@ -4850,7 +4839,7 @@ export default function HealthProfilePage() {
                   ) : (
                     <Check className="w-4 h-4" />
                   )}
-                  <span>{isSavingConditions ? 'Saving to Database...' : 'Save Conditions to Database'}</span>
+                  <span>{isSavingConditions ? 'Saving Profile...' : 'Save Clinical Profile'}</span>
                 </button>
               </div>
 
@@ -4884,7 +4873,7 @@ export default function HealthProfilePage() {
                   <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
                     <span className="flex items-center gap-1 text-emerald-600 font-bold">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      SQLite Database Synced
+                      Clinical Profile Synced
                     </span>
                     <span>•</span>
                     <span>{hasProfile ? `${profile.age} yrs, ${profile.gender}` : 'No profile stored'}</span>
@@ -5172,7 +5161,7 @@ export default function HealthProfilePage() {
             ) : (
               <div className="text-center py-8 space-y-3">
                 <p className="text-sm text-slate-500 font-medium">
-                  You haven&apos;t created a medical profile yet. Create your profile to store your health conditions and transit habits in the SQLite database.
+                  You haven&apos;t created a medical profile yet. Create your profile to record your health conditions and transit habits.
                 </p>
                 <button
                   onClick={() => {
@@ -5191,7 +5180,7 @@ export default function HealthProfilePage() {
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                Permanent SQLite Storage Verified
+                Permanent Clinical Record Verified
               </span>
               <button
                 onClick={() => setIsViewProfileModalOpen(false)}
@@ -5729,7 +5718,7 @@ export default function HealthProfilePage() {
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
                       <span>Normal Target: <strong className="text-slate-800">{cfg.normalRange}</strong></span>
                       <span>•</span>
-                      <span className="text-emerald-600 font-bold">SQLite Connected</span>
+                      <span className="text-emerald-600 font-bold">Clinical Instrument Connected</span>
                     </div>
                   </div>
                 </div>
@@ -6151,7 +6140,7 @@ export default function HealthProfilePage() {
                   clinicalBadge = {
                     text: '⚪ Sensor / Machine Reading: 0',
                     color: 'bg-slate-100 text-slate-700 border-slate-300',
-                    note: 'Measurement filhal 0 hai. Sensor jism par na honay ya machine se reading enter na karnay tak reading 0 show hogi aur database me save nahi hogi.'
+                    note: 'Measurement filhal 0 hai. Sensor jism par na honay ya machine se reading enter na karnay tak reading 0 show hogi aur clinical profile me save nahi hogi.'
                   };
                 } else if (cfg.type === 'blood_pressure') {
                   const s = manualSystolic;
@@ -6271,7 +6260,7 @@ export default function HealthProfilePage() {
                         <span>Clinical Measurement Entry</span>
                       </div>
                       <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                        Apni machine ya mobile health app se verified reading yahan adjust karein. Machine/device hamari application ne khud automatically detect kar li hai aur SQLite database me 100% genuine form me record hogi.
+                        Apni machine ya mobile health app se verified reading yahan adjust karein. Machine/device hamari application ne khud automatically detect kar li hai aur aapke clinical profile me 100% genuine form me record hogi.
                       </p>
                     </div>
 
@@ -6659,7 +6648,7 @@ export default function HealthProfilePage() {
                         <span>
                           {isUnmeasured 
                             ? 'Measurement is 0 — Enter reading from machine to Save' 
-                            : (isSavingVital ? 'Saving to Database...' : 'Save Verified Measurement to SQLite')}
+                            : (isSavingVital ? 'Saving Measurement...' : 'Save Verified Measurement')}
                         </span>
                       </button>
                     </div>
@@ -6913,7 +6902,7 @@ export default function HealthProfilePage() {
                       ) : (
                         <Check className="w-4 h-4" />
                       )}
-                      <span>{isSavingVital ? 'Saving to Database...' : 'Save Measurement to Database'}</span>
+                      <span>{isSavingVital ? 'Saving Measurement...' : 'Save Measurement'}</span>
                     </button>
                   </div>
                 </div>
@@ -7006,7 +6995,7 @@ export default function HealthProfilePage() {
                         {cfg.title}
                       </h3>
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        SQLite Log
+                        Clinical Audit Log
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -7029,7 +7018,7 @@ export default function HealthProfilePage() {
               <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
                   <Activity className="w-4 h-4 text-emerald-600" />
-                  <span>Total Database Records: <strong className="text-emerald-700 font-black">{count} Tests</strong></span>
+                  <span>Total Recorded Tests: <strong className="text-emerald-700 font-black">{count} Tests</strong></span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -7247,7 +7236,7 @@ export default function HealthProfilePage() {
                   </h4>
                   {count > 0 && (
                     <span className="text-[11px] text-slate-500 font-medium">
-                      Stored in SQLite Database
+                      Verified Clinical Records
                     </span>
                   )}
                 </div>
@@ -7311,7 +7300,7 @@ export default function HealthProfilePage() {
                                 type="button"
                                 onClick={() => handleDeleteVital(item.id)}
                                 className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
-                                title="Delete this entry from database"
+                                title="Delete this entry"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -7374,7 +7363,7 @@ export default function HealthProfilePage() {
                   Environmental Pulmonary &amp; Cardiovascular Health Monitoring Directorate
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  Official Audit Report &bull; Verified SQLite Data Store &bull; Lahore Smog Cohort
+                  Official Clinical Audit Report &bull; Verified Telemetry Registry &bull; Lahore Smog Cohort
                 </p>
               </div>
               <div className="text-right text-xs">
@@ -7466,7 +7455,7 @@ export default function HealthProfilePage() {
               <div className="flex justify-between items-end pt-8">
                 <div>
                   <p className="font-bold text-slate-900">DHUAN Telehealth Medical Registry</p>
-                  <p className="text-[10px] text-slate-400">Digital Cryptographic Audit ID: #DHUAN-SQL-{activeDetailVital}</p>
+                  <p className="text-[10px] text-slate-400">Digital Cryptographic Audit ID: #DHUAN-MED-{activeDetailVital}</p>
                 </div>
                 <div className="text-right border-t border-slate-400 pt-1 w-48">
                   <p className="font-bold text-slate-900">Clinical Attestation</p>
@@ -7491,13 +7480,13 @@ export default function HealthProfilePage() {
                 Environmental Pulmonary &amp; Cardiovascular Health Monitoring Directorate
               </p>
               <p className="text-[11px] text-slate-500">
-                Comprehensive Longitudinal Audit Report &bull; Verified SQLite Data Store (dhuan.sqlite) &bull; Lahore Smog Cohort
+                Comprehensive Longitudinal Audit Report &bull; Verified Telemetry Registry &bull; Lahore Smog Cohort
               </p>
             </div>
             <div className="text-right text-xs">
               <p className="font-extrabold text-slate-900">Date: {new Date().toLocaleDateString()}</p>
               <p className="text-slate-500">Time: {new Date().toLocaleTimeString()}</p>
-              <p className="font-mono text-[10px] text-emerald-700 font-bold mt-1">AUDIT REF: DHUAN-SQL-COMPREHENSIVE-ALL-VITALS</p>
+              <p className="font-mono text-[10px] text-emerald-700 font-bold mt-1">AUDIT REF: DHUAN-MED-COMPREHENSIVE-ALL-VITALS</p>
             </div>
           </div>
 
@@ -7514,7 +7503,7 @@ export default function HealthProfilePage() {
               <p><strong>Primary Commute Mode:</strong> {profile.primaryCommute} ({profile.dailyCommuteMinutes} mins daily)</p>
               <p><strong>Emergency Contact:</strong> {profile.emergencyContactName || 'Family Contact'} ({profile.emergencyContact || '+92 300 0000000'})</p>
               <p><strong>Lahore Smog Snapshot:</strong> AQI {currentLahoreAqi} &bull; PM2.5 {currentLahorePm25} µg/m³</p>
-              <p><strong>Total Audited Database Tests:</strong> {vitalsList.length} Tests Recorded</p>
+              <p><strong>Total Audited Clinical Tests:</strong> {vitalsList.length} Tests Recorded</p>
             </div>
           </div>
 
@@ -7583,7 +7572,7 @@ export default function HealthProfilePage() {
           {/* Section 2: Complete Chronological Test Audit Log */}
           <div className="mb-6">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-2 border-b border-slate-200 pb-1">
-              2. Complete Chronological Tests Audit History (SQLite Database: dhuan.sqlite)
+              2. Complete Chronological Tests Audit History
             </h3>
             <table className="w-full text-left text-xs border border-slate-300">
               <thead>
@@ -7625,9 +7614,9 @@ export default function HealthProfilePage() {
             <div className="flex justify-between items-end pt-8">
               <div>
                 <p className="font-bold text-slate-900">DHUAN Telehealth Medical Registry</p>
-                <p className="text-[10px] text-slate-400">Digital Cryptographic Audit ID: #DHUAN-SQL-COMPREHENSIVE-ALL-VITALS</p>
+                <p className="text-[10px] text-slate-400">Digital Cryptographic Audit ID: #DHUAN-MED-COMPREHENSIVE-ALL-VITALS</p>
                 <div className="font-mono text-[9px] bg-slate-100 p-1.5 rounded border border-slate-300 text-slate-700 mt-1 inline-block">
-                  ||| | |||| || ||| ||||| ||| |||| || ||| DHUAN-SQL-ALL-2026
+                  ||| | |||| || ||| ||||| ||| |||| || ||| DHUAN-MED-ALL-2026
                 </div>
               </div>
               <div className="text-right border-t border-slate-400 pt-1 w-56">
