@@ -69,6 +69,8 @@ import {
   Area, 
   LineChart,
   Line,
+  BarChart,
+  Bar,
   ReferenceLine,
   XAxis, 
   YAxis, 
@@ -596,6 +598,8 @@ export default function HealthProfilePage() {
   const [isLoadingVitals, setIsLoadingVitals] = useState<boolean>(false);
   const [activeMeasureModal, setActiveMeasureModal] = useState<string | null>(null);
   const [activeDetailVital, setActiveDetailVital] = useState<string | null>(null);
+  const [masterChartFilter, setMasterChartFilter] = useState<string>('all');
+  const [isRefreshingVitals, setIsRefreshingVitals] = useState<boolean>(false);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [hasDevice, setHasDevice] = useState<boolean>(true);
   const [measureStep, setMeasureStep] = useState<'detecting' | 'no_device_detected' | 'device_found' | 'measuring' | 'result' | 'manual_input' | 'remote_probe_sync' | 'optical_cam_sensor'>('detecting');
@@ -1190,6 +1194,79 @@ export default function HealthProfilePage() {
     setTimeout(() => {
       window.print();
     }, 200);
+  };
+
+  // Refresh all clinical vitals from SQLite backend
+  const handleRefreshVitals = async () => {
+    setIsRefreshingVitals(true);
+    try {
+      await fetchVitals();
+    } finally {
+      setTimeout(() => setIsRefreshingVitals(false), 400);
+    }
+  };
+
+  // Export Complete Biomarkers & Vitals Audit Log to CSV File
+  const exportAllVitalsCSV = () => {
+    if (vitalsList.length === 0) {
+      alert('No recorded vitals found in the SQLite database to export yet.');
+      return;
+    }
+
+    const headers = [
+      'Test ID',
+      'Timestamp (UTC)',
+      'Local Date Time',
+      'Biomarker',
+      'Primary Reading',
+      'Secondary Reading (Diastolic)',
+      'Unit',
+      'Clinical Status Tier',
+      'Clinical Interpretation',
+      'Device Name',
+      'Device Type',
+      'Recorded Lahore AQI',
+      'Recorded PM2.5 (ug/m3)',
+      'Smog Correlation Notes'
+    ];
+
+    const escapeCSV = (str: any) => {
+      if (str === null || str === undefined) return '""';
+      const s = String(str).replace(/"/g, '""');
+      return `"${s}"`;
+    };
+
+    const rows = vitalsList.map((item, idx) => [
+      item.id || (idx + 1),
+      escapeCSV(item.created_at),
+      escapeCSV(new Date(item.created_at).toLocaleString()),
+      escapeCSV(item.vital_type),
+      item.reading_value,
+      item.reading_secondary !== null && item.reading_secondary !== undefined ? item.reading_secondary : '',
+      escapeCSV(item.unit),
+      escapeCSV(item.status_tier),
+      escapeCSV(item.clinical_interpretation),
+      escapeCSV(item.device_name),
+      escapeCSV(item.device_type),
+      item.recorded_aqi ?? '',
+      item.recorded_pm25 ?? '',
+      escapeCSV(item.smog_correlation_notes)
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `DHUAN_All_Clinical_Vitals_Audit_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Automatic device detection and measurement initiation (No manual questioning)
@@ -3214,6 +3291,265 @@ export default function HealthProfilePage() {
                   </div>
                 );
               })}
+
+              {/* EMPTY SPACE FILLER: Comprehensive Biomarkers & Vitals Analytics Graph (SQLite Stream) */}
+              {(() => {
+                const isAll = masterChartFilter === 'all';
+                const activeCfg = !isAll ? VITALS_CONFIG.find(c => c.type === masterChartFilter) : null;
+                const relevantList = isAll 
+                  ? vitalsList 
+                  : vitalsList.filter(v => v.vital_type === masterChartFilter);
+                
+                // Chronological data points (oldest to newest, limited to recent 20 for crisp display)
+                const chartData = [...relevantList].reverse().slice(-20).map((item, idx) => {
+                  const d = new Date(item.created_at);
+                  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                  const cfg = VITALS_CONFIG.find(c => c.type === item.vital_type);
+                  return {
+                    index: idx + 1,
+                    time: timeStr,
+                    label: `${dateStr} ${timeStr}`,
+                    vitalType: item.vital_type,
+                    vitalName: cfg ? cfg.shortName : item.vital_type.replace(/_/g, ' '),
+                    primary: item.reading_value,
+                    secondary: item.reading_secondary,
+                    unit: item.unit,
+                    status: item.status_tier,
+                    aqi: item.recorded_aqi || currentLahoreAqi,
+                    pm25: item.recorded_pm25 || currentLahorePm25,
+                    device: item.device_name,
+                    interpretation: item.clinical_interpretation
+                  };
+                });
+
+                return (
+                  <div className="md:col-span-2 lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-4">
+                    {/* Component Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                          <TrendingUp className="w-5 h-5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
+                              Biomarkers Multi-Stream Telemetry &amp; Smog Correlation
+                            </h3>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                              SQLite Feed
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-400 block">
+                            Visual progression of all physiological tests recorded in the audit database below
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Header Actions: Refresh & Export */}
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={handleRefreshVitals}
+                          disabled={isRefreshingVitals}
+                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shadow-xs active:scale-95 disabled:opacity-50"
+                          title="Sync latest readings from SQLite database"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingVitals ? 'animate-spin text-emerald-600' : ''}`} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={exportAllVitalsCSV}
+                          disabled={vitalsList.length === 0}
+                          className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 active:scale-95"
+                          title="Export all database records as CSV"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Export All ({vitalsList.length})</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filter Tabs & Status Metrics */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                      {/* Biomarker Filter Tabs */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+                        <button
+                          type="button"
+                          onClick={() => setMasterChartFilter('all')}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all whitespace-nowrap ${
+                            masterChartFilter === 'all'
+                              ? 'bg-slate-900 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          All Tests ({vitalsList.length})
+                        </button>
+                        {VITALS_CONFIG.map((c) => {
+                          const cCount = vitalsList.filter(v => v.vital_type === c.type).length;
+                          if (cCount === 0) return null;
+                          return (
+                            <button
+                              key={c.type}
+                              type="button"
+                              onClick={() => setMasterChartFilter(c.type)}
+                              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all whitespace-nowrap flex items-center gap-1 ${
+                                masterChartFilter === c.type
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              <span>{c.shortName.split(' ')[0]}</span>
+                              <span className="text-[10px] opacity-75">({cCount})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Status Breakdown Badges */}
+                      <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-extrabold uppercase tracking-wider">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {relevantList.filter(v => v.status_tier === 'normal').length} Normal
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                          {relevantList.filter(v => v.status_tier === 'warning').length} Warning
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                          {relevantList.filter(v => v.status_tier === 'critical').length} Critical
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Chart Display Area */}
+                    <div className="h-60 w-full pt-1">
+                      {relevantList.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          {!isAll && activeCfg?.type === 'blood_pressure' ? (
+                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id="colorMasterSys" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35}/>
+                                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0}/>
+                                </linearGradient>
+                                <linearGradient id="colorMasterDia" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35}/>
+                                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} />
+                              <YAxis domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                              <Tooltip 
+                                contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
+                              <Area type="monotone" dataKey="primary" name="Systolic (mmHg)" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMasterSys)" />
+                              <Area type="monotone" dataKey="secondary" name="Diastolic (mmHg)" stroke="#06b6d4" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMasterDia)" />
+                              <ReferenceLine y={120} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: '120 mmHg', fill: '#f43f5e', fontSize: 10 }} />
+                              <ReferenceLine y={80} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: '80 mmHg', fill: '#3b82f6', fontSize: 10 }} />
+                            </AreaChart>
+                          ) : (
+                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id="colorMasterArea" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
+                                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
+                                </linearGradient>
+                                <linearGradient id="colorMasterAqi" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
+                                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} />
+                              <YAxis yAxisId="vital" domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} />
+                              <YAxis yAxisId="aqi" orientation="right" domain={[0, 300]} stroke="#f59e0b" fontSize={10} tick={{ fill: '#d97706' }} />
+                              <Tooltip 
+                                content={({ active, payload }: any) => {
+                                  if (active && payload && payload.length) {
+                                    const d = payload[0].payload;
+                                    return (
+                                      <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl border border-slate-700 text-xs space-y-1 max-w-xs z-50">
+                                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1 text-[11px] text-slate-400">
+                                          <span>{d.label}</span>
+                                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase ${
+                                            d.status === 'critical' ? 'bg-rose-900/80 text-rose-300' :
+                                            d.status === 'warning' ? 'bg-amber-900/80 text-amber-300' :
+                                            'bg-emerald-900/80 text-emerald-300'
+                                          }`}>
+                                            {d.status}
+                                          </span>
+                                        </div>
+                                        <div className="font-extrabold text-white text-sm">
+                                          {d.vitalName}: <span className="text-emerald-400 font-black">{d.secondary ? `${d.primary}/${d.secondary}` : d.primary} {d.unit}</span>
+                                        </div>
+                                        {d.interpretation && (
+                                          <p className="text-[11px] text-slate-300 leading-tight">
+                                            {d.interpretation}
+                                          </p>
+                                        )}
+                                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800">
+                                          <span className="truncate max-w-[140px]">📱 {d.device}</span>
+                                          <span className="font-bold text-amber-400">{d.aqi} AQI ({d.pm25} µg/m³)</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                }}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
+                              <Area 
+                                yAxisId="vital"
+                                type="monotone" 
+                                dataKey="primary" 
+                                name={isAll ? "Measured Reading" : `${activeCfg?.shortName} (${activeCfg?.unit})`} 
+                                stroke="#10b981" 
+                                strokeWidth={2.5} 
+                                fillOpacity={1} 
+                                fill="url(#colorMasterArea)" 
+                              />
+                              <Line 
+                                yAxisId="aqi"
+                                type="monotone" 
+                                dataKey="aqi" 
+                                name="Ambient Smog AQI" 
+                                stroke="#f59e0b" 
+                                strokeWidth={2}
+                                strokeDasharray="3 3"
+                                dot={{ r: 2.5, fill: '#f59e0b' }}
+                              />
+                            </AreaChart>
+                          )}
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-center space-y-1.5 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-4">
+                          <Activity className="w-6 h-6 text-slate-300" />
+                          <div className="text-xs font-bold text-slate-600">No Tests Found for Selected Filter</div>
+                          <p className="text-[11px] text-slate-400">Perform a measurement using the cards above to record data into the database.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer Insight Strip */}
+                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span>
+                          {vitalsList.length > 0 
+                            ? `Latest database entry: ${vitalsList[0].vital_type.replace(/_/g, ' ')} (${vitalsList[0].reading_value} ${vitalsList[0].unit}) at ${new Date(vitalsList[0].created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : 'No vitals recorded yet.'}
+                        </span>
+                      </div>
+                      <span className="text-emerald-700 font-bold text-[10px]">
+                        Synced with user_clinical_vitals table
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Recent Measurements History (Live SQLite Feed) */}
